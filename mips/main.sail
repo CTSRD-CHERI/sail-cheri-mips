@@ -25,9 +25,11 @@ function fetch_and_execute () = {
   try {
     let pc_pa = TranslatePC(PC);
     /*print_bits("pa: ", pc_pa);*/
-    let instr = MEMr_wrapper(pc_pa, 4);
-    /*print_bits("hex: ", instr);*/
-    let instr_ast = decode(instr);
+    LastInstrBits = CurrentInstrBits;
+    let instr_next = MEMr_wrapper(pc_pa, 4);
+    /*print_bits("hex: ", instr_next);*/
+    let instr_ast = decode(instr_next);
+    CurrentInstrBits = instr_next;
     match instr_ast {
       Some(HCF()) => {
                      print("simulation stopped due to halt instruction.");

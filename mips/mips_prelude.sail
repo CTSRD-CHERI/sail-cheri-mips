@@ -264,6 +264,11 @@ register CP0ErrorEPC : bits(64)
 register CP0LLBit : bits(1)
 register CP0LLAddr : bits(64)
 register CP0BadVAddr : bits(64)
+/* XXXAR: The following two registers are a hack to implement in BadInstr/BadInstrP */
+register CurrentInstrBits : bits(32)
+register LastInstrBits : bits(32)
+register CP0BadInstr : bits(32)
+register CP0BadInstrP : bits(32)
 register CP0Count : bits(32)
 register CP0HWREna : bits(32)
 register CP0UserLocal : bits(64)
@@ -418,6 +423,12 @@ function SignalExceptionMIPS (ex, kccBase) =
             CP0Cause->BD() = 0b0;
           }
       };
+      /* Fill in BadInstr + BadInstrP. */
+      if (inBranchDelay[0]) then
+        {
+            CP0BadInstrP = LastInstrBits; /* PC - 4 */
+        };
+      CP0BadInstr = CurrentInstrBits; /* PC */
 
       /* choose an exception vector to branch to. Some are not supported 
          e.g. Reset */

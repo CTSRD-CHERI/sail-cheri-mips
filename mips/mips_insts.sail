@@ -1417,7 +1417,8 @@ function clause execute (MFC0(rt, rd, sel, double)) = {
           (0b00110,0b000) => zero_extend(TLBWired),   /* 6, TLB Wired */
           (0b00111,0b000) => zero_extend(CP0HWREna),  /* 7, HWREna */
           (0b01000,0b000) => CP0BadVAddr,      /* 8, BadVAddr reg */
-          (0b01000,0b001) => zero_extend(0b0),        /* 8, BadInstr reg XXX TODO */
+          (0b01000,0b001) => zero_extend(CP0BadInstr),      /* 8, sel 1 BadInstr reg */
+          (0b01000,0b010) => zero_extend(CP0BadInstrP),      /* 8, sel 2 BadInstrP reg */
           (0b01001,0b000) => zero_extend(CP0Count),   /* 9, Count reg */
           (0b01010,0b000) => TLBEntryHi.bits(),/* 10, TLB EntryHi */
           (0b01011,0b000) => zero_extend(CP0Compare), /* 11, Compare reg */
@@ -1461,7 +1462,7 @@ function clause execute (MFC0(rt, rd, sel, double)) = {
                                         @ 0b0000  /* SS L2 sets */
                                         @ 0b0000  /* SL L2 lines */
                                         @ 0b0000), /* SA L2 assoc. */
-          (0b10000,0b011) => 0x0000000000002000, /* 16, sel 3: Config3 zero except for bit 13 == ulri */
+          (0b10000,0b011) => 0x000000000c002000, /* 16, sel 3: Config3 zero except for bit 13 == ulri and BadInstr/BadInstrP */
           (0b10000,0b101) => 0x0000000000000000, /* 16, sel 5: Config5 beri specific -- no extended TLB */
           (0b10001,0b000) => CP0LLAddr,        /* 17, sel 0: LLAddr */
           (0b10010,0b000) => zero_extend(0b0),        /* 18, WatchLo */
