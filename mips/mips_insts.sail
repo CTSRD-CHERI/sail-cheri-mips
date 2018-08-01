@@ -1407,7 +1407,7 @@ function clause execute (MFC0(rt, rd, sel, double)) = {
   let result : bits(64) = match (rd, sel)
         {
           (0b00000,0b000) => let idx : bits(31) = zero_extend(TLBIndex) in
-			         (0x00000000 @ TLBProbe @ idx),  /* 0, TLB Index */
+          (0x00000000 @ TLBProbe @ idx),  /* 0, TLB Index */
           (0b00001,0b000) => zero_extend(TLBRandom),    /* 1, TLB Random */
           (0b00010,0b000) => TLBEntryLo0.bits(), /* 2, TLB EntryLo0 */
           (0b00011,0b000) => TLBEntryLo1.bits(), /* 3, TLB EntryLo1 */
