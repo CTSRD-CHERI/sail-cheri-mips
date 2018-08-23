@@ -90,6 +90,8 @@ function clause decode (0b010010 @ 0b00000 @ cd : regno @ cb : regno @    0b0101
 function clause decode (0b010010 @ 0b00000 @ cd : regno @ cs : regno @    0b01010 @ 0b111111) = Some(CMOVX(cd, cs, 0b00000, false)) /* CMOVE */
 function clause decode (0b010010 @ 0b00000 @ cd : regno @ cb : regno @    0b01100 @ 0b111111) = Some(CJALR(cd, cb, true)) /* CJALR */
 
+function clause decode (0b010010 @ 0b00000 @ rd : regno @ cb : regno @    0b11110 @ 0b111111) = Some(CLoadTags(rd, cb))
+
 /* Capability Inspection */
 function clause decode (0b010010 @ 0b00000 @ rd : regno @ cb : regno @    0b00000 @ 0b111111) = Some(CGetPerm(rd, cb))
 function clause decode (0b010010 @ 0b00000 @ rd : regno @ cb : regno @    0b00001 @ 0b111111) = Some(CGetType(rd, cb))
@@ -1031,6 +1033,47 @@ function clause execute (CLoad(rd, cb, rt, offset, signext, width, linked)) =
             else
               extendLoad(MEMr_wrapper(pAddr, size), signext);
           wGPR(rd) = memResult;
+        }
+    }
+}
+
+union clause ast = CLoadTags : (regno, regno)
+function clause execute (CLoadTags(rd, cb)) =
+{
+  checkCP2usable();
+  cb_val = readCapRegDDC(cb);
+  if not (cb_val.tag) then
+    raise_c2_exception(CapEx_TagViolation, cb)
+  else if (cb_val.sealed) then
+    raise_c2_exception(CapEx_SealViolation, cb)
+  else if not (cb_val.permit_load) then
+    raise_c2_exception(CapEx_PermitLoadViolation, cb)
+  else if not (cb_val.permit_load_cap) then
+    raise_c2_exception(CapEx_PermitLoadViolation, cb)
+  else
+    {
+      let vAddr   = getCapCursor(cb_val) % pow2(64);
+      let vAddr64 = to_bits(64, vAddr);
+      if ((vAddr + 8 * cap_size) > getCapTop(cb_val)) then
+        raise_c2_exception(CapEx_LengthViolation, cb)
+      else if (vAddr < getCapBase(cb_val)) then
+        raise_c2_exception(CapEx_LengthViolation, cb)
+      else if not (vAddr64[5..0] == 0b000000) then /* XXX Cache line width? */
+        SignalExceptionBadAddr(AdEL, vAddr64)
+      else
+        {
+          pAddr      = (TLBTranslate(vAddr64, LoadData));
+
+          let tag0   = MEMr_tag(pAddr + 0*cap_size);
+          let tag1   = MEMr_tag(pAddr + 1*cap_size);
+          let tag2   = MEMr_tag(pAddr + 2*cap_size);
+          let tag3   = MEMr_tag(pAddr + 3*cap_size);
+          let tag4   = MEMr_tag(pAddr + 4*cap_size);
+          let tag5   = MEMr_tag(pAddr + 5*cap_size);
+          let tag6   = MEMr_tag(pAddr + 6*cap_size);
+          let tag7   = MEMr_tag(pAddr + 7*cap_size);
+          wGPR(rd)   = zero_extend (tag7 @ tag6 @ tag5 @ tag4
+                                  @ tag3 @ tag2 @ tag1 @ tag0);
         }
     }
 }
