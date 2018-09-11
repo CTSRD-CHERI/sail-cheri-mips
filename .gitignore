@@ -29,6 +29,8 @@ lib/hol/sail-heap
 *.glob
 .*.aux
 
+z3_problems
+
 # location specific things
 
 /sail
@@ -69,7 +71,15 @@ lib/hol/sail-heap
 /aarch64/z3_problems
 
 /cheri/cheri
+/cheri/cheri.c
+/cheri/cheri_c
 /cheri/cheri128
+/cheri/cheri128.c
+/cheri/cheri128_c
+
+/mips/mips
+/mips/mips.c
+/mips/mips_c
 
 /power/power.lem
 /power/power.ml

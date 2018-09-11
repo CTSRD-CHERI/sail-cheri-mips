@@ -3,3 +3,6 @@ cheri_types.lem
 cheriScript.sml
 cheri_typesScript.sml
 mips_extrasScript.sml
+
+/sail_latex
+/sail_latexcc
