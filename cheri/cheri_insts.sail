@@ -410,13 +410,9 @@ function clause execute(CToPtr(rd, cb, ct)) =
     raise_c2_exception(CapEx_SealViolation, cb)
   else 
     {
-      let cbBase = getCapBase(cb_val) in
-      let cbTop = getCapTop(cb_val) in
       let ctBase = getCapBase(ct_val) in
-      let ctTop = getCapTop(ct_val) in
-      wGPR(rd) = if (not (cb_val.tag)) |
-                     (cbBase < ctBase) |
-                     (cbTop > ctTop) then
+      /* Note: returning zero for untagged values breaks magic constants such as SIG_IGN */
+      wGPR(rd) = if (not (cb_val.tag)) then
           zeros()
         else
           to_bits(64, getCapCursor(cb_val) - ctBase)
