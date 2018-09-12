@@ -52,7 +52,6 @@ open PPrint
 open Pretty_print_common
 
 type out_type =
-  | Lem_ast_out
   | Lem_out of string list
   | Coq_out of string list
 
@@ -65,24 +64,30 @@ let get_lexbuf f =
                                 Lexing.pos_cnum = 0; };
   lexbuf, in_chan
 
-let parse_file (f : string) : Parse_ast.defs =
-  let lexbuf, in_chan = get_lexbuf f in
-    try
-      let ast = Parser.file Lexer.token lexbuf in
-      close_in in_chan; ast
-    with
-    | Parser.Error ->
-       let pos = Lexing.lexeme_start_p lexbuf in
-       raise (Reporting_basic.Fatal_error (Reporting_basic.Err_syntax (pos, "no information")))
-    | Lexer.LexError(s,p) ->
-       raise (Reporting_basic.Fatal_error (Reporting_basic.Err_lex (p, s)))
+let parse_file ?loc:(l=Parse_ast.Unknown) (f : string) : Parse_ast.defs =
+  let open Reporting_basic in
+  try
+    let lexbuf, in_chan = get_lexbuf f in
+    begin
+      try
+        let ast = Parser.file Lexer.token lexbuf in
+        close_in in_chan; ast
+      with
+      | Parser.Error ->
+         let pos = Lexing.lexeme_start_p lexbuf in
+         raise (Fatal_error (Err_syntax (pos, "no information")))
+      | Lexer.LexError(s,p) ->
+         raise (Fatal_error (Err_lex (p, s)))
+    end
+  with
+  | Sys_error err -> raise (err_general l err)
 
 (* Simple preprocessor features for conditional file loading *)
 module StringSet = Set.Make(String)
 
 let symbols = ref StringSet.empty
 
-let cond_pragma defs =
+let cond_pragma l defs =
   let depth = ref 0 in
   let in_then = ref true in
   let then_defs = ref [] in
@@ -106,7 +111,7 @@ let cond_pragma defs =
        decr depth; push_def def; scan defs
     | def :: defs ->
        push_def def; scan defs
-    | [] -> failwith "$ifdef or $ifndef never ended"
+    | [] -> raise (Reporting_basic.err_general l "$ifdef or $ifndef never ended by $endif")
   in
   scan defs
 
@@ -132,39 +137,50 @@ let rec realise_union_anon_rec_types (Parse_ast.TD_variant (union_id, name_scm_o
         let new_rec_def = DEF_type (TD_aux (TD_record (record_id, name_scm_opt, typq, fields, flag), Generated l)) in
         (Some new_rec_def, new_arm) :: (realise_union_anon_rec_types orig_union arms)
 
-let rec preprocess = function
+let rec preprocess opts = function
   | [] -> []
   | Parse_ast.DEF_pragma ("define", symbol, _) :: defs ->
      symbols := StringSet.add symbol !symbols;
-     preprocess defs
+     preprocess opts defs
 
-  | Parse_ast.DEF_pragma ("ifndef", symbol, _) :: defs ->
-     let then_defs, else_defs, defs = cond_pragma defs in
+  | Parse_ast.DEF_pragma ("option", command, l) :: defs ->
+     begin
+       try
+         let args = Str.split (Str.regexp " +") command in
+         Arg.parse_argv ~current:(ref 0) (Array.of_list ("sail" :: args)) opts (fun _ -> ()) "";
+       with
+       | Arg.Bad message | Arg.Help message -> raise (Reporting_basic.err_general l message)
+     end;
+     preprocess opts defs
+
+
+  | Parse_ast.DEF_pragma ("ifndef", symbol, l) :: defs ->
+     let then_defs, else_defs, defs = cond_pragma l defs in
      if not (StringSet.mem symbol !symbols) then
-       preprocess (then_defs @ defs)
+       preprocess opts (then_defs @ defs)
      else
-       preprocess (else_defs @ defs)
+       preprocess opts (else_defs @ defs)
 
-  | Parse_ast.DEF_pragma ("ifdef", symbol, _) :: defs ->
-     let then_defs, else_defs, defs = cond_pragma defs in
+  | Parse_ast.DEF_pragma ("ifdef", symbol, l) :: defs ->
+     let then_defs, else_defs, defs = cond_pragma l defs in
      if StringSet.mem symbol !symbols then
-       preprocess (then_defs @ defs)
+       preprocess opts (then_defs @ defs)
      else
-       preprocess (else_defs @ defs)
+       preprocess opts (else_defs @ defs)
 
   | Parse_ast.DEF_pragma ("include", file, l) :: defs ->
      let len = String.length file in
      if len = 0 then
-       (Util.warn "Skipping bad $include. No file argument."; preprocess defs)
+       (Util.warn "Skipping bad $include. No file argument."; preprocess opts defs)
      else if file.[0] = '"' && file.[len - 1] = '"' then
        let relative = match l with
          | Parse_ast.Range (pos, _) -> Filename.dirname (Lexing.(pos.pos_fname))
          | _ -> failwith "Couldn't figure out relative path for $include. This really shouldn't ever happen."
        in
        let file = String.sub file 1 (len - 2) in
-       let (Parse_ast.Defs include_defs) = parse_file (Filename.concat relative file) in
-       let include_defs = preprocess include_defs in
-       include_defs @ preprocess defs
+       let (Parse_ast.Defs include_defs) = parse_file ~loc:l (Filename.concat relative file) in
+       let include_defs = preprocess opts include_defs in
+       include_defs @ preprocess opts defs
      else if file.[0] = '<' && file.[len - 1] = '>' then
        let file = String.sub file 1 (len - 2) in
        let sail_dir =
@@ -177,15 +193,15 @@ let rec preprocess = function
               (failwith ("Library directory " ^ share_dir ^ " does not exist. Make sure sail is installed or try setting environment variable SAIL_DIR so that I can find $include " ^ file))
        in
        let file = Filename.concat sail_dir ("lib/" ^ file) in
-       let (Parse_ast.Defs include_defs) = parse_file file in
-       let include_defs = preprocess include_defs in
-       include_defs @ preprocess defs
+       let (Parse_ast.Defs include_defs) = parse_file ~loc:l file in
+       let include_defs = preprocess opts include_defs in
+       include_defs @ preprocess opts defs
      else
        let help = "Make sure the filename is surrounded by quotes or angle brackets" in
-       (Util.warn ("Skipping bad $include " ^ file ^ ". " ^ help); preprocess defs)
+       (Util.warn ("Skipping bad $include " ^ file ^ ". " ^ help); preprocess opts defs)
 
   | Parse_ast.DEF_pragma (p, arg, _) :: defs ->
-     (Util.warn ("Bad pragma $" ^ p ^ " " ^ arg); preprocess defs)
+     (Util.warn ("Bad pragma $" ^ p ^ " " ^ arg); preprocess opts defs)
 
   (* realise any anonymous record arms of variants *)
   | Parse_ast.DEF_type (Parse_ast.TD_aux
@@ -199,25 +215,25 @@ let rec preprocess = function
      let generated_records = filter_records (List.map fst records_and_arms) in
      let rewritten_arms = List.map snd records_and_arms in
      let rewritten_union = Parse_ast.TD_variant (id, name_scm_opt, typq, rewritten_arms, flag) in
-     generated_records @ (Parse_ast.DEF_type (Parse_ast.TD_aux (rewritten_union, l))) :: preprocess defs
+     generated_records @ (Parse_ast.DEF_type (Parse_ast.TD_aux (rewritten_union, l))) :: preprocess opts defs
 
   | (Parse_ast.DEF_default (Parse_ast.DT_aux (Parse_ast.DT_order (_, Parse_ast.ATyp_aux (atyp, _)), _)) as def) :: defs ->
      begin match atyp with
-     | Parse_ast.ATyp_inc -> symbols := StringSet.add "_DEFAULT_INC" !symbols; def :: preprocess defs
-     | Parse_ast.ATyp_dec -> symbols := StringSet.add "_DEFAULT_DEC" !symbols; def :: preprocess defs
-     | _ -> def :: preprocess defs
+     | Parse_ast.ATyp_inc -> symbols := StringSet.add "_DEFAULT_INC" !symbols; def :: preprocess opts defs
+     | Parse_ast.ATyp_dec -> symbols := StringSet.add "_DEFAULT_DEC" !symbols; def :: preprocess opts defs
+     | _ -> def :: preprocess opts defs
      end
 
-  | def :: defs -> def :: preprocess defs
+  | def :: defs -> def :: preprocess opts defs
 
-let preprocess_ast (Parse_ast.Defs defs) = Parse_ast.Defs (preprocess defs)
+let preprocess_ast opts (Parse_ast.Defs defs) = Parse_ast.Defs (preprocess opts defs)
 
 let convert_ast (order : Ast.order) (defs : Parse_ast.defs) : unit Ast.defs = Initial_check.process_ast order defs
 
-let load_file_no_check order f = convert_ast order (preprocess_ast (parse_file f))
+let load_file_no_check opts order f = convert_ast order (preprocess_ast opts (parse_file f))
 
-let load_file order env f =
-  let ast = convert_ast order (preprocess_ast (parse_file f)) in
+let load_file opts order env f =
+  let ast = convert_ast order (preprocess_ast opts (parse_file f)) in
   Type_error.check env ast
 
 let opt_just_check = ref false
@@ -232,27 +248,6 @@ let check_ast (env : Type_check.Env.t) (defs : unit Ast.defs) : Type_check.tanno
   let () = if !opt_just_check then exit 0 else () in
   (ast, env)
 
-let opt_ddump_raw_mono_ast = ref false
-let opt_dmono_analysis = ref 0
-let opt_auto_mono = ref false
-let opt_mono_rewrites = ref false
-let opt_mono_complex_nexps = ref true
-let opt_dall_split_errors = ref false
-let opt_dmono_continue = ref false
-
-let monomorphise_ast locs type_env ast =
-  let open Monomorphise in
-  let opts = {
-    auto = !opt_auto_mono;
-    debug_analysis = !opt_dmono_analysis;
-    rewrites = !opt_mono_rewrites;
-    rewrite_toplevel_nexps = !opt_mono_complex_nexps;
-    rewrite_size_parameters = !Pretty_print_lem.opt_mwords;
-    all_split_errors = !opt_dall_split_errors;
-    continue_anyway = !opt_dmono_continue;
-    dump_raw = !opt_ddump_raw_mono_ast
-  } in
-  monomorphise opts locs type_env ast
 
 let open_output_with_check file_name =
   let (temp_file_name, o) = Filename.open_temp_file "ll_temp" "" in
@@ -331,6 +326,7 @@ let output_coq filename libs defs =
   let base_imports = [
       "Sail2_instr_kinds";
       "Sail2_values";
+      "Sail2_string";
       operators_module
     ] @ monad_modules
   in
@@ -351,28 +347,16 @@ let rec iterate (f : int -> unit) (n : int) : unit =
 
 let output1 libpath out_arg filename defs  =
   let f' = Filename.basename (Filename.chop_extension filename) in
-    match out_arg with
-      | Lem_ast_out ->
-	begin
-	  let (o, ext_o) = open_output_with_check (f' ^ ".lem") in
-	  Format.fprintf o "(* %s *)@\n" (generated_line filename);
-          Format.fprintf o "open import Interp_ast@\n";
-	  Format.fprintf o "open import Pervasives@\n";
-          Format.fprintf o "(*Supply common numeric constants at the right type to alleviate repeated calls to typeclass macro*)\n";
-          iterate (fun n -> Format.fprintf o "let int%i : integer = integerFromNat %i\n" (n - 1) (n - 1)) 129;
-          Format.fprintf o "let defs = ";
-	  Pretty_print.pp_lem_defs o defs;
-	  close_output_with_check ext_o
-	end
-      | Lem_out libs ->
-        output_lem f' libs defs
-      | Coq_out libs ->
-         output_coq f' libs defs
+  match out_arg with
+  | Lem_out libs ->
+     output_lem f' libs defs
+  | Coq_out libs ->
+     output_coq f' libs defs
 
 let output libpath out_arg files =
   List.iter
     (fun (f, defs) ->
-       output1 libpath out_arg f defs)
+      output1 libpath out_arg f defs)
     files
 
 let rewrite_step defs (name,rewriter) =
@@ -398,7 +382,7 @@ let rewrite rewriters defs =
 let rewrite_ast = rewrite [("initial", Rewriter.rewrite_defs)]
 let rewrite_undefined bitvectors = rewrite [("undefined", fun x -> Rewrites.rewrite_undefined bitvectors x)]
 let rewrite_ast_lem = rewrite Rewrites.rewrite_defs_lem
-let rewrite_ast_coq = rewrite Rewrites.rewrite_defs_lem
+let rewrite_ast_coq = rewrite Rewrites.rewrite_defs_coq
 let rewrite_ast_ocaml = rewrite Rewrites.rewrite_defs_ocaml
 let rewrite_ast_c ast =
   ast

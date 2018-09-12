@@ -74,6 +74,8 @@ val rewrite_lexp : tannot rewriters -> tannot lexp -> tannot lexp
 
 val rewrite_pat : tannot rewriters -> tannot pat -> tannot pat
 
+val rewrite_pexp : tannot rewriters -> tannot pexp -> tannot pexp
+
 val rewrite_let : tannot rewriters -> tannot letbind -> tannot letbind
 
 val rewrite_def : tannot rewriters -> tannot def -> tannot def
@@ -84,6 +86,8 @@ val rewrite_fun : tannot rewriters -> tannot fundef -> tannot fundef
 type ('a,'pat,'pat_aux,'fpat,'fpat_aux) pat_alg =
   { p_lit            : lit -> 'pat_aux
   ; p_wild           : 'pat_aux
+  ; p_or             : 'pat * 'pat -> 'pat_aux
+  ; p_not            : 'pat        -> 'pat_aux
   ; p_as             : 'pat * id -> 'pat_aux
   ; p_typ            : Ast.typ * 'pat -> 'pat_aux
   ; p_id             : id -> 'pat_aux
@@ -139,12 +143,7 @@ type ('a,'exp,'exp_aux,'lexp,'lexp_aux,'fexp,'fexp_aux,'fexps,'fexps_aux,
  ; e_throw                  : 'exp -> 'exp_aux
  ; e_return                 : 'exp -> 'exp_aux
  ; e_assert                 : 'exp * 'exp -> 'exp_aux
- ; e_internal_cast          : 'a annot * 'exp -> 'exp_aux
- ; e_internal_exp           : 'a annot -> 'exp_aux
- ; e_internal_exp_user      : 'a annot * 'a annot -> 'exp_aux
- ; e_comment                : string -> 'exp_aux
- ; e_comment_struc          : 'exp -> 'exp_aux
- ; e_internal_let           : 'lexp * 'exp * 'exp -> 'exp_aux
+ ; e_var                    : 'lexp * 'exp * 'exp -> 'exp_aux
  ; e_internal_plet          : 'pat * 'exp * 'exp -> 'exp_aux
  ; e_internal_return        : 'exp -> 'exp_aux
  ; e_internal_value         : Value.value -> 'exp_aux
@@ -189,6 +188,18 @@ val fold_letbind : ('a,'exp,'exp_aux,'lexp,'lexp_aux,'fexp,'fexp_aux,'fexps,'fex
 val fold_pexp : ('a,'exp,'exp_aux,'lexp,'lexp_aux,'fexp,'fexp_aux,'fexps,'fexps_aux,
       'opt_default_aux,'opt_default,'pexp,'pexp_aux,'letbind_aux,'letbind,
       'pat,'pat_aux,'fpat,'fpat_aux) exp_alg -> 'a pexp -> 'pexp
+
+val fold_pexp : ('a,'exp,'exp_aux,'lexp,'lexp_aux,'fexp,'fexp_aux,'fexps,'fexps_aux,
+      'opt_default_aux,'opt_default,'pexp,'pexp_aux,'letbind_aux,'letbind,
+      'pat,'pat_aux,'fpat,'fpat_aux) exp_alg -> 'a pexp -> 'pexp
+
+val fold_funcl : ('a,'exp,'exp_aux,'lexp,'lexp_aux,'fexp,'fexp_aux,'fexps,'fexps_aux,
+      'opt_default_aux,'opt_default,'a pexp,'pexp_aux,'letbind_aux,'letbind,
+      'pat,'pat_aux,'fpat,'fpat_aux) exp_alg -> 'a funcl -> 'a funcl
+
+val fold_function : ('a,'exp,'exp_aux,'lexp,'lexp_aux,'fexp,'fexp_aux,'fexps,'fexps_aux,
+      'opt_default_aux,'opt_default, 'a pexp,'pexp_aux,'letbind_aux,'letbind,
+      'pat,'pat_aux,'fpat,'fpat_aux) exp_alg -> 'a fundef -> 'a fundef
 
 val id_pat_alg : ('a,'a pat, 'a pat_aux, 'a fpat, 'a fpat_aux) pat_alg
 val id_exp_alg :
@@ -240,6 +251,3 @@ val fix_eff_fexp : tannot fexp -> tannot fexp
 val fix_eff_fexps : tannot fexps -> tannot fexps
 
 val fix_eff_opt_default : tannot opt_default -> tannot opt_default
-
-(* AA: How this is used in rewrite_pat seems suspect to me *)
-val vector_string_to_bit_list : Parse_ast.l -> lit_aux -> lit list

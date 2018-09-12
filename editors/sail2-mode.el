@@ -21,7 +21,7 @@
     "uint64_t" "int64_t" "bv_t" "mpz_t"))
 
 (defconst sail2-special
-  '("_prove" "create" "kill" "convert" "undefined" "$define" "$include" "$ifdef" "$ifndef" "$else" "$endif"))
+  '("_prove" "create" "kill" "convert" "undefined" "$define" "$include" "$ifdef" "$ifndef" "$else" "$endif" "$option"))
 
 (defconst sail2-font-lock-keywords
   `((,(regexp-opt sail2-keywords 'symbols) . font-lock-keyword-face)
@@ -54,6 +54,9 @@
   (kill-all-local-variables)
   (set-syntax-table sail2-mode-syntax-table)
   (setq font-lock-defaults '(sail2-font-lock-keywords))
+  (setq comment-start-skip "\\(//+\\|/\\*+\\)\\s *")
+  (setq comment-start "/*")
+  (setq comment-end "*/")
   (setq major-mode 'sail2-mode)
   (setq mode-name "Sail2")
   (run-hooks 'sail2-mode-hook))

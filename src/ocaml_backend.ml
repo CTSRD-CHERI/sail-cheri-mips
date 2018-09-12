@@ -61,6 +61,7 @@ let opt_trace_ocaml = ref false
 (* Option to not build generated ocaml by default *)
 let opt_ocaml_nobuild = ref false
 let opt_ocaml_coverage = ref false
+let opt_ocaml_build_dir = ref "_sbuild"
 
 type ctx =
   { register_inits : tannot exp list;
@@ -97,7 +98,7 @@ let ocaml_string_parens inside = string "\"(\" ^ " ^^ inside ^^ string " ^ \")\"
 
 let ocaml_string_comma = string " ^ \", \" ^ "
 
-let rec ocaml_string_typ (Typ_aux (typ_aux, _)) arg =
+let rec ocaml_string_typ (Typ_aux (typ_aux, l)) arg =
   match typ_aux with
   | Typ_id id when string_of_id id = "exception" -> string "Printexc.to_string" ^^ space ^^ arg
   | Typ_id id -> ocaml_string_of id ^^ space ^^ arg
@@ -117,8 +118,10 @@ let rec ocaml_string_typ (Typ_aux (typ_aux, _)) arg =
      parens (separate space [string "fun"; parens (separate (comma ^^ space) args); string "->"; body])
      ^^ space ^^ arg
   | Typ_fn (typ1, typ2, _) -> string "\"FN\""
+  | Typ_bidir (t1, t2) -> string "\"BIDIR\""
   | Typ_var kid -> string "\"VAR\""
   | Typ_exist _ -> assert false
+  | Typ_internal_unknown -> raise (Reporting_basic.err_unreachable l __POS__ "escaped Typ_internal_unknown")
 
 let ocaml_typ_id ctx = function
   | id when Id.compare id (mk_id "string") = 0 -> string "string"
@@ -131,18 +134,19 @@ let ocaml_typ_id ctx = function
   | id when Id.compare id (mk_id "real") = 0 -> string "Rational.t"
   | id when Id.compare id (mk_id "exception") = 0 -> string "exn"
   | id when Id.compare id (mk_id "register") = 0 -> string "ref"
-  | id when Id.compare id (mk_id "ref") = 0 -> string "ref"
   | id -> zencode ctx id
 
-let rec ocaml_typ ctx (Typ_aux (typ_aux, _)) =
+let rec ocaml_typ ctx (Typ_aux (typ_aux, l)) =
   match typ_aux with
   | Typ_id id -> ocaml_typ_id ctx id
   | Typ_app (id, []) -> ocaml_typ_id ctx id
-  | Typ_app (id, typs) -> parens (separate_map (string " * ") (ocaml_typ_arg ctx) typs) ^^ space ^^ ocaml_typ_id ctx id
+  | Typ_app (id, typs) -> parens (separate_map (string ", ") (ocaml_typ_arg ctx) typs) ^^ space ^^ ocaml_typ_id ctx id
   | Typ_tup typs -> parens (separate_map (string " * ") (ocaml_typ ctx) typs)
   | Typ_fn (typ1, typ2, _) -> separate space [ocaml_typ ctx typ1; string "->"; ocaml_typ ctx typ2]
+  | Typ_bidir (t1, t2) -> raise (Reporting_basic.err_general l "Ocaml doesn't support bidir types")
   | Typ_var kid -> zencode_kid kid
   | Typ_exist _ -> assert false
+  | Typ_internal_unknown -> raise (Reporting_basic.err_unreachable l __POS__ "escaped Typ_internal_unknown")
 and ocaml_typ_arg ctx (Typ_arg_aux (typ_arg_aux, _) as typ_arg) =
   match typ_arg_aux with
   | Typ_arg_typ typ -> ocaml_typ ctx typ
@@ -156,7 +160,7 @@ let ocaml_typquant typq =
   match quant_items typq with
   | [] -> empty
   | [qi] -> ocaml_qi qi
-  | qis -> parens (separate_map (string " * ") ocaml_qi qis)
+  | qis -> parens (separate_map (string ", ") ocaml_qi qis)
 
 let string_lit str = dquotes (string (String.escaped str))
 
@@ -195,6 +199,7 @@ let rec ocaml_pat ctx (P_aux (pat_aux, _) as pat) =
   | P_wild -> string "_"
   | P_as (pat, id) -> separate space [ocaml_pat ctx pat; string "as"; zencode ctx id]
   | P_app (id, pats) -> zencode_upper ctx id ^^ space ^^ parens (separate_map (comma ^^ space) (ocaml_pat ctx) pats)
+  | P_cons (hd_pat, tl_pat) -> ocaml_pat ctx hd_pat ^^ string " :: " ^^ ocaml_pat ctx tl_pat
   | _ -> string ("PAT<" ^ string_of_pat pat ^ ">")
 
 let begin_end doc = group (string "begin" ^^ nest 2 (break 1 ^^ doc) ^/^ string "end")
@@ -677,7 +682,7 @@ let ocaml_main spec sail_dir =
    @ [ "  zinitializze_registers ();";
        if !opt_trace_ocaml then "  Sail_lib.opt_trace := true;" else "  ();";
        "  Printexc.record_backtrace true;";
-       "  zmain ()\n";])
+       "  try zmain () with _ -> prerr_endline(\"Exiting due to uncaught exception\")\n";])
   |> String.concat "\n"
 
 let ocaml_pp_defs f defs =
@@ -706,9 +711,9 @@ let ocaml_compile spec defs =
        else
          failwith "Could not find sail share directory, " ^ share_dir ^ ". Make sure sail is installed or try setting environment variable SAIL_DIR."
   in
-  if Sys.file_exists "_sbuild" then () else Unix.mkdir "_sbuild" 0o775;
+  if Sys.file_exists !opt_ocaml_build_dir then () else Unix.mkdir !opt_ocaml_build_dir 0o775;
   let cwd = Unix.getcwd () in
-  Unix.chdir "_sbuild";
+  Unix.chdir !opt_ocaml_build_dir;
   let _ = Unix.system ("cp -r " ^ sail_dir ^ "/src/elf_loader.ml .") in
   let _ = Unix.system ("cp -r " ^ sail_dir ^ "/src/sail_lib.ml .") in
   let _ = Unix.system ("cp -r " ^ sail_dir ^ "/src/util.ml .") in

@@ -2,6 +2,9 @@ SAIL_SRCS = prelude.sail riscv_types.sail riscv_sys.sail riscv_platform.sail ris
 PLATFORM_OCAML_SRCS = platform.ml platform_impl.ml platform_main.ml
 SAIL_DIR ?= $(realpath ..)
 SAIL ?= $(SAIL_DIR)/sail
+C_WARNINGS ?=
+#-Wall -Wextra -Wno-unused-label -Wno-unused-parameter -Wno-unused-but-set-variable -Wno-unused-function
+C_SRCS = riscv_prelude.c riscv_platform.c
 
 export SAIL_DIR
 
@@ -32,8 +35,14 @@ coverage: _sbuild/coverage.native
 	mkdir bisect && mv bisect*.out bisect/
 	mkdir coverage && bisect-ppx-report -html coverage/ -I _sbuild/ bisect/bisect*.out
 
-riscv.c: $(SAIL_SRCS) Makefile
-	$(SAIL) -O -memo_z3 -c $(SAIL_SRCS) 1> $@
+riscv.c: $(SAIL_SRCS) main.sail Makefile
+	$(SAIL) -O -memo_z3 -c -c_include riscv_prelude.h -c_include riscv_platform.h $(SAIL_SRCS) main.sail 1> $@
+
+riscv_c: riscv.c riscv_prelude.h $(C_SRCS) Makefile
+	gcc $(C_WARNINGS) -O2 riscv.c $(C_SRCS) ../lib/*.c -lgmp -lz -I ../lib -o riscv_c
+
+latex: $(SAIL_SRCS) Makefile
+	$(SAIL) -latex -latex_prefix sail -o sail_ltx $(SAIL_SRCS)
 
 tracecmp: tracecmp.ml
 	ocamlfind ocamlopt -annot -linkpkg -package unix $^ -o $@
@@ -44,7 +53,7 @@ riscv_duopod_ocaml: prelude.sail riscv_duopod.sail
 riscv_duopod.lem: prelude.sail riscv_duopod.sail
 	$(SAIL) $(SAIL_FLAGS) -lem -lem_mwords -lem_lib Riscv_extras -o riscv_duopod $^
 Riscv_duopod.thy: riscv_duopod.lem riscv_extras.lem
-	lem -isa -outdir . -lib ../src/lem_interp -lib ../src/gen_lib \
+	lem -isa -outdir . -lib Sail=../src/lem_interp -lib Sail=../src/gen_lib \
 		riscv_extras.lem \
 		riscv_duopod_types.lem \
 		riscv_duopod.lem
@@ -52,7 +61,7 @@ Riscv_duopod.thy: riscv_duopod.lem riscv_extras.lem
 riscv_duopod: riscv_duopod_ocaml Riscv_duopod.thy
 
 Riscv.thy: riscv.lem riscv_extras.lem
-	lem -isa -outdir . -lib ../src/lem_interp -lib ../src/gen_lib \
+	lem -isa -outdir . -lib Sail=../src/lem_interp -lib Sail=../src/gen_lib \
 		riscv_extras.lem \
 		riscv_types.lem \
 		riscv.lem
@@ -74,6 +83,17 @@ riscvScript.sml : riscv.lem riscv_extras.lem
 riscvTheory.uo riscvTheory.ui: riscvScript.sml
 	Holmake riscvTheory.uo
 
+COQ_LIBS = -R ../../bbv/theories bbv -R ../lib/coq Sail
+
+riscv.v riscv_types.v: $(SAIL_SRCS)
+	$(SAIL) $(SAIL_FLAGS) -dcoq_undef_axioms -coq -o riscv -coq_lib riscv_extras $(SAIL_SRCS)
+riscv_duopod.v riscv_duopod_types.v:  prelude.sail riscv_duopod.sail
+	$(SAIL) $(SAIL_FLAGS) -dcoq_undef_axioms -coq -o riscv_duopod -coq_lib riscv_extras $^
+%.vo: %.v
+	coqc $(COQ_LIBS) $<
+riscv.vo: riscv_types.vo riscv_extras.vo
+riscv_duopod.vo: riscv_duopod_types.vo riscv_extras.vo
+
 # we exclude prelude.sail here, most code there should move to sail lib
 LOC_FILES:=$(SAIL_SRCS) main.sail
 include ../etc/loc.mk
@@ -86,5 +106,8 @@ clean:
 	-rm -f Riscv_duopod.thy Riscv_duopod_types.thy riscv_duopod.lem riscv_duopod_types.lem
 	-rm -f riscvScript.sml riscv_typesScript.sml riscv_extrasScript.sml
 	-rm -f platform_main.native platform coverage.native
+	-rm -f riscv.vo riscv_types.vo riscv_extras.vo riscv.v riscv_types.v
+	-rm -f riscv_duopod.vo riscv_duopod_types.vo riscv_duopod.v riscv_duopod_types.v
+	-rm -f riscv.c
 	-Holmake cleanAll
 	ocamlbuild -clean

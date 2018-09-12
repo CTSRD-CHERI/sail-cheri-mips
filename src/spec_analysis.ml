@@ -51,6 +51,7 @@
 open Ast
 open Util
 open Ast_util
+open Extra_pervasives
 
 module Nameset = Set.Make(String)
 
@@ -84,7 +85,7 @@ let conditional_add_exp = conditional_add false
 let nameset_bigunion = List.fold_left Nameset.union mt
 
 
-let rec free_type_names_t consider_var (Typ_aux (t, _)) = match t with
+let rec free_type_names_t consider_var (Typ_aux (t, l)) = match t with
   | Typ_var name -> if consider_var then Nameset.add (string_of_kid name) mt else mt
   | Typ_id name -> Nameset.add (string_of_id name) mt
   | Typ_fn (t1,t2,_) -> Nameset.union (free_type_names_t consider_var t1)
@@ -94,6 +95,7 @@ let rec free_type_names_t consider_var (Typ_aux (t, _)) = match t with
   | Typ_tup ts -> free_type_names_ts consider_var ts
   | Typ_app (name,targs) -> Nameset.add (string_of_id name) (free_type_names_t_args consider_var targs)
   | Typ_exist (kids,_,t') -> List.fold_left (fun s kid -> Nameset.remove (string_of_kid kid) s) (free_type_names_t consider_var t') kids
+  | Typ_internal_unknown -> unreachable l __POS__ "escaped Typ_internal_unknown"
 and free_type_names_ts consider_var ts = nameset_bigunion (List.map (free_type_names_t consider_var) ts)
 and free_type_names_maybe_t consider_var = function
   | Some t -> free_type_names_t consider_var t
@@ -105,12 +107,13 @@ and free_type_names_t_args consider_var targs =
   nameset_bigunion (List.map (free_type_names_t_arg consider_var) targs)
 
 
-let rec free_type_names_tannot consider_var = function
+let rec free_type_names_tannot consider_var tannot =
+  match Type_check.destruct_tannot tannot with
   | None -> mt
   | Some (_, t, _) -> free_type_names_t consider_var t
 
 
-let rec fv_of_typ consider_var bound used (Typ_aux (t,_)) : Nameset.t =
+let rec fv_of_typ consider_var bound used (Typ_aux (t,l)) : Nameset.t =
   match t with
   | Typ_var (Kid_aux (Var v,l)) ->
     if consider_var
@@ -123,6 +126,7 @@ let rec fv_of_typ consider_var bound used (Typ_aux (t,_)) : Nameset.t =
   | Typ_app(id,targs) ->
      List.fold_right (fun ta n -> fv_of_targ consider_var bound n ta) targs (conditional_add_typ bound used id)
   | Typ_exist (kids,_,t') -> fv_of_typ consider_var (List.fold_left (fun b (Kid_aux (Var v,_)) -> Nameset.add v b) bound kids) used t'
+  | Typ_internal_unknown -> unreachable l __POS__ "escaped Typ_internal_unknown"
 
 and fv_of_targ consider_var bound used (Ast.Typ_arg_aux(targ,_)) : Nameset.t = match targ with
   | Typ_arg_typ t -> fv_of_typ consider_var bound used t
@@ -470,7 +474,6 @@ let fv_of_def consider_var consider_scatter_as_one all_defs = function
      List.fold_left Nameset.union Nameset.empty (List.map snd fvs)
   | DEF_scattered sdef -> fv_of_scattered consider_var consider_scatter_as_one all_defs sdef
   | DEF_reg_dec rdec -> fv_of_rd consider_var rdec
-  | DEF_comm _ -> mt,mt
 
 let group_defs consider_scatter_as_one (Ast.Defs defs) =
   List.map (fun d -> (fv_of_def false consider_scatter_as_one defs d,d)) defs
@@ -594,7 +597,7 @@ let def_of_component graph defset comp =
        | DEF_fundef fundef -> [fundef]
        | DEF_internal_mutrec fundefs -> fundefs
        | _ ->
-          raise (Reporting_basic.err_unreachable (def_loc def)
+          raise (Reporting_basic.err_unreachable (def_loc def) __POS__
             "Trying to merge non-function definition with mutually recursive functions") in
      let fundefs = List.concat (List.map get_fundefs defs) in
      print_dot graph (List.map (fun fd -> string_of_id (id_of_fundef fd)) fundefs);

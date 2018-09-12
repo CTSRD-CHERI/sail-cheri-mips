@@ -135,7 +135,7 @@ let doc_nc =
   in
   nc0
 
-let rec doc_typ (Typ_aux (typ_aux, _)) =
+let rec doc_typ (Typ_aux (typ_aux, l)) =
   match typ_aux with
   | Typ_id id -> doc_id id
   | Typ_app (id, []) -> doc_id id
@@ -161,6 +161,7 @@ let rec doc_typ (Typ_aux (typ_aux, _)) =
      separate space [doc_typ typ1; string "->"; doc_typ typ2; string "effect"; ocaml_eff]
   | Typ_bidir (typ1, typ2) ->
      separate space [doc_typ typ1; string "<->"; doc_typ typ2]
+  | Typ_internal_unknown -> raise (Reporting_basic.err_unreachable l __POS__ "escaped Typ_internal_unknown")
 and doc_typ_arg (Typ_arg_aux (ta_aux, _)) =
   match ta_aux with
   | Typ_arg_typ typ -> doc_typ typ
@@ -224,6 +225,8 @@ let doc_lit (L_aux(l,_)) =
 let rec doc_pat (P_aux (p_aux, _) as pat) =
   match p_aux with
   | P_id id -> doc_id id
+  | P_or (pat1, pat2) -> parens (doc_pat pat1 ^^ string " | " ^^ doc_pat pat2)
+  | P_not pat -> string "~" ^^ parens (doc_pat pat)
   | P_tup pats -> lparen ^^ separate_map (comma ^^ space) doc_pat pats ^^ rparen
   | P_typ (typ, pat) -> separate space [doc_pat pat; colon; doc_typ typ]
   | P_lit lit -> doc_lit lit
@@ -441,10 +444,7 @@ let doc_funcl (FCL_aux (FCL_Funcl (id, Pat_aux (pexp,_)), _)) =
   | Pat_when (pat,wh,exp) ->
      group (separate space [doc_id id; parens (separate space [doc_pat pat; string "if"; doc_exp wh]); string "="; doc_exp exp])
 
-let doc_default (DT_aux(df,_)) = match df with
-  | DT_kind(bk,v) -> string "DT_kind" (* separate space [string "default"; doc_bkind bk; doc_var v] *)
-  | DT_typ(ts,id) -> separate space [string "default"; doc_typschm ts; doc_id id]
-  | DT_order(ord) -> separate space [string "default"; string "Order"; doc_ord ord]
+let doc_default (DT_aux (DT_order ord, _)) = separate space [string "default"; string "Order"; doc_ord ord]
 
 let doc_fundef (FD_aux (FD_function (r, typa, efa, funcls), _)) =
   match funcls with
@@ -471,10 +471,21 @@ let doc_mpexp (MPat_aux (mpexp, _)) =
   | MPat_pat mpat -> doc_mpat mpat
   | MPat_when (mpat, guard) -> doc_mpat mpat ^^ space ^^ string "if" ^^ space ^^ doc_exp guard
 
-let doc_mapcl (MCL_aux (MCL_mapcl (mpexp1, mpexp2), _)) =
-  let left = doc_mpexp mpexp1 in
-  let right = doc_mpexp mpexp2 in
-  left ^^ space ^^ string "<->" ^^ space ^^ right
+let doc_mapcl (MCL_aux (cl, _)) =
+  match cl with
+  | MCL_bidir (mpexp1, mpexp2) ->
+     let left = doc_mpexp mpexp1 in
+     let right = doc_mpexp mpexp2 in
+     separate space [left; string "<->"; right]
+  | MCL_forwards (mpexp, exp) ->
+     let left = doc_mpexp mpexp in
+     let right = doc_exp exp in
+     separate space [left; string "=>"; right]
+  | MCL_backwards (mpexp, exp) ->
+     let left = doc_mpexp mpexp in
+     let right = doc_exp exp in
+     separate space [left; string "<-"; right]
+
 
 let doc_mapdef (MD_aux (MD_mapping (id, typa, mapcls), _)) =
   match mapcls with
@@ -573,8 +584,6 @@ let rec doc_def def = group (match def with
      separate space [doc_prec prec; doc_int n; doc_id id]
   | DEF_overload (id, ids) ->
      separate space [string "overload"; doc_id id; equals; surround 2 0 lbrace (separate_map (comma ^^ break 1) doc_id ids) rbrace]
-  | DEF_comm (DC_comm s) -> string "TOPLEVEL"
-  | DEF_comm (DC_comm_struct d) -> string "TOPLEVEL"
   ) ^^ hardline
 
 let doc_defs (Defs(defs)) =

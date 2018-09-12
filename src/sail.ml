@@ -59,7 +59,6 @@ let opt_interactive_script : string option ref = ref None
 let opt_print_version = ref false
 let opt_print_initial_env = ref false
 let opt_print_verbose = ref false
-let opt_print_lem_ast = ref false
 let opt_print_lem = ref false
 let opt_print_ocaml = ref false
 let opt_print_c = ref false
@@ -67,10 +66,10 @@ let opt_print_latex = ref false
 let opt_print_coq = ref false
 let opt_memo_z3 = ref false
 let opt_sanity = ref false
+let opt_includes_c = ref ([]:string list)
 let opt_libs_lem = ref ([]:string list)
 let opt_libs_coq = ref ([]:string list)
 let opt_file_arguments = ref ([]:string list)
-let opt_mono_split = ref ([]:((string * int) * string) list)
 let opt_process_elf : string option ref = ref None
 
 let options = Arg.align ([
@@ -84,6 +83,9 @@ let options = Arg.align ([
     Arg.Tuple [Arg.Set opt_interactive; Arg.Set Initial_check.opt_undefined_gen;
                Arg.String (fun s -> opt_interactive_script := Some s)],
     "<filename> start interactive interpreter and execute commands in script");
+  ( "-iout",
+    Arg.String (fun file -> Value.output_redirect (open_out file)),
+    "<filename> print interpreter output to file");
   ( "-no_warn",
     Arg.Clear Util.opt_warnings,
     " do not print warnings");
@@ -96,15 +98,24 @@ let options = Arg.align ([
   ( "-ocaml_trace",
     Arg.Tuple [Arg.Set opt_print_ocaml; Arg.Set Initial_check.opt_undefined_gen; Arg.Set Ocaml_backend.opt_trace_ocaml],
     " output an OCaml translated version of the input with tracing instrumentation, implies -ocaml");
+  ( "-ocaml_build_dir",
+    Arg.String (fun dir -> Ocaml_backend.opt_ocaml_build_dir := dir),
+    " set a custom directory to build generated OCaml");
   ( "-ocaml-coverage",
     Arg.Set Ocaml_backend.opt_ocaml_coverage,
-    "Build ocaml with bisect_ppx coverage reporting (requires opam packages bisect_ppx-ocamlbuild and bisect_ppx).");
+    " Build ocaml with bisect_ppx coverage reporting (requires opam packages bisect_ppx-ocamlbuild and bisect_ppx).");
   ( "-latex",
     Arg.Set opt_print_latex,
     " pretty print the input to latex");
   ( "-c",
     Arg.Tuple [Arg.Set opt_print_c; Arg.Set Initial_check.opt_undefined_gen],
     " output a C translated version of the input");
+  ( "-c_include",
+    Arg.String (fun i -> opt_includes_c := i::!opt_includes_c),
+    " <filename> provide additional include for C output");
+  ( "-c_no_main",
+    Arg.Set C_backend.opt_no_main,
+    " do not generate the main() function" );
   ( "-elf",
     Arg.String (fun elf -> opt_process_elf := Some elf),
     " process an elf file so that it can be executed by compiled C code");
@@ -115,9 +126,6 @@ let options = Arg.align ([
                Arg.Set Type_check.opt_no_effects;
                Arg.Set C_backend.optimize_struct_updates ],
     " turn on optimizations for C compilation");
-  ( "-Oz3",
-    Arg.Set C_backend.optimize_z3,
-    " use z3 analysis for optimization (experimental)");
   ( "-Oconstant_fold",
     Arg.Set Constant_fold.optimize_constant_fold,
     " Apply constant folding optimizations");
@@ -127,9 +135,6 @@ let options = Arg.align ([
   ( "-trace",
     Arg.Tuple [Arg.Set C_backend.opt_trace; Arg.Set Ocaml_backend.opt_trace_ocaml],
     " Instrument ouput with tracing");
-  ( "-lem_ast",
-    Arg.Set opt_print_lem_ast,
-    " output a Lem AST representation of the input");
   ( "-lem",
     Arg.Set opt_print_lem,
     " output a Lem translated version of the input");
@@ -151,6 +156,12 @@ let options = Arg.align ([
   ( "-dcoq_undef_axioms",
     Arg.Set Pretty_print_coq.opt_undef_axioms,
     "Generate axioms for functions that are declared but not defined");
+  ( "-dcoq_warn_nonex",
+    Arg.Set Rewrites.opt_coq_warn_nonexhaustive,
+    "Generate warnings for non-exhaustive pattern matches in the Coq backend");
+  ( "-dcoq_debug_on",
+    Arg.String (fun f -> Pretty_print_coq.opt_debug_on := f::!Pretty_print_coq.opt_debug_on),
+    "<function> Produce debug messages for Coq output on given function");
   ( "-latex_prefix",
     Arg.String (fun prefix -> Latex.opt_prefix_latex := prefix),
     " set a custom prefix for generated latex command (default sail)");
@@ -158,19 +169,10 @@ let options = Arg.align ([
     Arg.String (fun s ->
       let l = Util.split_on_char ':' s in
       match l with
-      | [fname;line;var] -> opt_mono_split := ((fname,int_of_string line),var)::!opt_mono_split
+      | [fname;line;var] ->
+         Rewrites.opt_mono_split := ((fname,int_of_string line),var)::!Rewrites.opt_mono_split
       | _ -> raise (Arg.Bad (s ^ " not of form <filename>:<line>:<variable>"))),
       "<filename>:<line>:<variable> to case split for monomorphisation");
-  (* AA: Should use _ to be consistent with other options, but I keep
-     this case to make sure nothing breaks immediately. *)
-  ( "-mono-split",
-    Arg.String (fun s ->
-      prerr_endline (("Warning" |> Util.yellow |> Util.clear) ^ ": use -mono_split instead");
-      let l = Util.split_on_char ':' s in
-      match l with
-      | [fname;line;var] -> opt_mono_split := ((fname,int_of_string line),var)::!opt_mono_split
-      | _ -> raise (Arg.Bad (s ^ " not of form <filename>:<line>:<variable>"))),
-    "<filename>:<line>:<variable> to case split for monomorphisation");
   ( "-memo_z3",
     Arg.Set opt_memo_z3,
     " memoize calls to z3, improving performance when typechecking repeatedly");
@@ -189,26 +191,23 @@ let options = Arg.align ([
   ( "-just_check",
     Arg.Set opt_just_check,
     " (experimental) terminate immediately after typechecking");
-  ( "-ddump_raw_mono_ast",
-    Arg.Set opt_ddump_raw_mono_ast,
-    " (debug) dump the monomorphised ast before type-checking");
   ( "-dmono_analysis",
-    Arg.Set_int opt_dmono_analysis,
+    Arg.Set_int Rewrites.opt_dmono_analysis,
     " (debug) dump information about monomorphisation analysis: 0 silent, 3 max");
   ( "-auto_mono",
-    Arg.Set opt_auto_mono,
+    Arg.Set Rewrites.opt_auto_mono,
     " automatically infer how to monomorphise code");
   ( "-mono_rewrites",
-    Arg.Set Process_file.opt_mono_rewrites,
+    Arg.Set Rewrites.opt_mono_rewrites,
     " turn on rewrites for combining bitvector operations");
   ( "-dno_complex_nexps_rewrite",
-    Arg.Clear Process_file.opt_mono_complex_nexps,
+    Arg.Clear Rewrites.opt_mono_complex_nexps,
     " do not move complex size expressions in function signatures into constraints (monomorphisation)");
   ( "-dall_split_errors",
-    Arg.Set Process_file.opt_dall_split_errors,
+    Arg.Set Rewrites.opt_dall_split_errors,
     " display all case split errors from monomorphisation, rather than one");
   ( "-dmono_continue",
-    Arg.Set Process_file.opt_dmono_continue,
+    Arg.Set Rewrites.opt_dmono_continue,
     " continue despite monomorphisation errors");
   ( "-verbose",
     Arg.Set opt_print_verbose,
@@ -260,21 +259,12 @@ let load_files type_envs files =
   let ast =
     List.fold_right (fun (_, Parse_ast.Defs ast_nodes) (Parse_ast.Defs later_nodes)
                      -> Parse_ast.Defs (ast_nodes@later_nodes)) parsed (Parse_ast.Defs []) in
-  let ast = Process_file.preprocess_ast ast in
+  let ast = Process_file.preprocess_ast options ast in
   let ast = convert_ast Ast_util.inc_ord ast in
 
   let (ast, type_envs) = check_ast type_envs ast in
 
-  let (ast, type_envs) =
-    match !opt_mono_split, !opt_auto_mono with
-    | [], false -> ast, type_envs
-    | locs, _ -> monomorphise_ast locs type_envs ast
-  in
-
-  let ast =
-    if !Initial_check.opt_undefined_gen then
-      rewrite_undefined (!Pretty_print_lem.opt_mwords || !opt_print_coq) (rewrite_ast ast)
-    else rewrite_ast ast in
+  let ast = rewrite_ast ast in
 
   let out_name = match !opt_file_out with
     | None when parsed = [] -> "out.sail"
@@ -323,9 +313,6 @@ let main() =
       (if !(opt_print_verbose)
        then ((Pretty_print_sail.pp_defs stdout) ast)
        else ());
-      (if !(opt_print_lem_ast)
-       then output "" Lem_ast_out [out_name,ast]
-       else ());
       (if !(opt_print_ocaml)
        then
          let ast_ocaml = rewrite_ast_ocaml ast in
@@ -337,7 +324,7 @@ let main() =
          let ast_c = rewrite_ast_c ast in
          let ast_c, type_envs = Specialize.specialize ast_c type_envs in
          let ast_c = Spec_analysis.top_sort_defs ast_c in
-         C_backend.compile_ast (C_backend.initial_ctx type_envs) ast_c
+         C_backend.compile_ast (C_backend.initial_ctx type_envs) (!opt_includes_c) ast_c
        else ());
       (if !(opt_print_lem)
        then

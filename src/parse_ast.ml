@@ -241,7 +241,8 @@ typschm =
 type 
 pat_aux =  (* Pattern *)
    P_lit of lit (* literal constant pattern *)
- | P_wild (* wildcard *)
+ | P_wild                (* wildcard        - always matches *)
+ | P_or of pat * pat (* choice pattern  - P|Q matches if P matches or Q matches *)
  | P_typ of atyp * pat (* typed pattern *)
  | P_id of id (* identifier *)
  | P_var of pat * atyp (* bind pat to type variable *)
@@ -423,9 +424,7 @@ name_scm_opt =
 
 type 
 default_typing_spec_aux =  (* Default kinding or typing assumption, and default order for literal vectors and vector shorthands *)
-   DT_kind of base_kind * kid
- | DT_order of base_kind * atyp
- | DT_typ of typschm * id
+   DT_order of base_kind * atyp
 
 
 type mpat_aux =  (* Mapping pattern. Mostly the same as normal patterns but only constructible parts *)
@@ -459,7 +458,9 @@ type mpexp =
   | MPat_aux of ( mpexp_aux) * l
 
 type mapcl_aux =  (* mapping clause (bidirectional pattern-match) *)
- | MCL_mapcl of ( mpexp) * ( mpexp)
+  | MCL_bidir of ( mpexp) * ( mpexp)
+  | MCL_forwards of mpexp * exp
+  | MCL_backwards of mpexp * exp
 
 type mapcl =
  | MCL_aux of ( mapcl_aux) * l

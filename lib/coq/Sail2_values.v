@@ -21,7 +21,19 @@ Lemma use_ArithFact {P} `(ArithFact P) : P.
 apply fact.
 Defined.
 
-Definition build_ex (n:Z) {P:Z -> Prop} `{H:ArithFact (P n)} : {x : Z & ArithFact (P x)} :=
+(* Allow setoid rewriting through ArithFact *)
+Require Import Coq.Classes.Morphisms.
+Require Import Coq.Program.Basics.
+Require Import Coq.Program.Tactics.
+Section Morphism.
+Local Obligation Tactic := try solve [simpl_relation | firstorder auto].
+
+Global Program Instance ArithFact_iff_morphism :
+  Proper (iff ==> iff) ArithFact.
+End Morphism.
+
+
+Definition build_ex {T:Type} (n:T) {P:T -> Prop} `{H:ArithFact (P n)} : {x : T & ArithFact (P x)} :=
   existT _ n H.
 
 Definition generic_eq {T:Type} (x y:T) `{Decidable (x = y)} := Decidable_witness.
@@ -54,18 +66,21 @@ Instance Decidable_eq_from_dec {T:Type} (eqdec: forall x y : T, {x = y} + {x <> 
   Decidable_witness := proj1_sig (bool_of_sumbool (eqdec x y))
 }.
 destruct (eqdec x y); simpl; split; congruence.
-Qed.
+Defined.
+
+Instance Decidable_eq_string : forall (x y : string), Decidable (x = y) :=
+  Decidable_eq_from_dec String.string_dec.
 
 
 (* Project away range constraints in comparisons *)
-Definition ltb_range_l {P} (l : sigT P) r := Z.ltb (projT1 l) r.
-Definition leb_range_l {P} (l : sigT P) r := Z.leb (projT1 l) r.
-Definition gtb_range_l {P} (l : sigT P) r := Z.gtb (projT1 l) r.
-Definition geb_range_l {P} (l : sigT P) r := Z.geb (projT1 l) r.
-Definition ltb_range_r {P} l (r : sigT P) := Z.ltb l (projT1 r).
-Definition leb_range_r {P} l (r : sigT P) := Z.leb l (projT1 r).
-Definition gtb_range_r {P} l (r : sigT P) := Z.gtb l (projT1 r).
-Definition geb_range_r {P} l (r : sigT P) := Z.geb l (projT1 r).
+Definition ltb_range_l {lo hi} (l : {x & ArithFact (lo <= x /\ x <= hi)}) r := Z.ltb (projT1 l) r.
+Definition leb_range_l {lo hi} (l : {x & ArithFact (lo <= x /\ x <= hi)}) r := Z.leb (projT1 l) r.
+Definition gtb_range_l {lo hi} (l : {x & ArithFact (lo <= x /\ x <= hi)}) r := Z.gtb (projT1 l) r.
+Definition geb_range_l {lo hi} (l : {x & ArithFact (lo <= x /\ x <= hi)}) r := Z.geb (projT1 l) r.
+Definition ltb_range_r {lo hi} l (r : {x & ArithFact (lo <= x /\ x <= hi)}) := Z.ltb l (projT1 r).
+Definition leb_range_r {lo hi} l (r : {x & ArithFact (lo <= x /\ x <= hi)}) := Z.leb l (projT1 r).
+Definition gtb_range_r {lo hi} l (r : {x & ArithFact (lo <= x /\ x <= hi)}) := Z.gtb l (projT1 r).
+Definition geb_range_r {lo hi} l (r : {x & ArithFact (lo <= x /\ x <= hi)}) := Z.geb l (projT1 r).
 
 Definition ii := Z.
 Definition nn := nat.
@@ -73,7 +88,13 @@ Definition nn := nat.
 (*val pow : Z -> Z -> Z*)
 Definition pow m n := m ^ n.
 
-Definition pow2 n := pow 2 n.
+Program Definition pow2 n : {z : Z & ArithFact (2 ^ n <= z <= 2 ^ n)} := existT _ (pow 2 n) _.
+Next Obligation.
+constructor.
+unfold pow.
+auto using Z.le_refl.
+Qed.
+
 (*
 Definition inline lt := (<)
 Definition inline gt := (>)
@@ -106,7 +127,15 @@ Definition negate_real r := realNegate r
 Definition abs_real r := realAbs r
 Definition power_real b e := realPowInteger b e*)
 
+Definition print_endline (_ : string) : unit := tt.
+Definition prerr_endline (_ : string) : unit := tt.
+Definition prerr (_ : string) : unit := tt.
 Definition print_int (_ : string) (_ : Z) : unit := tt.
+Definition prerr_int (_ : string) (_ : Z) : unit := tt.
+Definition putchar (_ : Z) : unit := tt.
+
+Definition shl_int := Z.shiftl.
+Definition shr_int := Z.shiftr.
 
 (*
 Definition or_bool l r := (l || r)
@@ -231,6 +260,22 @@ unfold length_list.
 intros.
 f_equal.
 auto using just_list_length.
+Qed.
+
+Fixpoint member_Z_list (x : Z) (l : list Z) : bool :=
+match l with
+| [] => false
+| h::t => if x =? h then true else member_Z_list x t
+end.
+
+Lemma member_Z_list_In {x l} : member_Z_list x l = true <-> In x l.
+induction l.
+* simpl. split. congruence. tauto.
+* simpl. destruct (x =? a) eqn:H.
+  + rewrite Z.eqb_eq in H. subst. tauto.
+  + rewrite Z.eqb_neq in H. split.
+    - intro Heq. right. apply IHl. assumption.
+    - intros [bad | good]. congruence. apply IHl. assumption.
 Qed.
 
 (*** Bits *)
@@ -824,42 +869,42 @@ val make_the_value : forall n. Z -> itself n
 Definition inline make_the_value x := the_value
 *)
 
-Fixpoint bitlistFromWord {n} w :=
+Fixpoint bitlistFromWord_rev {n} w :=
 match w with
 | WO => []
-| WS b w => b :: bitlistFromWord w
+| WS b w => b :: bitlistFromWord_rev w
 end.
+Definition bitlistFromWord {n} w :=
+  List.rev (@bitlistFromWord_rev n w).
 
-Fixpoint wordFromBitlist l : word (length l) :=
+Fixpoint wordFromBitlist_rev l : word (length l) :=
 match l with
 | [] => WO
-| b::t => WS b (wordFromBitlist t)
+| b::t => WS b (wordFromBitlist_rev t)
 end.
+Definition wordFromBitlist l : word (length l) :=
+  nat_cast _ (List.rev_length l) (wordFromBitlist_rev (List.rev l)).
 
 Local Open Scope nat.
-Program Definition fit_bbv_word {n m} (w : word n) : word m :=
-match Nat.compare m n with
-| Gt => extz w (m - n)
-| Eq => w
-| Lt => split2 (n - m) m w
-end.
-Next Obligation.
-symmetry in Heq_anonymous.
-apply nat_compare_gt in Heq_anonymous.
-omega.
-Defined.
-Next Obligation.
 
-symmetry in Heq_anonymous.
-apply nat_compare_eq in Heq_anonymous.
-omega.
-Defined.
-Next Obligation.
+Fixpoint nat_diff {T : nat -> Type} n m {struct n} :
+forall
+ (lt : forall p, T n -> T (n + p))
+ (eq : T m -> T m)
+ (gt : forall p, T (m + p) -> T m), T n -> T m :=
+(match n, m return (forall p, T n -> T (n + p)) -> (T m -> T m) -> (forall p, T (m + p) -> T m) -> T n -> T m with
+| O, O => fun lt eq gt => eq
+| S n', O => fun lt eq gt => gt _
+| O, S m' => fun lt eq gt => lt _
+| S n', S m' => @nat_diff (fun x => T (S x)) n' m'
+end).
 
-symmetry in Heq_anonymous.
-apply nat_compare_lt in Heq_anonymous.
-omega.
-Defined.
+Definition fit_bbv_word {n m} : word n -> word m :=
+nat_diff n m
+ (fun p w => nat_cast _ (Nat.add_comm _ _) (extz w p))
+ (fun w => w)
+ (fun p w => split2 _ _ (nat_cast _ (Nat.add_comm _ _) w)).
+
 Local Close Scope nat.
 
 (*** Bitvectors *)
@@ -891,12 +936,10 @@ Class ReasonableSize (a : Z) : Prop := {
   isPositive : a >= 0
 }.
 
-Hint Resolve -> Z.gtb_lt Z.geb_le Z.ltb_lt Z.leb_le : zbool.
-Hint Resolve <- Z.ge_le_iff Z.gt_lt_iff : zbool.
-
 (* Omega doesn't know about In, but can handle disjunctions. *)
 Ltac unfold_In :=
 repeat match goal with
+| H:context [member_Z_list _ _ = true] |- _ => rewrite member_Z_list_In in H
 | H:context [In ?x (?y :: ?t)] |- _ => change (In x (y :: t)) with (y = x \/ In x t) in H
 | H:context [In ?x []] |- _ => change (In x []) with False in H
 end.
@@ -907,6 +950,11 @@ end.
 Ltac not_Z ty := match ty with Z => fail 1 | _ => idtac end.
 Ltac clear_non_Z_defns := 
   repeat match goal with H := _ : ?X |- _ => not_Z X; clearbody H end.
+Ltac clear_irrelevant_defns :=
+repeat match goal with X := _ |- _ =>
+  match goal with |- context[X] => idtac end ||
+  match goal with _ : context[X] |- _ => idtac end || clear X
+end.
 
 Lemma ArithFact_mword (a : Z) (w : mword a) : ArithFact (a >= 0).
 constructor.
@@ -916,7 +964,7 @@ auto using Z.le_ge, Zle_0_pos.
 destruct w.
 Qed.
 Ltac unwrap_ArithFacts :=
-  repeat match goal with H:(ArithFact _) |- _ => let H' := fresh H in case H as [H'] end.
+  repeat match goal with H:(ArithFact _) |- _ => let H' := fresh H in case H as [H']; clear H end.
 Ltac unbool_comparisons :=
   repeat match goal with
   | H:context [Z.geb _ _] |- _ => rewrite Z.geb_leb in H
@@ -941,12 +989,34 @@ Ltac unbool_comparisons :=
 
 (* Split up dependent pairs to get at proofs of properties *)
 Ltac extract_properties :=
+  (* Properties of local definitions *)
   repeat match goal with H := (projT1 ?X) |- _ =>
     let x := fresh "x" in
     let Hx := fresh "Hx" in
     destruct X as [x Hx] in *;
     change (projT1 (existT _ x Hx)) with x in *; unfold H in * end;
+  (* Properties in the goal *)
   repeat match goal with |- context [projT1 ?X] =>
+    let x := fresh "x" in
+    let Hx := fresh "Hx" in
+    destruct X as [x Hx] in *;
+    change (projT1 (existT _ x Hx)) with x in * end;
+  (* Properties with proofs embedded by build_ex; uses revert/generalize
+     rather than destruct because it seemed to be more efficient, but
+     some experimentation would be needed to be sure. 
+  repeat (
+     match goal with H:context [@build_ex ?T ?n ?P ?prf] |- _ =>
+     let x := fresh "x" in
+     let zz := constr:(@build_ex T n P prf) in
+     revert dependent H(*; generalize zz; intros*)
+     end;
+     match goal with |- context [@build_ex ?T ?n ?P ?prf] =>
+     let x := fresh "x" in
+     let zz := constr:(@build_ex T n P prf) in
+     generalize zz as x
+     end;
+    intros).*)
+  repeat match goal with _:context [projT1 ?X] |- _ =>
     let x := fresh "x" in
     let Hx := fresh "Hx" in
     destruct X as [x Hx] in *;
@@ -972,23 +1042,75 @@ Ltac dump_context :=
   | H:=?X |- _ => idtac H ":=" X; fail
   | H:?X |- _ => idtac H ":" X; fail end;
   match goal with |- ?X => idtac "Goal:" X end.
-Ltac solve_arithfact :=
+Ltac split_cases :=
+  repeat match goal with
+  |- context [match ?X with _ => _ end] => destruct X
+  end.
+Lemma True_left {P:Prop} : (True /\ P) <-> P.
+tauto.
+Qed.
+Lemma True_right {P:Prop} : (P /\ True) <-> P.
+tauto.
+Qed.
+
+Ltac prepare_for_solver :=
 (*dump_context;*)
+ clear_irrelevant_defns;
  clear_non_Z_defns;
+ autounfold with sail in * |- *; (* You can add Hint Unfold ... : sail to let omega see through fns *)
+ split_cases;
  extract_properties;
  repeat match goal with w:mword ?n |- _ => apply ArithFact_mword in w end;
  unwrap_ArithFacts;
  unfold_In;
- autounfold with sail in * |- *; (* You can add Hint Unfold ... : sail to let omega see through fns *)
  unbool_comparisons;
  reduce_list_lengths;
  reduce_pow;
+ (* omega doesn't cope well with extra "True"s in the goal *)
+ repeat setoid_rewrite True_left;
+ repeat setoid_rewrite True_right.
+
+Lemma trivial_range {x : Z} : ArithFact (x <= x /\ x <= x).
+constructor.
+auto with zarith.
+Qed.
+
+Lemma ArithFact_self_proof {P} : forall x : {y : Z & ArithFact (P y)}, ArithFact (P (projT1 x)).
+intros [x H].
+exact H.
+Qed.
+
+Ltac fill_in_evar_eq :=
+ match goal with |- ArithFact (?x = ?y) =>
+   (is_evar x || is_evar y);
+   (* compute to allow projections to remove proofs that might not be allowed in the evar *)
+(* Disabled because cbn may reduce definitions, even after clearbody
+   let x := eval cbn in x in
+   let y := eval cbn in y in*)
+   idtac "Warning: unknown equality constraint"; constructor; exact (eq_refl _ : x = y) end.
+
+Ltac solve_arithfact :=
+(* Attempt a simple proof first to avoid lengthy preparation steps (especially
+   as the large proof terms can upset subsequent proofs). *)
+intros; (* To solve implications for derive_m *)
+try (exact trivial_range);
+try fill_in_evar_eq;
+try match goal with |- context [projT1 ?X] => apply (ArithFact_self_proof X) end;
+try (constructor; omega);
+prepare_for_solver;
 (*dump_context;*)
- solve [apply ArithFact_mword; assumption
-       | constructor; omega with Z
-         (* The datatypes hints give us some list handling, esp In *)
-       | constructor; auto with datatypes zbool zarith sail].
-Hint Extern 0 (ArithFact _) => solve_arithfact : typeclass_instances.
+ solve
+ [ match goal with |- ArithFact (?x _) => is_evar x; idtac "Warning: unknown constraint"; constructor; exact (I : (fun _ => True) _) end
+ | apply ArithFact_mword; assumption
+ | constructor; omega with Z
+   (* The datatypes hints give us some list handling, esp In *)
+ | constructor; eauto 3 with datatypes zarith sail
+ | constructor; idtac "Unable to solve constraint"; dump_context; fail
+ ].
+(* Add an indirection so that you can redefine run_solver to fail to get
+   slow running constraints into proof mode. *)
+Ltac run_solver := solve_arithfact.
+Hint Extern 0 (ArithFact _) => run_solver : typeclass_instances.
 
 Hint Unfold length_mword : sail.
 
@@ -1004,6 +1126,10 @@ destruct w.
 Qed.
 
 Hint Extern 0 (ReasonableSize ?A) => (unwrap_ArithFacts; solve [apply ReasonableSize_witness; assumption | constructor; omega]) : typeclass_instances.
+
+Definition to_range (x : Z) : {y : Z & ArithFact (x <= y <= x)} := build_ex x.
+
+
 
 Instance mword_Bitvector {a : Z} `{ArithFact (a >= 0)} : (Bitvector (mword a)) := {
   bits_of v := List.map bitU_of_bool (bitlistFromWord (get_word v));
@@ -1577,3 +1703,8 @@ match a with
 | Some a' => f a'
 | None => None
 end.
+
+Definition sub_nat (x : {x : Z & ArithFact (x >= 0)}) (y : {y : Z & ArithFact (y >= 0)}) :
+  {z : Z & ArithFact (z >= 0)} :=
+  let z := projT1 x - projT1 y in
+  if sumbool_of_bool (z >=? 0) then build_ex z else build_ex 0.

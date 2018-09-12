@@ -81,7 +81,7 @@ let effect_of_pexp (Pat_aux (pexp,(_,a))) =
   union_effects eff (effect_of_annot a)
 let effect_of_lb (LB_aux (_,(_,a))) = effect_of_annot a
 
-let simple_annot l typ = (gen_loc l, Some (initial_env, typ, no_effect))
+let simple_annot l typ = (gen_loc l, mk_tannot initial_env typ no_effect)
 
 
 let lookup_generated_kid env kid =
@@ -138,7 +138,7 @@ let fun_app_effects id env =
   with
   | _ -> no_effect
 
-let fix_eff_exp (E_aux (e,((l,_) as annot))) = match snd annot with
+let fix_eff_exp (E_aux (e,((l,_) as annot))) = match destruct_tannot (snd annot) with
 | Some (env, typ, eff) ->
   let effsum = match e with
     | E_block es -> union_eff_exps es
@@ -171,12 +171,8 @@ let fix_eff_exp (E_aux (e,((l,_) as annot))) = match snd annot with
     | E_let (lb,e) -> union_effects (effect_of_lb lb) (effect_of e)
     | E_assign (lexp,e) -> union_effects (effect_of_lexp lexp) (effect_of e)
     | E_exit e | E_return e | E_throw e -> union_effects eff (effect_of e)
-    | E_sizeof _ | E_sizeof_internal _ | E_constraint _ -> no_effect
+    | E_sizeof _ | E_constraint _ -> no_effect
     | E_assert (c,m) -> union_effects eff (union_eff_exps [c; m])
-    | E_comment _ | E_comment_struc _ -> no_effect
-    | E_internal_cast (_,e) -> effect_of e
-    | E_internal_exp _ -> no_effect
-    | E_internal_exp_user _ -> no_effect
     | E_var (lexp,e1,e2) ->
       union_effects (effect_of_lexp lexp)
         (union_effects (effect_of e1) (effect_of e2))
@@ -184,11 +180,11 @@ let fix_eff_exp (E_aux (e,((l,_) as annot))) = match snd annot with
     | E_internal_return e1 -> effect_of e1
     | E_internal_value v -> no_effect
   in
-  E_aux (e, (l, Some (env, typ, effsum)))
+  E_aux (e, (l, mk_tannot env typ effsum))
 | None ->
-  E_aux (e, (l, None))
+  E_aux (e, (l, empty_tannot))
 
-let fix_eff_lexp (LEXP_aux (lexp,((l,_) as annot))) = match snd annot with
+let fix_eff_lexp (LEXP_aux (lexp,((l,_) as annot))) = match destruct_tannot (snd annot) with
 | Some (env, typ, eff) ->
   let effsum = union_effects eff (match lexp with
     | LEXP_id _ -> no_effect
@@ -204,79 +200,45 @@ let fix_eff_lexp (LEXP_aux (lexp,((l,_) as annot))) = match snd annot with
       union_effects (effect_of_lexp lexp)
         (union_effects (effect_of e1) (effect_of e2))
     | LEXP_field (lexp,_) -> effect_of_lexp lexp) in
-  LEXP_aux (lexp, (l, Some (env, typ, effsum)))
+  LEXP_aux (lexp, (l, mk_tannot env typ effsum))
 | None ->
-  LEXP_aux (lexp, (l, None))
+  LEXP_aux (lexp, (l, empty_tannot))
 
-let fix_eff_fexp (FE_aux (fexp,((l,_) as annot))) = match snd annot with
+let fix_eff_fexp (FE_aux (fexp,((l,_) as annot))) = match destruct_tannot (snd annot) with
 | Some (env, typ, eff) ->
   let effsum = union_effects eff (match fexp with
     | FE_Fexp (_,e) -> effect_of e) in
-  FE_aux (fexp, (l, Some (env, typ, effsum)))
+  FE_aux (fexp, (l, mk_tannot env typ effsum))
 | None ->
-  FE_aux (fexp, (l, None))
+  FE_aux (fexp, (l, empty_tannot))
 
 let fix_eff_fexps fexps = fexps (* FES_aux have no effect information *)
 
-let fix_eff_opt_default (Def_val_aux (opt_default,((l,_) as annot))) = match snd annot with
+let fix_eff_opt_default (Def_val_aux (opt_default,((l,_) as annot))) = match destruct_tannot (snd annot) with
 | Some (env, typ, eff) ->
   let effsum = union_effects eff (match opt_default with
     | Def_val_empty -> no_effect
     | Def_val_dec e -> effect_of e) in
-  Def_val_aux (opt_default, (l, Some (env, typ, effsum)))
+  Def_val_aux (opt_default, (l, mk_tannot env typ effsum))
 | None ->
-  Def_val_aux (opt_default, (l, None))
+  Def_val_aux (opt_default, (l, empty_tannot))
 
-let fix_eff_pexp (Pat_aux (pexp,((l,_) as annot))) = match snd annot with
+let fix_eff_pexp (Pat_aux (pexp,((l,_) as annot))) = match destruct_tannot (snd annot) with
 | Some (env, typ, eff) ->
   let effsum = match pexp with
     | Pat_exp (_,e) -> effect_of e
     | Pat_when (_,e,e') -> union_effects (effect_of e) (effect_of e') in
-  Pat_aux (pexp, (l, Some (env, typ, effsum)))
+  Pat_aux (pexp, (l, mk_tannot env typ effsum))
 | None ->
-  Pat_aux (pexp, (l, None))
+  Pat_aux (pexp, (l, empty_tannot))
 
-let fix_eff_lb (LB_aux (lb,((l,_) as annot))) = match snd annot with
+let fix_eff_lb (LB_aux (lb,((l,_) as annot))) = match destruct_tannot (snd annot) with
 | Some (env, typ, eff) ->
   let effsum = match lb with
     | LB_val (_,e) -> effect_of e in
-  LB_aux (lb, (l, Some (env, typ, effsum)))
+  LB_aux (lb, (l, mk_tannot env typ effsum))
 | None ->
-  LB_aux (lb, (l, None))
-
-let explode s =
-  let rec exp i l = if i < 0 then l else exp (i - 1) (s.[i] :: l) in
-  exp (String.length s - 1) []
-
-let vector_string_to_bit_list l lit = 
-
-  let hexchar_to_binlist = function
-    | '0' -> ['0';'0';'0';'0']
-    | '1' -> ['0';'0';'0';'1']
-    | '2' -> ['0';'0';'1';'0']
-    | '3' -> ['0';'0';'1';'1']
-    | '4' -> ['0';'1';'0';'0']
-    | '5' -> ['0';'1';'0';'1']
-    | '6' -> ['0';'1';'1';'0']
-    | '7' -> ['0';'1';'1';'1']
-    | '8' -> ['1';'0';'0';'0']
-    | '9' -> ['1';'0';'0';'1']
-    | 'A' -> ['1';'0';'1';'0']
-    | 'B' -> ['1';'0';'1';'1']
-    | 'C' -> ['1';'1';'0';'0']
-    | 'D' -> ['1';'1';'0';'1']
-    | 'E' -> ['1';'1';'1';'0']
-    | 'F' -> ['1';'1';'1';'1']
-    | _ -> raise (Reporting_basic.err_unreachable l "hexchar_to_binlist given unrecognized character") in
-
-  let s_bin = match lit with
-    | L_hex s_hex -> List.flatten (List.map hexchar_to_binlist (explode (String.uppercase s_hex)))
-    | L_bin s_bin -> explode s_bin
-    | _ -> raise (Reporting_basic.err_unreachable l "s_bin given non vector literal") in
-
-  List.map (function '0' -> L_aux (L_zero, gen_loc l)
-                   | '1' -> L_aux (L_one, gen_loc l)
-                   | _ -> raise (Reporting_basic.err_unreachable (gen_loc l) "binary had non-zero or one")) s_bin
+  LB_aux (lb, (l, empty_tannot))
 
 let rewrite_pexp rewriters =
   let rewrite = rewriters.rewrite_exp rewriters in
@@ -290,11 +252,9 @@ let rewrite_pat rewriters (P_aux (pat,(l,annot)) as orig_pat) =
   let rewrap p = P_aux (p,(l,annot)) in
   let rewrite = rewriters.rewrite_pat rewriters in
   match pat with
-  | P_lit (L_aux ((L_hex _ | L_bin _) as lit,_)) ->
-    let ps =  List.map (fun p -> P_aux (P_lit p, (l, Some (pat_env_of orig_pat, bit_typ, no_effect))))
-        (vector_string_to_bit_list l lit) in
-    rewrap (P_vector ps)
   | P_lit _ | P_wild | P_id _ | P_var _ -> rewrap pat
+  | P_or(pat1, pat2) -> rewrap (P_or(rewrite pat1, rewrite pat2))
+  | P_not(pat) -> rewrap (P_not(rewrite pat))
   | P_as(pat,id) -> rewrap (P_as(rewrite pat, id))
   | P_typ(typ,pat) -> rewrap (P_typ(typ, rewrite pat))
   | P_app(id ,pats) -> rewrap (P_app(id, List.map rewrite pats))
@@ -312,13 +272,8 @@ let rewrite_exp rewriters (E_aux (exp,(l,annot)) as orig_exp) =
   let rewrap e = E_aux (e,(l,annot)) in
   let rewrite = rewriters.rewrite_exp rewriters in
   match exp with
-  | E_comment _ | E_comment_struc _ -> rewrap exp
   | E_block exps -> rewrap (E_block (List.map rewrite exps))
   | E_nondet exps -> rewrap (E_nondet (List.map rewrite exps))
-  | E_lit (L_aux ((L_hex _ | L_bin _) as lit,_)) ->
-    let es = List.map (fun p -> E_aux (E_lit p, (l, Some (env_of orig_exp, bit_typ, no_effect))))
-        (vector_string_to_bit_list l lit) in
-    rewrap (E_vector es)
   | E_id _ | E_lit _  -> rewrap exp
   | E_cast (typ, exp) -> rewrap (E_cast (typ, rewrite exp))
   | E_app (id,exps) -> rewrap (E_app (id,List.map rewrite exps))
@@ -353,18 +308,19 @@ let rewrite_exp rewriters (E_aux (exp,(l,annot)) as orig_exp) =
   | E_field(exp,id) -> rewrap (E_field(rewrite exp,id))
   | E_case (exp,pexps) ->
     rewrap (E_case (rewrite exp, List.map (rewrite_pexp rewriters) pexps))
+  | E_try (exp,pexps) ->
+    rewrap (E_try (rewrite exp, List.map (rewrite_pexp rewriters) pexps))
   | E_let (letbind,body) -> rewrap (E_let(rewriters.rewrite_let rewriters letbind,rewrite body))
   | E_assign (lexp,exp) -> rewrap (E_assign(rewriters.rewrite_lexp rewriters lexp,rewrite exp))
   | E_sizeof n -> rewrap (E_sizeof n)
   | E_exit e -> rewrap (E_exit (rewrite e))
+  | E_throw e -> rewrap (E_throw (rewrite e))
   | E_return e -> rewrap (E_return (rewrite e))
   | E_assert(e1,e2) -> rewrap (E_assert(rewrite e1,rewrite e2))
-  | E_internal_cast (casted_annot,exp) ->
-    rewrap (E_internal_cast (casted_annot, rewrite exp))
   | E_var (lexp, e1, e2) ->
      rewrap (E_var (rewriters.rewrite_lexp rewriters lexp, rewriters.rewrite_exp rewriters e1, rewriters.rewrite_exp rewriters e2))
-  | E_internal_return _ -> raise (Reporting_basic.err_unreachable l "Internal return found before it should have been introduced")
-  | E_internal_plet _ -> raise (Reporting_basic.err_unreachable l " Internal plet found before it should have been introduced")
+  | E_internal_return _ -> raise (Reporting_basic.err_unreachable l __POS__ "Internal return found before it should have been introduced")
+  | E_internal_plet _ -> raise (Reporting_basic.err_unreachable l __POS__ " Internal plet found before it should have been introduced")
   | _ -> rewrap exp
 
 let rewrite_let rewriters (LB_aux(letbind,(l,annot))) =
@@ -392,17 +348,17 @@ let rewrite_lexp rewriters (LEXP_aux(lexp,(l,annot))) =
 
 let rewrite_fun rewriters (FD_aux (FD_function(recopt,tannotopt,effectopt,funcls),(l,fdannot))) = 
   let rewrite_funcl (FCL_aux (FCL_Funcl(id,pexp),(l,annot))) =
-    (FCL_aux (FCL_Funcl (id,rewrite_pexp rewriters pexp),(l,annot)))
+    (FCL_aux (FCL_Funcl (id, rewrite_pexp rewriters pexp),(l,annot)))
   in FD_aux (FD_function(recopt,tannotopt,effectopt,List.map rewrite_funcl funcls),(l,fdannot))
 
 let rewrite_def rewriters d = match d with
   | DEF_reg_dec (DEC_aux (DEC_config (id, typ, exp), annot)) ->
      DEF_reg_dec (DEC_aux (DEC_config (id, typ, rewriters.rewrite_exp rewriters exp), annot))
-  | DEF_type _ | DEF_mapdef _ | DEF_kind _ | DEF_spec _ | DEF_default _ | DEF_reg_dec _ | DEF_comm _ | DEF_overload _ | DEF_fixity _ -> d
+  | DEF_type _ | DEF_mapdef _ | DEF_kind _ | DEF_spec _ | DEF_default _ | DEF_reg_dec _ | DEF_overload _ | DEF_fixity _ -> d
   | DEF_fundef fdef -> DEF_fundef (rewriters.rewrite_fun rewriters fdef)
   | DEF_internal_mutrec fdefs -> DEF_internal_mutrec (List.map (rewriters.rewrite_fun rewriters) fdefs)
   | DEF_val letbind -> DEF_val (rewriters.rewrite_let rewriters letbind)
-  | DEF_scattered _ -> raise (Reporting_basic.err_unreachable Parse_ast.Unknown "DEF_scattered survived to rewritter")
+  | DEF_scattered _ -> raise (Reporting_basic.err_unreachable Parse_ast.Unknown __POS__ "DEF_scattered survived to rewritter")
 
 let rewrite_defs_base rewriters (Defs defs) =
   let rec rewrite ds = match ds with
@@ -447,6 +403,8 @@ and introduced_vars_le (LEXP_aux(lexp,annot)) exp =
 type ('a,'pat,'pat_aux,'fpat,'fpat_aux) pat_alg =
   { p_lit            : lit -> 'pat_aux
   ; p_wild           : 'pat_aux
+  ; p_or             : 'pat * 'pat -> 'pat_aux
+  ; p_not            : 'pat        -> 'pat_aux
   ; p_as             : 'pat * id -> 'pat_aux
   ; p_typ            : Ast.typ * 'pat -> 'pat_aux
   ; p_id             : id -> 'pat_aux
@@ -468,6 +426,8 @@ let rec fold_pat_aux (alg : ('a,'pat,'pat_aux,'fpat,'fpat_aux) pat_alg) : 'a pat
   function
   | P_lit lit           -> alg.p_lit lit
   | P_wild              -> alg.p_wild
+  | P_or(p1, p2)        -> alg.p_or (fold_pat alg p1, fold_pat alg p2)
+  | P_not(p)            -> alg.p_not (fold_pat alg p)
   | P_id id             -> alg.p_id id
   | P_var (p,tpat)      -> alg.p_var (fold_pat alg p, tpat)
   | P_as (p,id)         -> alg.p_as (fold_pat alg p, id)
@@ -495,6 +455,8 @@ and fold_fpat (alg : ('a,'pat,'pat_aux,'fpat,'fpat_aux) pat_alg) : 'a fpat -> 'f
 let id_pat_alg : ('a,'a pat, 'a pat_aux, 'a fpat, 'a fpat_aux) pat_alg =
   { p_lit            = (fun lit -> P_lit lit)
   ; p_wild           = P_wild
+  ; p_or             = (fun (pat1, pat2) -> P_or(pat1, pat2))
+  ; p_not            = (fun pat -> P_not(pat))
   ; p_as             = (fun (pat,id) -> P_as (pat,id))
   ; p_typ            = (fun (typ,pat) -> P_typ (typ,pat))
   ; p_id             = (fun id -> P_id id)
@@ -548,12 +510,7 @@ type ('a,'exp,'exp_aux,'lexp,'lexp_aux,'fexp,'fexp_aux,'fexps,'fexps_aux,
   ; e_throw                  : 'exp -> 'exp_aux
   ; e_return                 : 'exp -> 'exp_aux
   ; e_assert                 : 'exp * 'exp -> 'exp_aux
-  ; e_internal_cast          : 'a annot * 'exp -> 'exp_aux
-  ; e_internal_exp           : 'a annot -> 'exp_aux
-  ; e_internal_exp_user      : 'a annot * 'a annot -> 'exp_aux
-  ; e_comment                : string -> 'exp_aux
-  ; e_comment_struc          : 'exp -> 'exp_aux
-  ; e_internal_let           : 'lexp * 'exp * 'exp -> 'exp_aux
+  ; e_var           : 'lexp * 'exp * 'exp -> 'exp_aux
   ; e_internal_plet          : 'pat * 'exp * 'exp -> 'exp_aux
   ; e_internal_return        : 'exp -> 'exp_aux
   ; e_internal_value         : Value.value -> 'exp_aux
@@ -622,15 +579,8 @@ let rec fold_exp_aux alg = function
   | E_throw e -> alg.e_throw (fold_exp alg e)
   | E_return e -> alg.e_return (fold_exp alg e)
   | E_assert(e1,e2) -> alg.e_assert (fold_exp alg e1, fold_exp alg e2)
-  | E_internal_cast (annot,e) -> alg.e_internal_cast (annot, fold_exp alg e)
-  | E_internal_exp annot -> alg.e_internal_exp annot
-  | E_sizeof_internal a -> raise (Reporting_basic.err_unreachable (Parse_ast.Unknown)
-      "E_sizeof_internal encountered during rewriting")
-  | E_internal_exp_user (annot1,annot2) -> alg.e_internal_exp_user (annot1,annot2)
-  | E_comment c -> alg.e_comment c
-  | E_comment_struc e -> alg.e_comment_struc (fold_exp alg e)
   | E_var (lexp,e1,e2) ->
-     alg.e_internal_let (fold_lexp alg lexp, fold_exp alg e1, fold_exp alg e2)
+     alg.e_var (fold_lexp alg lexp, fold_exp alg e1, fold_exp alg e2)
   | E_internal_plet (pat,e1,e2) ->
      alg.e_internal_plet (fold_pat alg.pat_alg pat, fold_exp alg e1, fold_exp alg e2)
   | E_internal_return e -> alg.e_internal_return (fold_exp alg e)
@@ -666,6 +616,12 @@ and fold_letbind_aux alg = function
   | LB_val (pat,e) -> alg.lB_val (fold_pat alg.pat_alg pat, fold_exp alg e)
 and fold_letbind alg (LB_aux (letbind_aux,annot)) = alg.lB_aux (fold_letbind_aux alg letbind_aux, annot)
 
+let fold_funcl alg (FCL_aux (FCL_Funcl (id, pexp), annot)) =
+  FCL_aux (FCL_Funcl (id, fold_pexp alg pexp), annot)
+
+let fold_function alg (FD_aux (FD_function (rec_opt, tannot_opt, effect_opt, funcls), annot)) =
+  FD_aux (FD_function (rec_opt, tannot_opt, effect_opt, List.map (fold_funcl alg) funcls), annot)
+
 let id_exp_alg =
   { e_block = (fun es -> E_block es)
   ; e_nondet = (fun es -> E_nondet es)
@@ -700,12 +656,7 @@ let id_exp_alg =
   ; e_throw = (fun e1 -> E_throw (e1))
   ; e_return = (fun e1 -> E_return e1)
   ; e_assert = (fun (e1,e2) -> E_assert(e1,e2)) 
-  ; e_internal_cast = (fun (a,e1) -> E_internal_cast (a,e1))
-  ; e_internal_exp = (fun a -> E_internal_exp a)
-  ; e_internal_exp_user = (fun (a1,a2) -> E_internal_exp_user (a1,a2))
-  ; e_comment = (fun c -> E_comment c)
-  ; e_comment_struc = (fun e -> E_comment_struc e)
-  ; e_internal_let = (fun (lexp, e2, e3) -> E_var (lexp,e2,e3))
+  ; e_var = (fun (lexp, e2, e3) -> E_var (lexp,e2,e3))
   ; e_internal_plet = (fun (pat, e1, e2) -> E_internal_plet (pat,e1,e2))
   ; e_internal_return = (fun e -> E_internal_return e)
   ; e_internal_value = (fun v -> E_internal_value v)
@@ -745,6 +696,9 @@ let compute_pat_alg bot join =
   let split_join f ps = let (vs,ps) = List.split ps in (join_list vs, f ps) in
   { p_lit            = (fun lit -> (bot, P_lit lit))
   ; p_wild           = (bot, P_wild)
+  (* todo: I have no idea how to combine v1 and v2 in the following *)
+  ; p_or             = (fun ((v1, pat1), (v2, pat2)) -> (v1, P_or(pat1, pat2)))
+  ; p_not            = (fun (v, pat) -> (v, P_not(pat)))
   ; p_as             = (fun ((v,pat),id) -> (v, P_as (pat,id)))
   ; p_typ            = (fun (typ,(v,pat)) -> (v, P_typ (typ,pat)))
   ; p_id             = (fun id -> (bot, P_id id))
@@ -804,12 +758,7 @@ let compute_exp_alg bot join =
   ; e_throw = (fun (v1,e1) -> (v1, E_throw (e1)))
   ; e_return = (fun (v1,e1) -> (v1, E_return e1))
   ; e_assert = (fun ((v1,e1),(v2,e2)) -> (join v1 v2, E_assert(e1,e2)) )
-  ; e_internal_cast = (fun (a,(v1,e1)) -> (v1, E_internal_cast (a,e1)))
-  ; e_internal_exp = (fun a -> (bot, E_internal_exp a))
-  ; e_internal_exp_user = (fun (a1,a2) -> (bot, E_internal_exp_user (a1,a2)))
-  ; e_comment = (fun c -> (bot, E_comment c))
-  ; e_comment_struc = (fun (v,e) -> (bot, E_comment_struc e)) (* ignore value by default, since it is comes from a comment *)
-  ; e_internal_let = (fun ((vl, lexp), (v2,e2), (v3,e3)) ->
+  ; e_var = (fun ((vl, lexp), (v2,e2), (v3,e3)) ->
     (join_list [vl;v2;v3], E_var (lexp,e2,e3)))
   ; e_internal_plet = (fun ((vp,pat), (v1,e1), (v2,e2)) ->
     (join_list [vp;v1;v2], E_internal_plet (pat,e1,e2)))
@@ -852,6 +801,8 @@ let pure_pat_alg bot join =
   let join_list vs = List.fold_left join bot vs in
   { p_lit            = (fun lit -> bot)
   ; p_wild           = bot
+  ; p_or             = (fun (pat1, pat2) -> bot) (* todo: this is wrong *)
+  ; p_not            = (fun pat -> bot)          (* todo: this is wrong *)
   ; p_as             = (fun (v,id) -> v)
   ; p_typ            = (fun (typ,v) -> v)
   ; p_id             = (fun id -> bot)
@@ -904,12 +855,7 @@ let pure_exp_alg bot join =
   ; e_throw = (fun v1 -> v1)
   ; e_return = (fun v1 -> v1)
   ; e_assert = (fun (v1,v2) -> join v1 v2)
-  ; e_internal_cast = (fun (a,v1) -> v1)
-  ; e_internal_exp = (fun a -> bot)
-  ; e_internal_exp_user = (fun (a1,a2) -> bot)
-  ; e_comment = (fun c -> bot)
-  ; e_comment_struc = (fun v -> bot)
-  ; e_internal_let = (fun (vl, v2, v3) -> join_list [vl;v2;v3])
+  ; e_var = (fun (vl, v2, v3) -> join_list [vl;v2;v3])
   ; e_internal_plet = (fun (vp, v1, v2) -> join_list [vp;v1;v2])
   ; e_internal_return = (fun v -> v)
   ; e_internal_value = (fun v -> bot)

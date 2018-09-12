@@ -1,3 +1,4 @@
+#define _GNU_SOURCE
 #include<assert.h>
 #include<inttypes.h>
 #include<stdbool.h>
@@ -132,6 +133,27 @@ void concat_str(sail_string *stro, const sail_string str1, const sail_string str
   strcat(*stro, str2);
 }
 
+bool string_startswith(sail_string s, sail_string prefix)
+{
+  return strstr(s, prefix) == s;
+}
+
+void string_length(sail_int *len, sail_string s)
+{
+  mpz_set_ui(*len, strlen(s));
+}
+
+void string_drop(sail_string *dst, sail_string s, sail_int ns)
+{
+  size_t len = strlen(s);
+  mach_int n = CREATE_OF(mach_int, sail_int)(ns);
+  if (len >= n) {
+    *dst = realloc(*dst, (len - n) + 1);
+    memcpy(*dst, s + n, len - n);
+    (*dst)[len - n] = '\0';
+  }
+}
+
 /* ***** Sail integers ***** */
 
 inline
@@ -170,6 +192,12 @@ inline
 void CREATE_OF(sail_int, mach_int)(sail_int *rop, mach_int op)
 {
   mpz_init_set_si(*rop, op);
+}
+
+inline
+mach_int CREATE_OF(mach_int, sail_int)(const sail_int op)
+{
+  return mpz_get_ui(op);
 }
 
 inline
@@ -274,6 +302,14 @@ void sub_int(sail_int *rop, const sail_int op1, const sail_int op2)
   mpz_sub(*rop, op1, op2);
 }
 
+void sub_nat(sail_int *rop, const sail_int op1, const sail_int op2)
+{
+  mpz_sub(*rop, op1, op2);
+  if (mpz_cmp_ui(*rop, 0) < 0ul) {
+    mpz_set_ui(*rop, 0ul);
+  }
+}
+
 inline
 void mult_int(sail_int *rop, const sail_int op1, const sail_int op2)
 {
@@ -334,7 +370,15 @@ void abs_int(sail_int *rop, const sail_int op)
   mpz_abs(*rop, op);
 }
 
-void pow2(sail_int *rop, const sail_int exp) {
+inline
+void pow_int(sail_int *rop, const sail_int op1, const sail_int op2)
+{
+  uint64_t n = mpz_get_ui(op2);
+  mpz_pow_ui(*rop, op1, n);
+}
+
+void pow2(sail_int *rop, const sail_int exp)
+{
   /* Assume exponent is never more than 2^64... */
   uint64_t exp_ui = mpz_get_ui(exp);
   mpz_t base;
@@ -390,12 +434,12 @@ void RECREATE_OF(sail_bits, mach_bits)(sail_bits *rop, const uint64_t op, const 
   mpz_set_ui(*rop->bits, op);
 }
 
-mach_bits CONVERT_OF(mach_bits, sail_bits)(const sail_bits op)
+mach_bits CONVERT_OF(mach_bits, sail_bits)(const sail_bits op, const bool direction)
 {
   return mpz_get_ui(*op.bits);
 }
 
-void CONVERT_OF(sail_bits, mach_bits)(sail_bits *rop, const mach_bits op, const uint64_t len)
+void CONVERT_OF(sail_bits, mach_bits)(sail_bits *rop, const mach_bits op, const uint64_t len, const bool direction)
 {
   rop->len = len;
   // use safe_rshift to correctly handle the case when we have a 0-length vector.
@@ -1068,7 +1112,16 @@ void string_of_int(sail_string *str, const sail_int i)
   gmp_asprintf(str, "%Zd", i);
 }
 
-void string_of_bits(sail_string *str, const sail_bits op)
+/* asprinf is a GNU extension, but it should exist on BSD */
+void string_of_mach_bits(sail_string *str, const mach_bits op)
+{
+  int bytes = asprintf(str, "0x%" PRIx64, op);
+  if (bytes == -1) {
+    fprintf(stderr, "Could not print bits 0x%" PRIx64 "\n", op);
+  }
+}
+
+void string_of_sail_bits(sail_string *str, const sail_bits op)
 {
   if ((op.len % 4) == 0) {
     gmp_asprintf(str, "0x%*0Zx", op.len / 4, *op.bits);

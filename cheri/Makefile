@@ -61,6 +61,14 @@ latex_256: $(CHERI_SAILS)
 
 latex: latex_128 latex_256
 
+# to install latex in the right place - specific to PS checkouts
+CHERI_ARCH_PATH=/home/pes20/repos/ctsrd/reports/cheri-architecture
+install_latex: 
+	rm -rf $(CHERI_ARCH_PATH)/sail_latex/*.tex
+	cp sail_latex/*.tex $(CHERI_ARCH_PATH)/sail_latex
+	rm -rf $(CHERI_ARCH_PATH)/sail_latexcc/*.tex
+	cp sail_latexcc/*.tex $(CHERI_ARCH_PATH)/sail_latexcc
+
 cheri128: $(CHERI128_SAILS) $(CHERI_MAIN)
 	$(SAIL) -ocaml -o $@ $^
 
@@ -103,7 +111,7 @@ cheri128.lem: $(CHERI128_SAILS)
 cheri128_types.lem: cheri128.lem
 
 C%.thy: c%.lem c%_types.lem $(MIPS_SAIL_DIR)/mips_extras.lem
-	lem -isa -outdir . -lib $(SAIL_DIR)/src/gen_lib -lib $(SAIL_DIR)/src/lem_interp $^
+	lem -isa -outdir . -lib Sail=$(SAIL_DIR)/src/gen_lib -lib Sail=$(SAIL_DIR)/src/lem_interp $^
 	sed -i 's/datatype ast/datatype (plugins only: size) ast/' C$*_types.thy
 
 %Script.sml: %.lem %_types.lem $(MIPS_SAIL_DIR)/mips_extras.lem
@@ -112,7 +120,18 @@ C%.thy: c%.lem c%_types.lem $(MIPS_SAIL_DIR)/mips_extras.lem
 %Theory.uo: %Script.sml
 	Holmake $@
 
+cheri.v cheri_types.v: $(CHERI_SAILS)
+	$(SAIL) -coq -o cheri -coq_lib mips_extras -undefined_gen -memo_z3 -dcoq_undef_axioms $^
+
+CHERI_COQ = cheri_types.v mips_extras.v cheri.v
+COQ_LIBS = -R ../../bbv/theories bbv -R ../lib/coq Sail
+
+%.vo: %.v
+	coqc $(COQ_LIBS) $<
+cheri.vo: cheri_types.vo mips_extras.vo
+
 clean:
 	rm -rf cheri cheri_trace cheri_coverage cheri128 cheri128_trace _sbuild inst_*.sail cheri.c sail_latex sail_latexcc coverage_report
 	rm -f cheriScript.sml cheri_typesScript.sml mips_extrasScript.sml
+	rm -f cheri.v cheri_types.v $(CHERI_COQ:%.v=%.vo) $(CHERI_COQ:%.v=%.glob) $(CHERI_COQ:%.v=.%.aux)
 	-Holmake cleanAll

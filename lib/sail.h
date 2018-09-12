@@ -77,6 +77,7 @@ bool eq_string(const sail_string, const sail_string);
 bool EQUAL(sail_string)(const sail_string, const sail_string);
 
 void concat_str(sail_string *stro, const sail_string str1, const sail_string str2);
+bool string_startswith(sail_string s, sail_string prefix);
 
 /* ***** Sail integers ***** */
 
@@ -100,6 +101,8 @@ SAIL_BUILTIN_TYPE(sail_int);
 
 void CREATE_OF(sail_int, mach_int)(sail_int *, const mach_int);
 void RECREATE_OF(sail_int, mach_int)(sail_int *, const mach_int);
+
+mach_int CREATE_OF(mach_int, sail_int)(const sail_int);
 
 void CREATE_OF(sail_int, sail_string)(sail_int *, const sail_string);
 void RECREATE_OF(sail_int, sail_string)(mpz_t *, const sail_string);
@@ -147,6 +150,7 @@ SAIL_INT_FUNCTION(undefined_range, sail_int, const sail_int, const sail_int);
  */
 SAIL_INT_FUNCTION(add_int, sail_int, const sail_int, const sail_int);
 SAIL_INT_FUNCTION(sub_int, sail_int, const sail_int, const sail_int);
+SAIL_INT_FUNCTION(sub_nat, sail_int, const sail_int, const sail_int);
 SAIL_INT_FUNCTION(mult_int, sail_int, const sail_int, const sail_int);
 SAIL_INT_FUNCTION(tdiv_int, sail_int, const sail_int, const sail_int);
 SAIL_INT_FUNCTION(tmod_int, sail_int, const sail_int, const sail_int);
@@ -158,6 +162,8 @@ SAIL_INT_FUNCTION(min_int, sail_int, const sail_int, const sail_int);
 
 SAIL_INT_FUNCTION(neg_int, sail_int, const sail_int);
 SAIL_INT_FUNCTION(abs_int, sail_int, const sail_int);
+
+SAIL_INT_FUNCTION(pow_int, sail_int, const sail_int, const sail_int);
 
 SAIL_INT_FUNCTION(pow2, sail_int, const sail_int);
 
@@ -186,8 +192,8 @@ void RECREATE_OF(sail_bits, mach_bits)(sail_bits *,
 				       const mach_bits len,
 				       const bool direction);
 
-mach_bits CONVERT_OF(mach_bits, sail_bits)(const sail_bits);
-void CONVERT_OF(sail_bits, mach_bits)(sail_bits *, const mach_bits, const uint64_t);
+mach_bits CONVERT_OF(mach_bits, sail_bits)(const sail_bits, const bool);
+void CONVERT_OF(sail_bits, mach_bits)(sail_bits *, const mach_bits, const uint64_t, const bool);
 
 void UNDEFINED(sail_bits)(sail_bits *, const sail_int len, const mach_bits bit);
 mach_bits UNDEFINED(mach_bits)(const unit);
@@ -317,10 +323,16 @@ unit prerr_real(const sail_string, const real);
 
 void random_real(real *rop, unit);
 
+/* ***** String utilities ***** */
+
+void string_length(sail_int *len, sail_string s);
+void string_drop(sail_string *dst, sail_string s, sail_int len);
+
 /* ***** Printing ***** */
 
 void string_of_int(sail_string *str, const sail_int i);
-void string_of_bits(sail_string *str, const sail_bits op);
+void string_of_sail_bits(sail_string *str, const sail_bits op);
+void string_of_mach_bits(sail_string *str, const mach_bits op);
 
 /*
  * Utility function not callable from Sail!

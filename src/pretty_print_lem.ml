@@ -54,6 +54,7 @@ open Ast_util
 open Rewriter
 open PPrint
 open Pretty_print_common
+open Extra_pervasives
 
 (****************************************************************************
  * PPrint-based sail-to-lem pprinter
@@ -65,8 +66,9 @@ let opt_mwords = ref false
 type context = {
   early_ret : bool;
   bound_nexps : NexpSet.t;
+  top_env : Env.t
 }
-let empty_ctxt = { early_ret = false; bound_nexps = NexpSet.empty }
+let empty_ctxt = { early_ret = false; bound_nexps = NexpSet.empty; top_env = Env.empty }
 
 let print_to_from_interp_value = ref false
 let langlebar = string "<|"
@@ -164,6 +166,13 @@ let is_regtyp (Typ_aux (typ, _)) env = match typ with
   | Typ_app(id, _) when string_of_id id = "register" -> true
   | _ -> false
 
+let lemnum default n =
+  if Big_int.less_equal Big_int.zero n && Big_int.less_equal n (Big_int.of_int 128) then
+    "int" ^ Big_int.to_string n
+  else if Big_int.greater_equal n Big_int.zero then
+    default n
+  else ("(int0 - " ^ (default (Big_int.abs n)) ^ ")")
+
 let doc_nexp_lem nexp =
   let nice_kid kid =
     let (Kid_aux (Var kid,l)) = orig_kid kid in
@@ -178,15 +187,15 @@ let doc_nexp_lem nexp =
        match nexp with
        | Nexp_id id -> string_of_id id
        | Nexp_var kid -> string_of_id (id_of_kid (nice_kid kid))
-       | Nexp_constant i -> Pretty_print_lem_ast.lemnum Big_int.to_string i
+       | Nexp_constant i -> lemnum Big_int.to_string i
        | Nexp_times (n1, n2) -> mangle_nexp n1 ^ "_times_" ^ mangle_nexp n2
        | Nexp_sum (n1, n2) -> mangle_nexp n1 ^ "_plus_" ^ mangle_nexp n2
        | Nexp_minus (n1, n2) -> mangle_nexp n1 ^ "_minus_" ^ mangle_nexp n2
        | Nexp_exp n -> "exp_" ^ mangle_nexp n
        | Nexp_neg n -> "neg_" ^ mangle_nexp n
        | _ ->
-          raise (Reporting_basic.err_unreachable l
-                   ("cannot pretty-print nexp \"" ^ string_of_nexp full_nexp ^ "\"")) 
+          raise (Reporting_basic.err_unreachable l __POS__
+                  ("cannot pretty-print nexp \"" ^ string_of_nexp full_nexp ^ "\"")) 
      end in
      string ("'" ^ mangle_nexp full_nexp)
 
@@ -205,7 +214,7 @@ let rec orig_nexp (Nexp_aux (nexp, l)) =
 (* Returns the set of type variables that will appear in the Lem output,
    which may be smaller than those in the Sail type.  May need to be
    updated with doc_typ_lem *)
-let rec lem_nexps_of_typ (Typ_aux (t,_)) =
+let rec lem_nexps_of_typ (Typ_aux (t,l)) =
   let trec = lem_nexps_of_typ in
   match t with
   | Typ_id _ -> NexpSet.empty
@@ -231,6 +240,8 @@ let rec lem_nexps_of_typ (Typ_aux (t,_)) =
      List.fold_left (fun s ta -> NexpSet.union s (lem_nexps_of_typ_arg ta))
        NexpSet.empty tas
   | Typ_exist (kids,_,t) -> trec t
+  | Typ_bidir _ -> raise (Reporting_basic.err_unreachable l __POS__ "Lem doesn't support bidir types")
+  | Typ_internal_unknown -> raise (Reporting_basic.err_unreachable l __POS__ "escaped Typ_internal_unknown")
 and lem_nexps_of_typ_arg (Typ_arg_aux (ta,_)) =
   match ta with
   | Typ_arg_nexp nexp -> NexpSet.singleton (nexp_simp (orig_nexp nexp))
@@ -275,8 +286,8 @@ let doc_typ_lem, doc_atomic_typ_lem =
              (* (match nexp_simp m with
                | (Nexp_aux(Nexp_constant i,_)) -> string "bitvector ty" ^^ doc_int i
                | (Nexp_aux(Nexp_var _, _)) -> separate space [string "bitvector"; doc_nexp m]
-               | _ -> raise (Reporting_basic.err_unreachable l
-                 "cannot pretty-print bitvector type with non-constant length")) *)
+               | _ -> raise (Reporting_basic.err_unreachable l __POS__
+                "cannot pretty-print bitvector type with non-constant length")) *)
            | _ -> string "list" ^^ space ^^ typ elem_typ in
          if atyp_needed then parens tpp else tpp
       | Typ_app(Id_aux (Id "register", _), [Typ_arg_aux (Typ_arg_typ etyp, _)]) ->
@@ -314,49 +325,56 @@ let doc_typ_lem, doc_atomic_typ_lem =
                            ("Existential type variable(s) " ^
                                String.concat ", " (List.map string_of_kid bad) ^
                                " escape into Lem"))
-      end
+        end
+      | Typ_bidir _ -> unreachable l __POS__ "Lem doesn't support bidir types"
+      | Typ_internal_unknown -> unreachable l __POS__ "escaped Typ_internal_unknown"
     and doc_typ_arg_lem (Typ_arg_aux(t,_)) = match t with
       | Typ_arg_typ t -> app_typ true t
       | Typ_arg_nexp n -> doc_nexp_lem (nexp_simp n)
       | Typ_arg_order o -> empty
   in typ', atomic_typ
 
-(* Check for variables in types that would be pretty-printed and are not
-   bound in the val spec of the function. *)
+(* Check for variables in types that would be pretty-printed. *)
 let contains_t_pp_var ctxt (Typ_aux (t,a) as typ) =
-  NexpSet.diff (lem_nexps_of_typ typ) ctxt.bound_nexps
+  lem_nexps_of_typ typ
   |> NexpSet.exists (fun nexp -> not (is_nexp_constant nexp))
 
 let replace_typ_size ctxt env (Typ_aux (t,a)) =
   match t with
   | Typ_app (Id_aux (Id "vector",_) as id, [Typ_arg_aux (Typ_arg_nexp size,_);ord;typ']) ->
      begin
-       let mk_typ nexp = 
+       let mk_typ nexp =
          Some (Typ_aux (Typ_app (id, [Typ_arg_aux (Typ_arg_nexp nexp,Parse_ast.Unknown);ord;typ']),a))
        in
-       let is_equal nexp =
-         prove env (NC_aux (NC_equal (size,nexp),Parse_ast.Unknown))
-       in match List.find is_equal (NexpSet.elements ctxt.bound_nexps) with
-       | nexp -> mk_typ nexp
-       | exception Not_found ->
-          match Type_check.solve env size with
-          | Some n -> mk_typ (nconstant n)
-          | None -> None
+       match Type_check.solve env size with
+       | Some n -> mk_typ (nconstant n)
+       | None ->
+          let is_equal nexp =
+            prove env (NC_aux (NC_equal (size,nexp),Parse_ast.Unknown))
+          in match List.find is_equal (NexpSet.elements ctxt.bound_nexps) with
+          | nexp -> mk_typ nexp
+          | exception Not_found -> None
      end
   | _ -> None
 
-let doc_tannot_lem ctxt env eff typ =
-  let of_typ typ =
-    let ta = doc_typ_lem typ in
-    if eff then string " : M " ^^ parens ta
-    else string " : " ^^ ta
-  in
+let make_printable_type ctxt env typ =
   if contains_t_pp_var ctxt typ
   then
     match replace_typ_size ctxt env typ with
-    | None -> empty
-    | Some typ -> of_typ typ
-  else of_typ typ
+    | None -> None
+    | Some typ -> Some typ
+  else Some typ
+
+let doc_tannot_lem ctxt env eff typ =
+  match make_printable_type ctxt env typ with
+  | None -> empty
+  | Some typ ->
+     let ta = doc_typ_lem typ in
+     if eff then string " : M " ^^ parens ta
+     else string " : " ^^ ta
+
+let min_int32 = Big_int.of_int64 (Int64.of_int32 Int32.min_int)
+let max_int32 = Big_int.of_int64 (Int64.of_int32 Int32.max_int)
 
 let doc_lit_lem (L_aux(lit,l)) =
   match lit with
@@ -365,11 +383,13 @@ let doc_lit_lem (L_aux(lit,l)) =
   | L_one   -> utf8string "B1"
   | L_false -> utf8string "false"
   | L_true  -> utf8string "true"
-  | L_num i ->
+  | L_num i when Big_int.less_equal min_int32 i && Big_int.less_equal i max_int32 ->
      let ipp = Big_int.to_string i in
      utf8string (
        if Big_int.less i Big_int.zero then "((0"^ipp^"):ii)"
        else "("^ipp^":ii)")
+  | L_num i ->
+     utf8string (Printf.sprintf "(integerOfString \"%s\")" (Big_int.to_string i))
   | L_hex n -> failwith "Shouldn't happen" (*"(num_to_vec " ^ ("0x" ^ n) ^ ")" (*shouldn't happen*)*)
   | L_bin n -> failwith "Shouldn't happen" (*"(num_to_vec " ^ ("0b" ^ n) ^ ")" (*shouldn't happen*)*)
   | L_undef ->
@@ -401,8 +421,7 @@ let doc_quant_item vars_included (QI_aux (qi, _)) = match qi with
      None -> doc_var kid
    | Some set -> (*when KidSet.mem kid set -> doc_var kid*)
       let nexps = NexpSet.filter (fun nexp -> KidSet.mem (orig_kid kid) (nexp_frees nexp)) set in
-      separate_map space doc_nexp_lem (NexpSet.elements nexps)
-   | _ -> empty)
+      separate_map space doc_nexp_lem (NexpSet.elements nexps))
 | _ -> empty
 
 let doc_typquant_items_lem vars_included (TypQ_aux(tq,_)) = match tq with
@@ -418,7 +437,7 @@ let doc_typquant_lem (TypQ_aux(tq,_)) vars_included typ = match tq with
    machine words.  Often these will be unnecessary, but this simple
    approach will do for now. *)
 
-let rec typeclass_nexps (Typ_aux(t,_)) =
+let rec typeclass_nexps (Typ_aux(t,l)) =
   if !opt_mwords then
     match t with
     | Typ_id _
@@ -442,6 +461,8 @@ let rec typeclass_nexps (Typ_aux(t,_)) =
        in
        List.fold_left add_arg_nexps NexpSet.empty args
     | Typ_exist (kids,_,t) -> NexpSet.empty (* todo *)
+    | Typ_bidir _ -> unreachable l __POS__ "Lem doesn't support bidir types"
+    | Typ_internal_unknown -> unreachable l __POS__ "escaped Typ_internal_unknown"
   else NexpSet.empty
 
 let doc_typclasses_lem t =
@@ -488,21 +509,23 @@ let rec doc_pat_lem ctxt apat_needed (P_aux (p,(l,annot)) as pa) = match p with
      parens (separate comma_sp (List.map2 doc_elem typs pats))
   | P_typ(typ,p) ->
     let doc_p = doc_pat_lem ctxt true p in
-    if contains_t_pp_var ctxt typ then doc_p
-    else parens (doc_op colon doc_p (doc_typ_lem typ))
+    (match make_printable_type ctxt (env_of_annot (l,annot)) typ with
+    | None -> doc_p
+    | Some typ -> parens (doc_op colon doc_p (doc_typ_lem typ)))
   | P_vector pats ->
      let ppp = brackets (separate_map semi (doc_pat_lem ctxt true) pats) in
      if apat_needed then parens ppp else ppp
   | P_vector_concat pats ->
-     raise (Reporting_basic.err_unreachable l
-       "vector concatenation patterns should have been removed before pretty-printing")
+     raise (Reporting_basic.err_unreachable l __POS__
+      "vector concatenation patterns should have been removed before pretty-printing")
   | P_tup pats  ->
      (match pats with
       | [p] -> doc_pat_lem ctxt apat_needed p
       | _ -> parens (separate_map comma_sp (doc_pat_lem ctxt false) pats))
   | P_list pats -> brackets (separate_map semi (doc_pat_lem ctxt false) pats) (*Never seen but easy in lem*)
   | P_cons (p,p') -> doc_op (string "::") (doc_pat_lem ctxt true p) (doc_pat_lem ctxt true p')
-  | P_record (_,_) -> empty (* TODO *)
+  | P_string_append _ -> unreachable l __POS__ "Lem doesn't support string append patterns"
+  | P_not _ -> unreachable l __POS__ "Lem doesn't support not patterns"
 
 let rec typ_needs_printed (Typ_aux (t,_) as typ) = match t with
   | Typ_tup ts -> List.exists typ_needs_printed ts
@@ -536,7 +559,7 @@ let typ_id_of (Typ_aux (typ, l)) = match typ with
   | Typ_app (register, [Typ_arg_aux (Typ_arg_typ (Typ_aux (Typ_id id, _)), _)])
     when string_of_id register = "register" -> id
   | Typ_app (id, _) -> id
-  | _ -> raise (Reporting_basic.err_unreachable l "failed to get type id")
+  | _ -> raise (Reporting_basic.err_unreachable l __POS__ "failed to get type id")
 
 let prefix_recordtype = true
 let report = Reporting_basic.err_unreachable
@@ -560,7 +583,7 @@ let doc_exp_lem, doc_let_lem =
            (match le with
             | LEXP_aux (LEXP_field ((LEXP_aux (_, lannot) as le),id), fannot) ->
                if is_bit_typ (typ_of_annot fannot) then
-                 raise (report l "indexing a register's (single bit) bitfield not supported")
+                 raise (report l __POS__ "indexing a register's (single bit) bitfield not supported")
                else
                  let field_ref =
                    doc_id_lem (typ_id_of (typ_of_annot lannot)) ^^
@@ -579,7 +602,7 @@ let doc_exp_lem, doc_let_lem =
            (match le with
             | LEXP_aux (LEXP_field ((LEXP_aux (_, lannot) as le),id), fannot) ->
                if is_bit_typ (typ_of_annot fannot) then
-                 raise (report l "indexing a register's (single bit) bitfield not supported")
+                 raise (report l __POS__ "indexing a register's (single bit) bitfield not supported")
                else
                  let field_ref =
                    doc_id_lem (typ_id_of (typ_of_annot lannot)) ^^
@@ -612,14 +635,14 @@ let doc_exp_lem, doc_let_lem =
         | _ ->
            liftR ((prefix 2 1) (string "write_reg") (doc_lexp_deref_lem ctxt le ^/^ expY e)))
     | E_vector_append(le,re) ->
-      raise (Reporting_basic.err_unreachable l
-        "E_vector_append should have been rewritten before pretty-printing")
+      raise (Reporting_basic.err_unreachable l __POS__
+       "E_vector_append should have been rewritten before pretty-printing")
     | E_cons(le,re) -> doc_op (group (colon^^colon)) (expY le) (expY re)
     | E_if(c,t,e) -> wrap_parens (align (if_exp ctxt false c t e))
     | E_for(id,exp1,exp2,exp3,(Ord_aux(order,_)),exp4) ->
-       raise (report l "E_for should have been rewritten before pretty-printing")
+       raise (report l __POS__ "E_for should have been rewritten before pretty-printing")
     | E_loop _ ->
-       raise (report l "E_loop should have been rewritten before pretty-printing")
+       raise (report l __POS__ "E_loop should have been rewritten before pretty-printing")
     | E_let(leb,e) ->
        wrap_parens (let_exp ctxt leb ^^ space ^^ string "in" ^^ hardline ^^ expN e)
     | E_app(f,args) ->
@@ -643,7 +666,7 @@ let doc_exp_lem, doc_let_lem =
                      | (P_aux (P_var (P_aux (P_id id, _), _), _))
                      | (P_aux (P_id id, _))), _), _),
                      body), _), _), _)), _)), _) -> id, body
-                 | _ -> raise (Reporting_basic.err_unreachable l ("Unable to find loop variable in " ^ string_of_exp body)) in
+                 | _ -> raise (Reporting_basic.err_unreachable l __POS__ ("Unable to find loop variable in " ^ string_of_exp body)) in
                let step = match ord_exp with
                  | E_aux (E_lit (L_aux (L_false, _)), _) ->
                     parens (separate space [string "integerNegate"; expY exp3])
@@ -674,8 +697,8 @@ let doc_exp_lem, doc_let_lem =
                         (prefix 2 1 (group body_lambda) (expN body))
                      )
                  )
-          | _ -> raise (Reporting_basic.err_unreachable l
-             "Unexpected number of arguments for loop combinator")
+          | _ -> raise (Reporting_basic.err_unreachable l __POS__
+            "Unexpected number of arguments for loop combinator")
           end
        | Id_aux (Id (("while" | "until") as combinator), _) ->
           begin
@@ -711,8 +734,8 @@ let doc_exp_lem, doc_let_lem =
                        (parens (prefix 2 1 (group lambda) (expN cond)))
                        (parens (prefix 2 1 (group lambda) (expN body))))
                  )
-            | _ -> raise (Reporting_basic.err_unreachable l
-               "Unexpected number of arguments for loop combinator")
+            | _ -> raise (Reporting_basic.err_unreachable l __POS__
+              "Unexpected number of arguments for loop combinator")
           end
        | Id_aux (Id "early_return", _) ->
           begin
@@ -720,20 +743,22 @@ let doc_exp_lem, doc_let_lem =
             | [exp] ->
                let epp = separate space [string "early_return"; expY exp] in
                let aexp_needed, tepp =
-                 if contains_t_pp_var ctxt (typ_of exp) ||
-                    contains_t_pp_var ctxt (typ_of full_exp) then
-                   aexp_needed, epp
-                 else
-                   let tannot = separate space [string "MR";
-                     doc_atomic_typ_lem false (typ_of full_exp);
-                     doc_atomic_typ_lem false (typ_of exp)] in
-                   true, doc_op colon epp tannot in
+                 match Util.option_bind (make_printable_type ctxt ctxt.top_env)
+                                        (Env.get_ret_typ (env_of exp)),
+                       make_printable_type ctxt (env_of full_exp) (typ_of full_exp) with
+                   | Some typ, Some full_typ ->
+                     let tannot = separate space [string "MR";
+                       doc_atomic_typ_lem false full_typ;
+                       doc_atomic_typ_lem false typ] in
+                     true, doc_op colon epp tannot
+                   | _ -> aexp_needed, epp
+               in
                if aexp_needed then parens tepp else tepp
-            | _ -> raise (Reporting_basic.err_unreachable l
-               "Unexpected number of arguments for early_return builtin")
+            | _ -> raise (Reporting_basic.err_unreachable l __POS__
+              "Unexpected number of arguments for early_return builtin")
           end
        | _ ->
-          begin match annot with
+          begin match destruct_tannot annot with
           | Some (env, _, _) when Env.is_union_constructor f env ->
              let epp =
                match args with
@@ -744,7 +769,7 @@ let doc_exp_lem, doc_let_lem =
                     parens (separate_map comma (expV false) args) in
              wrap_parens (align epp)
           | _ ->
-             let call, is_extern = match annot with
+             let call, is_extern = match destruct_tannot annot with
                | Some (env, _, _) when Env.is_extern f env "lem" ->
                  string (Env.get_extern f env "lem"), true
                | _ -> doc_id_lem f, false in
@@ -753,21 +778,26 @@ let doc_exp_lem, doc_let_lem =
                let env = env_of full_exp in
                let t = Env.expand_synonyms env (typ_of full_exp) in
                let eff = effect_of full_exp in
-               if typ_needs_printed t
-               then (align (group (prefix 0 1 epp (doc_tannot_lem ctxt env (effectful eff) t))), true)
+               if typ_needs_printed t then
+                 if Id.compare f (mk_id "bitvector_cast_out") <> 0 &&
+                    Id.compare f (mk_id "zero_extend_type_hack") <> 0
+                 then (align (group (prefix 0 1 epp (doc_tannot_lem ctxt env (effectful eff) t))), true)
+                 (* TODO: coordinate with the code in monomorphise.ml to find the correct
+                    typing environment to use *)
+                 else (align (group (prefix 0 1 epp (doc_tannot_lem ctxt ctxt.top_env (effectful eff) t))), true)
                else (epp, aexp_needed) in
              liftR (if aexp_needed then parens (align taepp) else taepp)
           end
        end
     | E_vector_access (v,e) ->
-      raise (Reporting_basic.err_unreachable l
-        "E_vector_access should have been rewritten before pretty-printing")
+      raise (Reporting_basic.err_unreachable l __POS__
+       "E_vector_access should have been rewritten before pretty-printing")
     | E_vector_subrange (v,e1,e2) ->
-      raise (Reporting_basic.err_unreachable l
-        "E_vector_subrange should have been rewritten before pretty-printing")
+      raise (Reporting_basic.err_unreachable l __POS__
+       "E_vector_subrange should have been rewritten before pretty-printing")
     | E_field((E_aux(_,(l,fannot)) as fexp),id) ->
        let ft = typ_of_annot (l,fannot) in
-       (match fannot with
+       (match destruct_tannot fannot with
         | Some(env, (Typ_aux (Typ_id tid, _)), _)
         | Some(env, (Typ_aux (Typ_app (tid, _), _)), _)
           when Env.is_record tid env ->
@@ -777,10 +807,10 @@ let doc_exp_lem, doc_let_lem =
              else doc_id_lem id in
            expY fexp ^^ dot ^^ fname
         | _ ->
-           raise (report l "E_field expression with no register or record type"))
+           raise (report l __POS__ "E_field expression with no register or record type"))
     | E_block [] -> string "()"
-    | E_block exps -> raise (report l "Blocks should have been removed till now.")
-    | E_nondet exps -> raise (report l "Nondet blocks not supported.")
+    | E_block exps -> raise (report l __POS__ "Blocks should have been removed till now.")
+    | E_nondet exps -> raise (report l __POS__ "Nondet blocks not supported.")
     | E_id id | E_ref id ->
        let env = env_of full_exp in
        let typ = typ_of full_exp in
@@ -799,29 +829,29 @@ let doc_exp_lem, doc_let_lem =
     | E_tuple exps ->
        parens (align (group (separate_map (comma ^^ break 1) expN exps)))
     | E_record(FES_aux(FES_Fexps(fexps,_),_)) ->
-       let recordtyp = match annot with
+       let recordtyp = match destruct_tannot annot with
          | Some (env, Typ_aux (Typ_id tid,_), _)
          | Some (env, Typ_aux (Typ_app (tid, _), _), _) ->
            (* when Env.is_record tid env -> *)
            tid
-         | _ ->  raise (report l ("cannot get record type from annot " ^ string_of_annot annot ^ " of exp " ^ string_of_exp full_exp)) in
+         | _ ->  raise (report l __POS__ ("cannot get record type from annot " ^ string_of_tannot annot ^ " of exp " ^ string_of_exp full_exp)) in
        wrap_parens (anglebars (space ^^ (align (separate_map
                                         (semi_sp ^^ break 1)
                                         (doc_fexp ctxt recordtyp) fexps)) ^^ space))
     | E_record_update(e,(FES_aux(FES_Fexps(fexps,_),_))) ->
-       let recordtyp = match annot with
+       let recordtyp = match destruct_tannot annot with
          | Some (env, Typ_aux (Typ_id tid,_), _)
          | Some (env, Typ_aux (Typ_app (tid, _), _), _)
            when Env.is_record tid env ->
            tid
-         | _ ->  raise (report l ("cannot get record type from annot " ^ string_of_annot annot ^ " of exp " ^ string_of_exp full_exp)) in
+         | _ ->  raise (report l __POS__ ("cannot get record type from annot " ^ string_of_tannot annot ^ " of exp " ^ string_of_exp full_exp)) in
        anglebars (doc_op (string "with") (expY e) (separate_map semi_sp (doc_fexp ctxt recordtyp) fexps))
     | E_vector exps ->
        let t = Env.base_typ_of (env_of full_exp) (typ_of full_exp) in
        let start, (len, order, etyp) =
          if is_vector_typ t then vector_start_index t, vector_typ_args_of t
-         else raise (Reporting_basic.err_unreachable l
-           "E_vector of non-vector type") in
+         else raise (Reporting_basic.err_unreachable l __POS__
+          "E_vector of non-vector type") in
        let dir,dir_out = if is_order_inc order then (true,"true") else (false, "false") in
        let start = match nexp_simp start with
          | Nexp_aux (Nexp_constant i, _) -> Big_int.to_string i
@@ -847,11 +877,11 @@ let doc_exp_lem, doc_let_lem =
          else (epp,aexp_needed) in
        if aexp_needed then parens (align epp) else epp
     | E_vector_update(v,e1,e2) ->
-       raise (Reporting_basic.err_unreachable l
-         "E_vector_update should have been rewritten before pretty-printing")
-    | E_vector_update_subrange(v,e1,e2,e3) ->
-       raise (Reporting_basic.err_unreachable l
+       raise (Reporting_basic.err_unreachable l __POS__
         "E_vector_update should have been rewritten before pretty-printing")
+    | E_vector_update_subrange(v,e1,e2,e3) ->
+       raise (Reporting_basic.err_unreachable l __POS__
+       "E_vector_update should have been rewritten before pretty-printing")
     | E_list exps ->
        brackets (separate_map semi (expN) exps)
     | E_case(e,pexps) ->
@@ -877,7 +907,7 @@ let doc_exp_lem, doc_let_lem =
     | E_app_infix (e1,id,e2) ->
        expV aexp_needed (E_aux (E_app (deinfix id, [e1; e2]), (l, annot)))
     | E_var(lexp, eq_exp, in_exp) ->
-       raise (report l "E_vars should have been removed before pretty-printing")
+       raise (report l __POS__ "E_vars should have been removed before pretty-printing")
     | E_internal_plet (pat,e1,e2) ->
        let epp =
          let b = match e1 with E_aux (E_if _,_) -> true | _ -> false in
@@ -905,23 +935,24 @@ let doc_exp_lem, doc_let_lem =
       (match nexp_simp nexp with
         | Nexp_aux (Nexp_constant i, _) -> doc_lit_lem (L_aux (L_num i, l))
         | _ ->
-          raise (Reporting_basic.err_unreachable l
-            "pretty-printing non-constant sizeof expressions to Lem not supported"))
+          raise (Reporting_basic.err_unreachable l __POS__
+           "pretty-printing non-constant sizeof expressions to Lem not supported"))
     | E_return r ->
       let ta =
-        if contains_t_pp_var ctxt (typ_of full_exp) || contains_t_pp_var ctxt (typ_of r)
-        then empty
-        else separate space
-          [string ": MR";
-          parens (doc_typ_lem (typ_of full_exp));
-          parens (doc_typ_lem (typ_of r))] in
+        match Util.option_bind (make_printable_type ctxt ctxt.top_env) (Env.get_ret_typ (env_of full_exp)),
+              make_printable_type ctxt (env_of r) (typ_of r) with
+       | Some full_typ, Some r_typ ->
+          separate space
+            [string ": MR";
+            parens (doc_typ_lem full_typ);
+            parens (doc_typ_lem r_typ)]
+       | _ -> empty
+      in
       align (parens (string "early_return" ^//^ expV true r ^//^ ta))
     | E_constraint _ -> string "true"
-    | E_comment _ | E_comment_struc _ -> empty
-    | E_internal_cast _ | E_internal_exp _ | E_sizeof_internal _
-    | E_internal_exp_user _ | E_internal_value _ ->
-      raise (Reporting_basic.err_unreachable l
-        "unsupported internal expression encountered while pretty-printing")
+    | E_internal_value _ ->
+      raise (Reporting_basic.err_unreachable l __POS__
+       "unsupported internal expression encountered while pretty-printing")
   and if_exp ctxt (elseif : bool) c t e =
     let if_pp = string (if elseif then "else if" else "if") in
     let else_pp = match e with
@@ -953,8 +984,8 @@ let doc_exp_lem, doc_let_lem =
     group (prefix 3 1 (separate space [pipe; doc_pat_lem ctxt false pat;arrow])
                   (group (top_exp ctxt false e)))
   | Pat_aux(Pat_when(_,_,_),(l,_)) ->
-    raise (Reporting_basic.err_unreachable l
-      "guarded pattern expression should have been rewritten before pretty-printing")
+    raise (Reporting_basic.err_unreachable l __POS__
+     "guarded pattern expression should have been rewritten before pretty-printing")
 
   and doc_lexp_deref_lem ctxt ((LEXP_aux(lexp,(l,annot))) as le) = match lexp with
     | LEXP_field (le,id) ->
@@ -963,7 +994,7 @@ let doc_exp_lem, doc_let_lem =
     | LEXP_cast (typ,id) -> doc_id_lem (append_id id "_ref")
     | LEXP_tup lexps -> parens (separate_map comma_sp (doc_lexp_deref_lem ctxt) lexps)
     | _ ->
-       raise (Reporting_basic.err_unreachable l ("doc_lexp_deref_lem: Unsupported lexp"))
+       raise (Reporting_basic.err_unreachable l __POS__ ("doc_lexp_deref_lem: Unsupported lexp"))
              (* expose doc_exp_lem and doc_let *)
   in top_exp, let_exp
 
@@ -1018,8 +1049,8 @@ let doc_typdef_lem (TD_aux(td, (l, annot))) = match td with
           match nexp_simp start with
           | Nexp_aux (Nexp_constant i, _) -> (i, is_order_inc ord)
           | _ ->
-            raise (Reporting_basic.err_unreachable Parse_ast.Unknown
-              ("register " ^ string_of_id id ^ " has non-constant start index " ^ string_of_nexp start))
+            raise (Reporting_basic.err_unreachable Parse_ast.Unknown __POS__
+             ("register " ^ string_of_id id ^ " has non-constant start index " ^ string_of_nexp start))
         with
         | _ -> (Big_int.zero, true) in
       doc_op equals
@@ -1198,7 +1229,7 @@ let doc_typdef_lem (TD_aux(td, (l, annot))) = match td with
               fromInterpValuePP ^^ hardline ^^ hardline ^^
                 fromToInterpValuePP ^^ hardline
             else empty)
-    | _ -> raise (Reporting_basic.err_unreachable l "register with non-constant indices")
+    | _ -> raise (Reporting_basic.err_unreachable l __POS__ "register with non-constant indices")
 
 let args_of_typ l env typ =
   let typs = match typ with
@@ -1206,8 +1237,8 @@ let args_of_typ l env typ =
     | typ -> [typ] in
   let arg i typ =
     let id = mk_id ("arg" ^ string_of_int i) in
-    P_aux (P_id id, (l, Some (env, typ, no_effect))),
-    E_aux (E_id id, (l, Some (env, typ, no_effect))) in
+    P_aux (P_id id, (l, mk_tannot env typ no_effect)),
+    E_aux (E_id id, (l, mk_tannot env typ no_effect)) in
   List.split (List.mapi arg typs)
 
 let rec untuple_args_pat (P_aux (paux, ((l, _) as annot)) as pat) =
@@ -1216,11 +1247,11 @@ let rec untuple_args_pat (P_aux (paux, ((l, _) as annot)) as pat) =
   let identity = (fun body -> body) in
   match paux, taux with
   | P_tup [], _ ->
-     let annot = (l, Some (Env.empty, unit_typ, no_effect)) in
+     let annot = (l, mk_tannot Env.empty unit_typ no_effect) in
      [P_aux (P_lit (mk_lit L_unit), annot)], identity
   | P_tup pats, _ -> pats, identity
   | P_wild, Typ_tup typs ->
-     let wild typ = P_aux (P_wild, (l, Some (env, typ, no_effect))) in
+     let wild typ = P_aux (P_wild, (l, mk_tannot env typ no_effect)) in
      List.map wild typs, identity
   | P_typ (_, pat), _ -> untuple_args_pat pat
   | P_as _, Typ_tup _ | P_id _, Typ_tup _ ->
@@ -1238,6 +1269,7 @@ let doc_rec_lem force_rec (Rec_aux(r,_)) = match r with
 
 let doc_tannot_opt_lem (Typ_annot_opt_aux(t,_)) = match t with
   | Typ_annot_opt_some(tq,typ) -> (*doc_typquant_lem tq*) (doc_typ_lem typ)
+  | Typ_annot_opt_none -> empty
 
 let doc_fun_body_lem ctxt exp =
   let doc_exp = doc_exp_lem ctxt false exp in
@@ -1250,14 +1282,15 @@ let doc_funcl_lem (FCL_aux(FCL_Funcl(id, pexp), annot)) =
   let pat,guard,exp,(l,_) = destruct_pexp pexp in
   let ctxt =
     { early_ret = contains_early_return exp;
-      bound_nexps = NexpSet.union (lem_nexps_of_typ typ) (typeclass_nexps typ) } in
+      bound_nexps = NexpSet.union (lem_nexps_of_typ typ) (typeclass_nexps typ);
+      top_env = env_of_annot annot } in
   let pats, bind = untuple_args_pat pat in
   let patspp = separate_map space (doc_pat_lem ctxt true) pats in
   let _ = match guard with
     | None -> ()
     | _ ->
-       raise (Reporting_basic.err_unreachable l
-                "guarded pattern expression should have been rewritten before pretty-printing") in
+       raise (Reporting_basic.err_unreachable l __POS__
+               "guarded pattern expression should have been rewritten before pretty-printing") in
   group (prefix 3 1
     (separate space [doc_id_lem id; patspp; equals])
     (doc_fun_body_lem ctxt (bind exp)))
@@ -1310,8 +1343,8 @@ let doc_dec_lem (DEC_aux (reg, ((l, _) as annot))) =
                                        string o;
                                        string "[]"]))
            ^/^ hardline
-         else raise (Reporting_basic.err_unreachable l ("can't deal with register type " ^ string_of_typ typ))
-       else raise (Reporting_basic.err_unreachable l ("can't deal with register type " ^ string_of_typ typ)) *)
+         else raise (Reporting_basic.err_unreachable l __POS__ ("can't deal with register type " ^ string_of_typ typ))
+       else raise (Reporting_basic.err_unreachable l __POS__ ("can't deal with register type " ^ string_of_typ typ)) *)
   | DEC_alias(id,alspec) -> empty
   | DEC_typ_alias(typ,id,alspec) -> empty
 
@@ -1345,8 +1378,8 @@ let doc_regtype_fields (tname, (n1, n2, fields)) =
     let i, j = match fr with
     | BF_aux (BF_single i, _) -> (i, i)
     | BF_aux (BF_range (i, j), _) -> (i, j)
-    | _ -> raise (Reporting_basic.err_unreachable Parse_ast.Unknown
-        ("Unsupported type in field " ^ string_of_id fid ^ " of " ^ tname)) in
+    | _ -> raise (Reporting_basic.err_unreachable Parse_ast.Unknown __POS__
+       ("Unsupported type in field " ^ string_of_id fid ^ " of " ^ tname)) in
     let fsize = Big_int.succ (Big_int.abs (Big_int.sub i j)) in
     (* TODO Assumes normalised, decreasing bitvector slices; however, since
        start indices or indexing order do not appear in Lem type annotations,
@@ -1385,10 +1418,7 @@ let rec doc_def_lem def =
   | DEF_scattered sdef -> failwith "doc_def_lem: shoulnd't have DEF_scattered at this point"
 
   | DEF_kind _ -> empty
-
-  | DEF_comm (DC_comm s) -> comment (string s)
-  | DEF_comm (DC_comm_struct d) -> comment (doc_def_lem d)
-
+  | DEF_mapdef (MD_aux (_, (l, _))) -> unreachable l __POS__ "Lem doesn't support mappings"
 
 let find_exc_typ defs =
   let is_exc_typ_def = function

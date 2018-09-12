@@ -54,6 +54,7 @@ open Ast_util
 open Type_check
 open Spec_analysis
 open Rewriter
+open Extra_pervasives
 
 let (>>) f g = fun x -> g(f(x))
 
@@ -83,11 +84,11 @@ let get_loc_exp (E_aux (_,(l,_))) = l
 
 let gen_vs (id, spec) = Initial_check.extern_of_string dec_ord (mk_id id) spec
 
-let annot_exp_effect e_aux l env typ effect = E_aux (e_aux, (l, Some (env, typ, effect)))
+let annot_exp_effect e_aux l env typ effect = E_aux (e_aux, (l, mk_tannot env typ effect))
 let annot_exp e_aux l env typ = annot_exp_effect e_aux l env typ no_effect
-let annot_pat p_aux l env typ = P_aux (p_aux, (l, Some (env, typ, no_effect)))
+let annot_pat p_aux l env typ = P_aux (p_aux, (l, mk_tannot env typ no_effect))
 let annot_letbind (p_aux, exp) l env typ =
-  LB_aux (LB_val (annot_pat p_aux l env typ, exp), (l, Some (env, typ, effect_of exp)))
+  LB_aux (LB_val (annot_pat p_aux l env typ, exp), (l, mk_tannot env typ (effect_of exp)))
 
 let simple_num l n = E_aux (
   E_lit (L_aux (L_num n, gen_loc l)),
@@ -141,9 +142,43 @@ let rec lexp_is_local_intro (LEXP_aux (lexp, _)) env = match lexp with
   | LEXP_vector_range (lexp,_,_)
   | LEXP_field (lexp,_) -> lexp_is_local_intro lexp env
 
-let lexp_is_effectful (LEXP_aux (_, (_, annot))) = match annot with
+let lexp_is_effectful (LEXP_aux (_, (_, annot))) = match destruct_tannot annot with
   | Some (_, _, eff) -> effectful_effs eff
   | _ -> false
+
+let explode s =
+  let rec exp i l = if i < 0 then l else exp (i - 1) (s.[i] :: l) in
+  exp (String.length s - 1) []
+
+let vector_string_to_bit_list l lit =
+
+  let hexchar_to_binlist = function
+    | '0' -> ['0';'0';'0';'0']
+    | '1' -> ['0';'0';'0';'1']
+    | '2' -> ['0';'0';'1';'0']
+    | '3' -> ['0';'0';'1';'1']
+    | '4' -> ['0';'1';'0';'0']
+    | '5' -> ['0';'1';'0';'1']
+    | '6' -> ['0';'1';'1';'0']
+    | '7' -> ['0';'1';'1';'1']
+    | '8' -> ['1';'0';'0';'0']
+    | '9' -> ['1';'0';'0';'1']
+    | 'A' -> ['1';'0';'1';'0']
+    | 'B' -> ['1';'0';'1';'1']
+    | 'C' -> ['1';'1';'0';'0']
+    | 'D' -> ['1';'1';'0';'1']
+    | 'E' -> ['1';'1';'1';'0']
+    | 'F' -> ['1';'1';'1';'1']
+    | _ -> raise (Reporting_basic.err_unreachable l __POS__ "hexchar_to_binlist given unrecognized character") in
+
+  let s_bin = match lit with
+    | L_hex s_hex -> List.flatten (List.map hexchar_to_binlist (explode (String.uppercase s_hex)))
+    | L_bin s_bin -> explode s_bin
+    | _ -> raise (Reporting_basic.err_unreachable l __POS__ "s_bin given non vector literal") in
+
+  List.map (function '0' -> L_aux (L_zero, gen_loc l)
+                   | '1' -> L_aux (L_one, gen_loc l)
+                   | _ -> raise (Reporting_basic.err_unreachable (gen_loc l) __POS__ "binary had non-zero or one")) s_bin
 
 let find_used_vars exp =
   (* Overapproximates the set of used identifiers, but for the use cases below
@@ -238,18 +273,22 @@ let rewrite_defs_nexp_ids, rewrite_typ_nexp_ids =
        Typ_arg_aux (Typ_arg_order ord, l)
   in
 
-  let rewrite_annot = function
-    | (l, Some (env, typ, eff)) -> (l, Some (env, rewrite_typ env typ, eff))
-    | (l, None) -> (l, None)
+  let rewrite_annot (l, tannot) =
+    match destruct_tannot tannot with
+    | Some (env, typ, eff) -> l, replace_typ (rewrite_typ env typ) tannot
+    | None -> l, empty_tannot
   in
 
   let rewrite_def rewriters = function
-    | DEF_spec (VS_aux (VS_val_spec (typschm, id, exts, b), (l, Some (env, typ, eff)))) ->
+    | DEF_spec (VS_aux (VS_val_spec (typschm, id, exts, b), (l, tannot))) when not (is_empty_tannot tannot) ->
+       let env = env_of_annot (l, tannot) in
+       let typ = typ_of_annot (l, tannot) in
+       let eff = effect_of_annot tannot in
        let typschm = match typschm with
          | TypSchm_aux (TypSchm_ts (tq, typ), l) ->
             TypSchm_aux (TypSchm_ts (tq, rewrite_typ env typ), l)
        in
-       let a = rewrite_annot (l, Some (env, typ, eff)) in
+       let a = rewrite_annot (l, mk_tannot env typ eff) in
        DEF_spec (VS_aux (VS_val_spec (typschm, id, exts, b), a))
     | d -> Rewriter.rewrite_def rewriters d
   in
@@ -262,8 +301,11 @@ let rewrite_defs_nexp_ids, rewrite_typ_nexp_ids =
 
 let rewrite_bitvector_exps defs =
   let e_aux = function
-    | (E_vector es, ((l, Some (env, typ, eff)) as a)) when is_bitvector_typ typ ->
-       begin
+    | (E_vector es, ((l, tannot) as a)) when not (is_empty_tannot tannot) ->
+       let env = env_of_annot (l, tannot) in
+       let typ = typ_of_annot (l, tannot) in
+       let eff = effect_of_annot tannot in
+       if is_bitvector_typ typ then
          try
            let len = mk_lit_exp (L_num (Big_int.of_int (List.length es))) in
            let es = mk_exp (E_list (List.map strip_exp es)) in
@@ -271,7 +313,8 @@ let rewrite_bitvector_exps defs =
            check_exp env exp typ
          with
          | _ -> E_aux (E_vector es, a)
-       end
+       else
+         E_aux (E_vector es, a)
     | (e_aux, a) -> E_aux (e_aux, a)
   in
   let rewrite_exp _ = fold_exp { id_exp_alg with e_aux = e_aux } in
@@ -285,7 +328,7 @@ let rewrite_bitvector_exps defs =
    variables in scope. *)
 let rewrite_trivial_sizeof, rewrite_trivial_sizeof_exp =
   let extract_typ_var l env nexp (id, (_, typ)) =
-    let var = E_aux (E_id id, (l, Some (env, typ, no_effect))) in
+    let var = E_aux (E_id id, (l, mk_tannot env typ no_effect)) in
     match destruct_atom_nexp env typ with
     | Some size when prove env (nc_eq size nexp) -> Some var
     (* AA: This next case is a bit of a hack... is there a more
@@ -294,12 +337,12 @@ let rewrite_trivial_sizeof, rewrite_trivial_sizeof_exp =
        scope. *)
     | Some size when prove env (nc_eq (nsum size (nint 1)) nexp) ->
        let one_exp = infer_exp env (mk_lit_exp (L_num (Big_int.of_int 1))) in
-       Some (E_aux (E_app (mk_id "add_atom", [var; one_exp]), (gen_loc l, Some (env, atom_typ (nsum size (nint 1)), no_effect))))
+       Some (E_aux (E_app (mk_id "add_atom", [var; one_exp]), (gen_loc l, mk_tannot env (atom_typ (nsum size (nint 1))) no_effect)))
     | _ ->
        begin
          match destruct_vector env typ with
          | Some (len, _, _) when prove env (nc_eq len nexp) ->
-            Some (E_aux (E_app (mk_id "length", [var]), (l, Some (env, atom_typ len, no_effect))))
+            Some (E_aux (E_app (mk_id "length", [var]), (l, mk_tannot env (atom_typ len) no_effect)))
          | _ -> None
        end
   in
@@ -318,12 +361,12 @@ let rewrite_trivial_sizeof, rewrite_trivial_sizeof_exp =
     let env = env_of orig_exp in
     match e_aux with
     | E_sizeof (Nexp_aux (Nexp_constant c, _) as nexp) ->
-       E_aux (E_lit (L_aux (L_num c, l)), (l, Some (env, atom_typ nexp, no_effect)))
+       E_aux (E_lit (L_aux (L_num c, l)), (l, mk_tannot env (atom_typ nexp) no_effect))
     | E_sizeof nexp ->
        begin
          match nexp_simp (rewrite_nexp_ids (env_of orig_exp) nexp) with
          | Nexp_aux (Nexp_constant c, _) ->
-            E_aux (E_lit (L_aux (L_num c, l)), (l, Some (env, atom_typ nexp, no_effect)))
+            E_aux (E_lit (L_aux (L_num c, l)), (l, mk_tannot env (atom_typ nexp) no_effect))
          | _ ->
             let locals = Env.get_locals env in
             let exps = Bindings.bindings locals
@@ -428,7 +471,7 @@ let rewrite_sizeof (Defs defs) =
              let uvar = try Some (KBindings.find (orig_kid kid) inst) with Not_found -> None in
              match uvar with
              | Some (U_nexp nexp) ->
-                let sizeof = E_aux (E_sizeof nexp, (l, Some (env, atom_typ nexp, no_effect))) in
+                let sizeof = E_aux (E_sizeof nexp, (l, mk_tannot env (atom_typ nexp) no_effect)) in
                 (try rewrite_trivial_sizeof_exp sizeof with
                 | Type_error (l, err) ->
                   raise (Reporting_basic.err_typ l (Type_error.string_of_type_error err)))
@@ -437,7 +480,7 @@ let rewrite_sizeof (Defs defs) =
                 a variable in scope. It can't be an existential because the assert rules that out. *)
              | None -> annot_exp (E_id (id_of_kid (orig_kid kid))) l env (atom_typ (nvar (orig_kid kid)))
              | _ ->
-                raise (Reporting_basic.err_unreachable l
+                raise (Reporting_basic.err_unreachable l __POS__
                                                        ("failed to infer nexp for type variable " ^ string_of_kid kid ^
                                                           " of function " ^ string_of_id f))
            end in
@@ -483,12 +526,7 @@ let rewrite_sizeof (Defs defs) =
     ; e_throw = (fun (e1,e1') -> (E_throw (e1), E_throw (e1')))
     ; e_return = (fun (e1,e1') -> (E_return e1, E_return e1'))
     ; e_assert = (fun ((e1,e1'),(e2,e2')) -> (E_assert(e1,e2), E_assert(e1',e2')) )
-    ; e_internal_cast = (fun (a,(e1,e1')) -> (E_internal_cast (a,e1), E_internal_cast (a,e1')))
-    ; e_internal_exp = (fun a -> (E_internal_exp a, E_internal_exp a))
-    ; e_internal_exp_user = (fun (a1,a2) -> (E_internal_exp_user (a1,a2), E_internal_exp_user (a1,a2)))
-    ; e_comment = (fun c -> (E_comment c, E_comment c))
-    ; e_comment_struc = (fun (e,e') -> (E_comment_struc e, E_comment_struc e'))
-    ; e_internal_let = (fun ((lexp,lexp'), (e2,e2'), (e3,e3')) -> (E_var (lexp,e2,e3), E_var (lexp',e2',e3')))
+    ; e_var = (fun ((lexp,lexp'), (e2,e2'), (e3,e3')) -> (E_var (lexp,e2,e3), E_var (lexp',e2',e3')))
     ; e_internal_plet = (fun (pat, (e1,e1'), (e2,e2')) -> (E_internal_plet (pat,e1,e2), E_internal_plet (pat,e1',e2')))
     ; e_internal_return = (fun (e,e') -> (E_internal_return e, E_internal_return e'))
     ; e_internal_value = (fun v -> (E_internal_value v, E_internal_value v))
@@ -559,22 +597,22 @@ let rewrite_sizeof (Defs defs) =
              let ptyp' = Typ_aux (Typ_tup (kid_typs @ typs), l) in
              (match pat with
               | P_tup pats ->
-                 P_aux (P_tup (kid_pats @ pats), (l, Some (penv, ptyp', peff)))
-              | P_wild -> P_aux (pat, (l, Some (penv, ptyp', peff)))
+                 P_aux (P_tup (kid_pats @ pats), (l, mk_tannot penv ptyp' peff))
+              | P_wild -> P_aux (pat, (l, mk_tannot penv ptyp' peff))
               | P_typ (Typ_aux (Typ_tup typs, l), pat) ->
                  P_aux (P_typ (Typ_aux (Typ_tup (kid_typs @ typs), l),
-                               rewrite_pat pat), (l, Some (penv, ptyp', peff)))
+                               rewrite_pat pat), (l, mk_tannot penv ptyp' peff))
               | P_as (_, id) | P_id id ->
                  (* adding parameters here would change the type of id;
               we should remove the P_as/P_id here and add a let-binding to the body *)
                  raise (Reporting_basic.err_todo l
                                                  "rewriting as- or id-patterns for sizeof expressions not yet implemented")
               | _ ->
-                 raise (Reporting_basic.err_unreachable l
+                 raise (Reporting_basic.err_unreachable l __POS__
                                                         "unexpected pattern while rewriting function parameters for sizeof expressions"))
           | ptyp ->
              let ptyp' = Typ_aux (Typ_tup (kid_typs @ [ptyp]), l) in
-             P_aux (P_tup (kid_pats @ [paux]), (l, Some (penv, ptyp', peff))) in
+             P_aux (P_tup (kid_pats @ [paux]), (l, mk_tannot penv ptyp' peff)) in
       let pat,guard,exp,pannot = destruct_pexp pexp in
       let pat' = rewrite_pat pat in
       let guard' = match guard with
@@ -666,7 +704,7 @@ let remove_vector_concat_pat pat =
                            P_aux (p,annot)
                        )
              } in
-  
+
   (* let pat = remove_typed_patterns pat in *)
 
   let fresh_id_v = fresh_id "v__" in
@@ -680,7 +718,13 @@ let remove_vector_concat_pat pat =
     { p_lit = (fun lit -> P_lit lit)
     ; p_typ = (fun (typ,p) -> P_typ (typ,p false)) (* cannot happen *)
     ; p_wild = P_wild
-    ; p_as = (fun (pat,id) -> P_as (pat true,id))
+      (* ToDo: I have no idea what the boolean parameter means so guessed that
+       * "true" was a good value to use.
+       * (Adding a comment explaining the boolean might be useful?)
+       *)
+    ; p_or  = (fun (pat1, pat2) -> P_or (pat1 true, pat2 true))
+    ; p_not = (fun pat -> P_not (pat true))
+    ; p_as  = (fun (pat,id) -> P_as (pat true,id))
     ; p_id  = (fun id -> P_id id)
     ; p_var = (fun (pat,kid) -> P_var (pat true,kid))
     ; p_app = (fun (id,ps) -> P_app (id, List.map (fun p -> p false) ps))
@@ -710,23 +754,22 @@ let remove_vector_concat_pat pat =
   let name_vector_concat_elements =
     let p_vector_concat pats =
       let rec aux ((P_aux (p,((l,_) as a))) as pat) = match p with
-        | P_vector _ -> P_aux (P_as (pat,fresh_id_v l),a)
+        | P_vector _ -> P_aux (P_as (pat, fresh_id_v l),a)
         | P_lit _ -> P_aux (P_as (pat, fresh_id_v l), a)
         | P_id id -> P_aux (P_id id,a)
         | P_as (p,id) -> P_aux (P_as (p,id),a)
         | P_typ (typ, pat) -> P_aux (P_typ (typ, aux pat),a)
         | P_wild -> P_aux (P_wild,a)
-        | P_app (id, pats) when Env.is_mapping id (env_of_annot a) -> P_aux (P_app (id, List.map aux pats), a)
+        | P_app (id, pats) when Env.is_mapping id (env_of_annot a) ->
+           P_aux (P_app (id, List.map aux pats), a)
         | _ ->
            raise
              (Reporting_basic.err_unreachable
-                l "name_vector_concat_elements: Non-vector in vector-concat pattern") in
+                l __POS__ "name_vector_concat_elements: Non-vector in vector-concat pattern") in
       P_vector_concat (List.map aux pats) in
     {id_pat_alg with p_vector_concat = p_vector_concat} in
 
   let pat = fold_pat name_vector_concat_elements pat in
-
-
 
   let rec tag_last = function
     | x :: xs -> let is_last = xs = [] in (x,is_last) :: tag_last xs
@@ -734,30 +777,19 @@ let remove_vector_concat_pat pat =
 
   (* remove names from vectors in vector_concat patterns and collect them as declarations for the
      function body or expression *)
-  let unname_vector_concat_elements = (* :
-        ('a,
-         'a pat *      ((tannot exp -> tannot exp) list),
-         'a pat_aux *  ((tannot exp -> tannot exp) list),
-         'a fpat *     ((tannot exp -> tannot exp) list),
-         'a fpat_aux * ((tannot exp -> tannot exp) list))
-          pat_alg = *)
-
+  let unname_vector_concat_elements =
     (* build a let-expression of the form "let child = root[i..j] in body" *)
     let letbind_vec typ_opt (rootid,rannot) (child,cannot) (i,j) =
       let (l,_) = cannot in
       let env = env_of_annot rannot in
       let rootname = string_of_id rootid in
       let childname = string_of_id child in
-      
+
       let root = E_aux (E_id rootid, rannot) in
       let index_i = simple_num l i in
       let index_j = simple_num l j in
 
-      (* FIXME *)
       let subv = fix_eff_exp (E_aux (E_vector_subrange (root, index_i, index_j), cannot)) in
-      (* let (_, ord, _) = vector_typ_args_of (Env.base_typ_of (env_of root) (typ_of root)) in
-      let subrange_id = if is_order_inc ord then "bitvector_subrange_inc" else "bitvector_subrange_dec" in
-      let subv = fix_eff_exp (E_aux (E_app (mk_id subrange_id, [root; index_i; index_j]), cannot)) in *)
 
       let id_pat =
         match typ_opt with
@@ -780,7 +812,7 @@ let remove_vector_concat_pat pat =
                      then Big_int.sub (Big_int.add start length) (Big_int.of_int 1)
                      else Big_int.add (Big_int.sub start length) (Big_int.of_int 1))
           | _ ->
-            raise (Reporting_basic.err_unreachable (fst rannot')
+            raise (Reporting_basic.err_unreachable (fst rannot') __POS__
               ("unname_vector_concat_elements: vector of unspecified length in vector-concat pattern"))) in
          let rec aux typ_opt (pos,pat_acc,decl_acc) (P_aux (p,cannot),is_last) =
            let ctyp = Env.base_typ_of (env_of_annot cannot) (typ_of_annot cannot) in
@@ -795,7 +827,7 @@ let remove_vector_concat_pat pat =
                 else
                   raise
                     (Reporting_basic.err_unreachable
-                       l ("unname_vector_concat_elements: vector of unspecified length in vector-concat pattern")) in
+                       l __POS__ ("unname_vector_concat_elements: vector of unspecified length in vector-concat pattern")) in
            (match p with
             (* if we see a named vector pattern, remove the name and remember to
               declare it later *)
@@ -822,6 +854,8 @@ let remove_vector_concat_pat pat =
 
     { p_lit            = (fun lit -> (P_lit lit,[]))
     ; p_wild           = (P_wild,[])
+    ; p_or             = (fun ((pat1, ds1), (pat2, ds2)) -> (P_or(pat1, pat2), ds1 @ ds2))
+    ; p_not            = (fun (pat, ds) -> (P_not(pat), ds))
     ; p_as             = (fun ((pat,decls),id) -> (P_as (pat,id),decls))
     ; p_typ            = (fun (typ,(pat,decls)) -> (P_typ (typ,pat),decls))
     ; p_id             = (fun id -> (P_id id,[]))
@@ -848,38 +882,28 @@ let remove_vector_concat_pat pat =
 
   let (pat,decls) = fold_pat unname_vector_concat_elements pat in
 
-  let decls =
-    let module S = Set.Make(String) in
-
-    let roots_needed =
-      List.fold_right
-        (fun (_,(rootid,childid)) roots_needed ->
-         if S.mem childid roots_needed then
-           (* let _ = print_endline rootid in *)
-           S.add rootid roots_needed
-         else if String.length childid >= 3 && String.sub childid 0 2 = String.sub "v__" 0 2 then
-           roots_needed
-         else
-           S.add rootid roots_needed
-        ) decls S.empty in
-    List.filter
-      (fun (_,(_,childid)) ->  
-       S.mem childid roots_needed ||
-         String.length childid < 3 ||
-           not (String.sub childid 0 2 = String.sub "v__" 0 2))
-      decls in
+  (* We need to put the decls in the right order so letbinds are generated correctly for nested patterns *)
+  let module G = Graph.Make(String) in
+  let root_graph = List.fold_left (fun g (_, (root_id, child_id)) -> G.add_edge root_id child_id g) G.empty decls in
+  let root_order = G.topsort root_graph in
+  let find_root root_id =
+    try List.find (fun (_, (root_id', _)) -> root_id = root_id') decls with
+    | Not_found ->
+    (* If it's not a root the it's a leaf node in the graph, so search for child_id *)
+    try List.find (fun (_, (_, child_id)) -> root_id = child_id) decls with
+    | Not_found -> assert false (* Should never happen *)
+  in
+  let decls = List.map find_root root_order in
 
   let (letbinds,decls) =
-    let (decls,_) = List.split decls in
+    let decls = List.map fst decls in
     List.split decls in
 
   let decls = List.fold_left (fun f g x -> f (g x)) (fun b -> b) decls in
 
-
   (* at this point shouldn't have P_as patterns in P_vector_concat patterns any more,
      all P_as and P_id vectors should have their declarations in decls.
      Now flatten all vector_concat patterns *)
-  
   let flatten =
     let p_vector_concat ps =
       let aux p acc = match p with
@@ -887,12 +911,11 @@ let remove_vector_concat_pat pat =
         | pat -> pat :: acc in
       P_vector_concat (List.fold_right aux ps []) in
     {id_pat_alg with p_vector_concat = p_vector_concat} in
-  
+
   let pat = fold_pat flatten pat in
 
   (* at this point pat should be a flat pattern: no vector_concat patterns
      with vector_concats patterns as direct child-nodes anymore *)
-
   let range a b =
     let rec aux a b = if Big_int.greater a b then [] else a :: aux (Big_int.add a (Big_int.of_int 1)) b in
     if Big_int.greater a b then List.rev (aux b a) else aux a b in
@@ -904,7 +927,7 @@ let remove_vector_concat_pat pat =
         let typ = Env.base_typ_of env (typ_of_annot annot) in
         let eff = effect_of_annot (snd annot) in
         let (l,_) = annot in
-        let wild _ = P_aux (P_wild,(gen_loc l, Some (env, bit_typ, eff))) in
+        let wild _ = P_aux (P_wild,(gen_loc l, mk_tannot env bit_typ eff)) in
         if is_vector_typ typ then
           match p, vector_typ_args_of typ with
           | P_vector ps,_ -> acc @ ps
@@ -913,7 +936,7 @@ let remove_vector_concat_pat pat =
           | _, _ ->
             (*if is_last then*) acc @ [wild Big_int.zero]
         else raise
-          (Reporting_basic.err_unreachable l
+          (Reporting_basic.err_unreachable l __POS__
             ("remove_vector_concats: Non-vector in vector-concat pattern " ^
               string_of_typ (typ_of_annot annot))) in
 
@@ -937,9 +960,9 @@ let remove_vector_concat_pat pat =
         P_vector_concat ps' in
 
     {id_pat_alg with p_vector_concat = p_vector_concat} in
-  
+
   let pat = fold_pat remove_vector_concats pat in
-  
+
   (pat,letbinds,decls)
 
 (* assumes there are no more E_internal expressions *)
@@ -1012,6 +1035,8 @@ let rec is_irrefutable_pattern (P_aux (p,ann)) =
   | P_lit (L_aux (L_unit,_))
   | P_wild
     -> true
+  | P_or(pat1, pat2) -> is_irrefutable_pattern pat1 && is_irrefutable_pattern pat2
+  | P_not(pat) -> is_irrefutable_pattern pat
   | P_lit _ -> false
   | P_as (p1,_)
   | P_typ (_,p1)
@@ -1061,15 +1086,21 @@ let rec subsumes_pat (P_aux (p1,annot1) as pat1) (P_aux (p2,annot2) as pat2) =
   match p1, p2 with
   | P_lit (L_aux (lit1,_)), P_lit (L_aux (lit2,_)) ->
       if lit1 = lit2 then Some [] else None
+  | P_or(pat1, pat2), _ -> (* todo: possibly not the right answer *) None
+  | _, P_or(pat1, pat2) -> (* todo: possibly not the right answer *) None
+  | P_not(pat), _ -> (* todo: possibly not the right answer *) None
+  | _, P_not(pat) -> (* todo: possibly not the right answer *) None
   | P_as (pat1,_), _ -> subsumes_pat pat1 pat2
   | _, P_as (pat2,_) -> subsumes_pat pat1 pat2
   | P_typ (_,pat1), _ -> subsumes_pat pat1 pat2
   | _, P_typ (_,pat2) -> subsumes_pat pat1 pat2
   | P_id (Id_aux (id1,_) as aid1), P_id (Id_aux (id2,_) as aid2) ->
     if id1 = id2 then Some []
-    else if Env.lookup_id aid1 (env_of_annot annot1) = Unbound &&
-            Env.lookup_id aid2 (env_of_annot annot2) = Unbound
-           then Some [(id2,id1)] else None
+    else if Env.lookup_id aid1 (env_of_annot annot1) = Unbound
+    then if Env.lookup_id aid2 (env_of_annot annot2) = Unbound
+      then Some [(id2,id1)]
+      else Some []
+    else None
   | P_id id1, _ ->
     if Env.lookup_id id1 (env_of_annot annot1) = Unbound then Some [] else None
   | P_var (pat1,_), P_var (pat2,_) -> subsumes_pat pat1 pat2
@@ -1127,14 +1158,18 @@ let subst_id_pat pat (id1,id2) =
   fold_pat {id_pat_alg with p_id = p_id} pat
 
 let subst_id_exp exp (id1,id2) =
-  Ast_util.subst (Id_aux (id1,Parse_ast.Unknown)) (E_aux (E_id (Id_aux (id2,Parse_ast.Unknown)),(Parse_ast.Unknown,None))) exp
+  Ast_util.subst (Id_aux (id1,Parse_ast.Unknown)) (E_aux (E_id (Id_aux (id2,Parse_ast.Unknown)),(Parse_ast.Unknown,empty_tannot))) exp
 
-let rec pat_to_exp (P_aux (pat,(l,annot))) =
+let rec pat_to_exp ((P_aux (pat,(l,annot))) as p_aux) =
   let rewrap e = E_aux (e,(l,annot)) in
+  let env = pat_env_of p_aux in
+  let typ = pat_typ_of p_aux in
   match pat with
   | P_lit lit -> rewrap (E_lit lit)
-  | P_wild -> raise (Reporting_basic.err_unreachable l
+  | P_wild -> raise (Reporting_basic.err_unreachable l __POS__
       "pat_to_exp given wildcard pattern")
+  | P_or(pat1, pat2) -> (* todo: insert boolean or *) pat_to_exp pat1 
+  | P_not(pat) -> (* todo: insert boolean not *) pat_to_exp pat
   | P_as (pat,id) -> rewrap (E_id id)
   | P_var (pat, _) -> pat_to_exp pat
   | P_typ (_,pat) -> pat_to_exp pat
@@ -1143,15 +1178,24 @@ let rec pat_to_exp (P_aux (pat,(l,annot))) =
   | P_record (fpats,b) ->
       rewrap (E_record (FES_aux (FES_Fexps (List.map fpat_to_fexp fpats,b),(l,annot))))
   | P_vector pats -> rewrap (E_vector (List.map pat_to_exp pats))
-  | P_vector_concat pats -> raise (Reporting_basic.err_unreachable l
-      "pat_to_exp not implemented for P_vector_concat")
-      (* We assume that vector concatenation patterns have been transformed
-         away already *)
+  | P_vector_concat pats -> begin
+      let empty_vec = E_aux (E_vector [], (l,())) in
+      let concat_vectors vec1 vec2 =
+        E_aux (E_vector_append (vec1, vec2), (l, ()))
+      in
+      check_exp env (List.fold_right concat_vectors (List.map (fun p -> strip_exp (pat_to_exp p)) pats) empty_vec) typ
+    end
   | P_tup pats -> rewrap (E_tuple (List.map pat_to_exp pats))
   | P_list pats -> rewrap (E_list (List.map pat_to_exp pats))
   | P_cons (p,ps) -> rewrap (E_cons (pat_to_exp p, pat_to_exp ps))
-  | P_string_append (ps) -> raise (Reporting_basic.err_unreachable l
-      "pat_to_exp not implemented for P_string_append")
+  | P_string_append (pats) -> begin
+      let empty_string = annot_exp (E_lit (L_aux (L_string "", l))) l env string_typ in
+      let string_append str1 str2 =
+        annot_exp (E_app (mk_id "string_append", [str1; str2])) l env string_typ
+      in
+      (List.fold_right string_append (List.map pat_to_exp pats) empty_string)
+    end
+
 and fpat_to_fexp (FP_aux (FP_Fpat (id,pat),(l,annot))) =
   FE_aux (FE_Fexp (id, pat_to_exp pat),(l,annot))
 
@@ -1210,7 +1254,7 @@ let rewrite_guarded_clauses l cs =
       | ((pat,guard,body,annot) as c) :: cs ->
           group_aux (remove_wildcards "g__" pat, [c], annot) [] cs
       | _ ->
-          raise (Reporting_basic.err_unreachable l
+          raise (Reporting_basic.err_unreachable l __POS__
             "group given empty list in rewrite_guarded_clauses") in
     let add_group cs groups = (if_pexp (groups @ fallthrough) cs) :: groups in
     List.fold_right add_group groups []
@@ -1222,7 +1266,7 @@ let rewrite_guarded_clauses l cs =
         let (Pat_aux (_,annot)) = pexp in
         (pat, body, annot)
     | [] ->
-        raise (Reporting_basic.err_unreachable l
+        raise (Reporting_basic.err_unreachable l __POS__
             "if_pexp given empty list in rewrite_guarded_clauses"))
   and if_exp fallthrough current_pat = (function
     | (pat,guard,body,annot) :: ((pat',guard',body',annot') as c') :: cs ->
@@ -1246,7 +1290,7 @@ let rewrite_guarded_clauses l cs =
               fix_eff_exp (annot_exp (E_if (exp,body,else_exp)) (fst annot) (env_of exp) (typ_of body))
           | _, _ -> body)
     | [] ->
-        raise (Reporting_basic.err_unreachable l
+        raise (Reporting_basic.err_unreachable l __POS__
             "if_exp given empty list in rewrite_guarded_clauses")) in
   group [] cs
 
@@ -1264,6 +1308,8 @@ let compose_guard_opt g1 g2 = match g1, g2 with
 let rec contains_bitvector_pat (P_aux (pat,annot)) = match pat with
 | P_lit _ | P_wild | P_id _ -> false
 | P_as (pat,_) | P_typ (_,pat) | P_var (pat,_) -> contains_bitvector_pat pat
+| P_or(pat1, pat2) -> contains_bitvector_pat pat1 || contains_bitvector_pat pat2
+| P_not(pat) -> contains_bitvector_pat pat
 | P_vector _ | P_vector_concat _ ->
     let typ = Env.base_typ_of (env_of_annot annot) (typ_of_annot annot) in
     is_bitvector_typ typ
@@ -1289,7 +1335,12 @@ let remove_bitvector_pat (P_aux (_, (l, _)) as pat) =
     { p_lit = (fun lit -> P_lit lit)
     ; p_typ = (fun (typ,p) -> P_typ (typ,p false))
     ; p_wild = P_wild
-    ; p_as = (fun (pat,id) -> P_as (pat true,id))
+    (* todo: I have no idea what the boolean parameter means - so I randomly
+     * passed "true".  A comment to explain the bool might be a good idea?
+     *)
+    ; p_or  = (fun (pat1, pat2) -> P_or (pat1 true, pat2 true))
+    ; p_not = (fun pat -> P_not (pat true))
+    ; p_as  = (fun (pat,id) -> P_as (pat true,id))
     ; p_id  = (fun id -> P_id id)
     ; p_var = (fun (pat,kid) -> P_var (pat true,kid))
     ; p_app = (fun (id,ps) -> P_app (id, List.map (fun p -> p false) ps))
@@ -1352,7 +1403,7 @@ let remove_bitvector_pat (P_aux (_, (l, _)) as pat) =
     let rannot = simple_annot l typ in
     let elem = access_bit_exp rootid l typ idx in
     let e = annot_pat (P_id id) l env bit_typ in
-    let letbind = LB_aux (LB_val (e,elem), (l, Some (env, bit_typ, no_effect))) in
+    let letbind = LB_aux (LB_val (e,elem), (l, mk_tannot env bit_typ no_effect)) in
     let letexp = (fun body ->
       let (E_aux (_,(_,bannot))) = body in
       if IdSet.mem id (find_used_vars body)
@@ -1374,7 +1425,7 @@ let remove_bitvector_pat (P_aux (_, (l, _)) as pat) =
       let start_idx = match start with
       | Nexp_aux (Nexp_constant s, _) -> s
       | _ ->
-        raise (Reporting_basic.err_unreachable l
+        raise (Reporting_basic.err_unreachable l __POS__
           "guard_bitvector_pat called on pattern with non-constant start index") in
       let add_bit_pat (idx, current, guards, dls) pat =
         let idx' =
@@ -1436,6 +1487,9 @@ let remove_bitvector_pat (P_aux (_, (l, _)) as pat) =
 
     { p_lit            = (fun lit -> (P_lit lit, (None, (fun b -> b), [])))
     ; p_wild           = (P_wild, (None, (fun b -> b), []))
+    ; p_or             = (fun ((pat1, gdl1), (pat2, gdl2)) ->
+                              (P_or(pat1, pat2), flatten_guards_decls [gdl1; gdl2]))
+    ; p_not            = (fun (pat, gdl) -> (P_not(pat), gdl))
     ; p_as             = (fun ((pat,gdls),id) -> (P_as (pat,id), gdls))
     ; p_typ            = (fun (typ,(pat,gdls)) -> (P_typ (typ,pat), gdls))
     ; p_id             = (fun id -> (P_id id, (None, (fun b -> b), [])))
@@ -1572,6 +1626,36 @@ let rewrite_defs_remove_numeral_pats =
   rewrite_defs_base
     { rewriters_base with rewrite_exp = rewrite_exp; rewrite_fun = rewrite_fun }
 
+let rewrite_defs_vector_string_pats_to_bit_list =
+  let rewrite_p_aux (pat, (annot : tannot annot)) =
+    let env = env_of_annot annot in
+    match pat with
+    | P_lit (L_aux (lit, l) as l_aux) ->
+       begin match lit with
+       | L_hex _ | L_bin _ -> P_aux (P_vector (List.map (fun p -> P_aux (P_lit p, (l, mk_tannot env bit_typ no_effect))) (vector_string_to_bit_list l lit)), annot)
+       | lit -> P_aux (P_lit l_aux, annot)
+       end
+    | pat -> (P_aux (pat, annot))
+  in
+  let rewrite_e_aux (exp, (annot : tannot annot)) =
+    let env = env_of_annot annot in
+    match exp with
+    | E_lit (L_aux (lit, l) as l_aux) ->
+       begin match lit with
+       | L_hex _ | L_bin _ -> E_aux (E_vector (List.map (fun e -> E_aux (E_lit e, (l, mk_tannot env bit_typ no_effect))) (vector_string_to_bit_list l lit)), annot)
+       | lit -> E_aux (E_lit l_aux, annot)
+       end
+    | exp -> (E_aux (exp, annot))
+  in
+  let pat_alg = { id_pat_alg with p_aux = rewrite_p_aux } in
+  let rewrite_pat rw pat =
+    fold_pat pat_alg pat
+  in
+  let rewrite_exp rw exp =
+    fold_exp { id_exp_alg with e_aux = rewrite_e_aux; pat_alg = pat_alg } exp
+  in
+  rewrite_defs_base { rewriters_base with rewrite_pat = rewrite_pat; rewrite_exp = rewrite_exp }
+
 (* Remove pattern guards by rewriting them to if-expressions within the
    pattern expression. *)
 let rewrite_exp_guarded_pats rewriters (E_aux (exp,(l,annot)) as full_exp) =
@@ -1590,15 +1674,27 @@ let rewrite_exp_guarded_pats rewriters (E_aux (exp,(l,annot)) as full_exp) =
     | Pat_aux (Pat_when (pat, guard, body), annot) ->
       (pat, Some (rewrite_rec guard), rewrite_rec body, annot) in
     let clauses = rewrite_guarded_clauses l (List.map clause ps) in
+    let e = rewrite_rec e in
     if (effectful e) then
-      let e = rewrite_rec e in
       let (E_aux (_,(el,eannot))) = e in
-      let pat_e' = fresh_id_pat "p__" (el, Some (env_of e, typ_of e, no_effect)) in
+      let pat_e' = fresh_id_pat "p__" (el, mk_tannot (env_of e) (typ_of e) no_effect) in
       let exp_e' = pat_to_exp pat_e' in
       let letbind_e = LB_aux (LB_val (pat_e',e), (el,eannot)) in
       let exp' = case_exp exp_e' (typ_of full_exp) clauses in
       rewrap (E_let (letbind_e, exp'))
     else case_exp e (typ_of full_exp) clauses
+  | E_try (e,ps)
+    when List.exists is_guarded_pexp ps ->
+    let e = rewrite_rec e in
+    let clause = function
+    | Pat_aux (Pat_exp (pat, body), annot) ->
+      (pat, None, rewrite_rec body, annot)
+    | Pat_aux (Pat_when (pat, guard, body), annot) ->
+      (pat, Some (rewrite_rec guard), rewrite_rec body, annot) in
+    let clauses = rewrite_guarded_clauses l (List.map clause ps) in
+    let pexp (pat,body,annot) = Pat_aux (Pat_exp (pat,body),annot) in
+    let ps = List.map pexp clauses in
+    fix_eff_exp (annot_exp (E_try (e,ps)) l (env_of full_exp) (typ_of full_exp))
   | _ -> rewrite_base full_exp
 
 let rewrite_fun_guarded_pats rewriters (FD_aux (FD_function (r,t,e,funcls),(l,fdannot))) =
@@ -1610,7 +1706,7 @@ let rewrite_fun_guarded_pats rewriters (FD_aux (FD_function (r,t,e,funcls),(l,fd
          (pat,guard,exp,annot) in
        let cs = rewrite_guarded_clauses l (List.map clause funcls) in
        List.map (fun (pat,exp,annot) ->
-         FCL_aux (FCL_Funcl(id,construct_pexp (pat,None,exp,(Parse_ast.Unknown,None))),annot)) cs
+         FCL_aux (FCL_Funcl(id,construct_pexp (pat,None,exp,(Parse_ast.Unknown,empty_tannot))),annot)) cs
      | _ -> funcls (* TODO is the empty list possible here? *) in
    FD_aux (FD_function(r,t,e,funcls),(l,fdannot))
 
@@ -1637,9 +1733,9 @@ let rec rewrite_lexp_to_rhs ((LEXP_aux(lexp,((l,_) as annot))) as le) =
        | Typ_aux (Typ_id rectyp_id, _) | Typ_aux (Typ_app (rectyp_id, _), _) when Env.is_record rectyp_id env ->
           let field_update exp = FES_aux (FES_Fexps ([FE_aux (FE_Fexp (id, exp), annot)], false), annot) in
           (lhs, (fun exp -> rhs (E_aux (E_record_update (lexp_to_exp lexp, field_update exp), lannot))))
-       | _ -> raise (Reporting_basic.err_unreachable l ("Unsupported lexp: " ^ string_of_lexp le))
+       | _ -> raise (Reporting_basic.err_unreachable l __POS__ ("Unsupported lexp: " ^ string_of_lexp le))
      end
-  | _ -> raise (Reporting_basic.err_unreachable l ("Unsupported lexp: " ^ string_of_lexp le))
+  | _ -> raise (Reporting_basic.err_unreachable l __POS__ ("Unsupported lexp: " ^ string_of_lexp le))
 
 let updates_vars exp =
   let e_assign ((_, lexp), (u, exp)) =
@@ -1660,14 +1756,15 @@ let rewrite_exp_lift_assign_intro rewriters ((E_aux (exp,((l,_) as annot))) as f
   | E_block exps ->
     let rec walker exps = match exps with
       | [] -> []
-      | (E_aux(E_assign(le,e), ((l, Some (env,typ,eff)) as annot)) as exp)::exps
-        when lexp_is_local_intro le env && not (lexp_is_effectful le) ->
-        let (le', re') = rewrite_lexp_to_rhs le in
-        let e' = re' (rewrite_base e) in
-        let exps' = walker exps in
-        let effects = union_eff_exps exps' in
-        let block = E_aux (E_block exps', (l, Some (env, unit_typ, effects))) in
-        [fix_eff_exp (E_aux (E_var(le', e', block), annot))]
+      | (E_aux(E_assign(le,e), (l, tannot)) as exp)::exps
+           when not (is_empty_tannot tannot) && lexp_is_local_intro le (env_of_annot (l, tannot)) && not (lexp_is_effectful le) ->
+         let env = env_of_annot (l, tannot) in
+         let (le', re') = rewrite_lexp_to_rhs le in
+         let e' = re' (rewrite_base e) in
+         let exps' = walker exps in
+         let effects = union_eff_exps exps' in
+         let block = E_aux (E_block exps', (l, mk_tannot env unit_typ effects)) in
+         [fix_eff_exp (E_aux (E_var(le', e', block), annot))]
       (*| ((E_aux(E_if(c,t,e),(l,annot))) as exp)::exps ->
         let vars_t = introduced_variables t in
         let vars_e = introduced_variables e in
@@ -1898,7 +1995,7 @@ let rewrite_defs_early_return (Defs defs) =
     let annot = match List.map get_return_pexp pes with
     | Pat_aux (Pat_exp (_, E_aux (_, annot)), _) :: _ -> annot
     | Pat_aux (Pat_when (_, _, E_aux (_, annot)), _) :: _ -> annot
-    | [] -> (Parse_ast.Unknown, None) in
+    | [] -> (Parse_ast.Unknown, empty_tannot) in
     if List.for_all is_return_pexp pes
     then E_return (E_aux (E_case (e, List.map get_return_pexp pes), annot))
     else E_case (e, pes) in
@@ -1908,7 +2005,7 @@ let rewrite_defs_early_return (Defs defs) =
     if is_return exp then E_return (E_aux (E_let (lb, ret_exp), annot))
     else E_let (lb, exp) in
 
-  let e_internal_let (lexp, exp1, exp2) =
+  let e_var (lexp, exp1, exp2) =
     let (E_aux (_, annot) as ret_exp2) = get_return exp2 in
     if is_return exp2 then
       E_return (E_aux (E_var (lexp, exp1, ret_exp2), annot))
@@ -1924,12 +2021,17 @@ let rewrite_defs_early_return (Defs defs) =
     let full_exp = propagate_exp_effect (E_aux (exp, (l, annot))) in
     let env = env_of full_exp in
     match full_exp with
-    | E_aux (E_return exp, (l, Some (env, typ, eff))) ->
+    | E_aux (E_return exp, (l, tannot)) when not (is_empty_tannot tannot) ->
       (* Add escape effect annotation, since we use the exception mechanism
          of the state monad to implement early return in the Lem backend *)
-      let annot' = Some (env, typ, union_effects eff (mk_effect [BE_escape])) in
-      let exp' = add_e_cast (typ_of exp) exp in
-      E_aux (E_app (mk_id "early_return", [exp']), (l, annot'))
+       let typ = typ_of_annot (l, tannot) in
+       let env = env_of_annot (l, tannot) in
+       let eff = effect_of_annot tannot in
+       let tannot' = mk_tannot env typ (union_effects eff (mk_effect [BE_escape])) in
+       let exp' = match Env.get_ret_typ env with
+         | Some typ -> add_e_cast typ exp
+         | None -> exp in
+       E_aux (E_app (mk_id "early_return", [exp']), (l, tannot'))
     | _ -> full_exp in
 
   (* Make sure that all final leaves of an expression (e.g. all branches of
@@ -1968,7 +2070,7 @@ let rewrite_defs_early_return (Defs defs) =
         let exp' =
           fold_exp
             { id_exp_alg with e_block = e_block; e_if = e_if; e_case = e_case;
-              e_let = e_let; e_internal_let = e_internal_let; e_app = e_app }
+              e_let = e_let; e_var = e_var; e_app = e_app }
             (add_final_return false exp) in
         (* Remove early return if we can pull it out completely, and rewrite
            remaining early returns to "early_return" calls *)
@@ -1977,10 +2079,10 @@ let rewrite_defs_early_return (Defs defs) =
           (if is_return exp' then get_return exp' else exp)
       else exp
     in
-    let a = match a with
-    | (l, Some (env, typ, eff)) ->
-      (l, Some (env, typ, union_effects eff (effect_of exp)))
-    | _ -> a in
+    let a = match destruct_tannot (snd a) with
+      | Some (env, typ, eff) ->
+         (fst a, mk_tannot env typ (union_effects eff (effect_of exp)))
+      | _ -> a in
     FCL_aux (FCL_Funcl (id, construct_pexp (pat, guard, exp, pannot)), a) in
 
   let rewrite_fun_early_return rewriters
@@ -1995,14 +2097,14 @@ let rewrite_defs_early_return (Defs defs) =
     { rewriters_base with rewrite_fun = rewrite_fun_early_return }
     (Defs (early_ret_spec @ defs))
 
-let swaptyp typ (l,tannot) = match tannot with
-  | Some (env, typ', eff) -> (l, Some (env, typ, eff))
-  | _ -> raise (Reporting_basic.err_unreachable l "swaptyp called with empty type annotation")
+let swaptyp typ (l,tannot) = match destruct_tannot tannot with
+  | Some (env, typ', eff) -> (l, mk_tannot env typ eff)
+  | _ -> raise (Reporting_basic.err_unreachable l __POS__ "swaptyp called with empty type annotation")
 
 let is_funcl_rec (FCL_aux (FCL_Funcl (id, pexp), _)) =
   let pat,guard,exp,pannot = destruct_pexp pexp in
   let exp = match guard with None -> exp
-    | Some exp' -> E_aux (E_block [exp';exp],(Parse_ast.Unknown,None)) in
+    | Some exp' -> E_aux (E_block [exp';exp],(Parse_ast.Unknown,empty_tannot)) in
   fst (fold_exp
     { (compute_exp_alg false (||) ) with
       e_app = (fun (f, es) ->
@@ -2074,7 +2176,7 @@ let rewrite_split_fun_constr_pats fun_name (Defs defs) =
            let pat, _, exp, _ = destruct_pexp pexp in
            env_of exp, pat_typ_of pat, typ_of exp
         | _ ->
-           raise (Reporting_basic.err_unreachable l
+           raise (Reporting_basic.err_unreachable l __POS__
              "rewrite_split_fun_constr_pats: empty auxiliary function")
       in
       let eff = List.fold_left
@@ -2105,7 +2207,7 @@ let rewrite_split_fun_constr_pats fun_name (Defs defs) =
       let val_spec =
         VS_aux (VS_val_spec
           (mk_typschm typquant fun_typ, id, (fun _ -> None), false),
-          (Parse_ast.Unknown, None))
+          (Parse_ast.Unknown, empty_tannot))
       in
       let fundef = FD_aux (FD_function (r_o, t_o, e_o, funcls), fdannot) in
       [DEF_spec val_spec; DEF_fundef fundef] @ defs
@@ -2134,7 +2236,7 @@ let rewrite_fix_val_specs (Defs defs) =
        begin
          try Env.get_val_spec id env with
          | _ ->
-            raise (Reporting_basic.err_unreachable (Parse_ast.Unknown)
+            raise (Reporting_basic.err_unreachable (Parse_ast.Unknown) __POS__
               ("No val spec found for " ^ string_of_id id))
        end
   in
@@ -2152,13 +2254,17 @@ let rewrite_fix_val_specs (Defs defs) =
 
   let e_aux val_specs (exp, (l, annot)) =
     match fix_eff_exp (E_aux (exp, (l, annot))) with
-    | E_aux (E_app_infix (_, f, _) as exp, (l, Some (env, typ, eff)))
-    | E_aux (E_app (f, _) as exp, (l, Some (env, typ, eff))) ->
+    | E_aux (E_app_infix (_, f, _) as exp, (l, tannot))
+    | E_aux (E_app (f, _) as exp, (l, tannot))
+         when not (is_empty_tannot tannot) ->
+       let env = env_of_annot (l, tannot) in
+       let typ = typ_of_annot (l, tannot) in
+       let eff = effect_of_annot tannot in
        let vs = find_vs env val_specs f in
        (* The (updated) environment is used later by fix_eff_exp to look up
           the actual effects of a function call *)
        let env = Env.update_val_spec f vs env in
-       E_aux (exp, (l, Some (env, typ, union_effects eff (eff_of_vs vs))))
+       E_aux (exp, (l, mk_tannot env typ (union_effects eff (eff_of_vs vs))))
     | e_aux -> e_aux
   in
 
@@ -2335,6 +2441,11 @@ let rewrite_undefined mwords =
   in
   let rewrite_exp_undefined = { id_exp_alg with e_aux = (fun (exp, annot) -> rewrite_e_aux (E_aux (exp, annot))) } in
   rewrite_defs_base { rewriters_base with rewrite_exp = (fun _ -> fold_exp rewrite_exp_undefined) }
+
+let rewrite_undefined_if_gen always_bitvector defs =
+  if !Initial_check.opt_undefined_gen
+  then rewrite_undefined (always_bitvector || !Pretty_print_lem.opt_mwords) defs
+  else defs
 
 let rec simple_typ (Typ_aux (typ_aux, l) as typ) = Typ_aux (simple_typ_aux typ_aux, l)
 and simple_typ_aux = function
@@ -2541,7 +2652,7 @@ let rewrite_defs_remove_blocks =
 let letbind (v : 'a exp) (body : 'a exp -> 'a exp) : 'a exp =
   (* body is a function : E_id variable -> actual body *)
   let (E_aux (_,(l,annot))) = v in
-  match annot with
+  match destruct_tannot annot with
   | Some (env, typ, eff) when is_unit_typ typ ->
      let body = body (annot_exp (E_lit (mk_lit L_unit)) l env unit_typ) in
      let body_typ = try typ_of body with _ -> unit_typ in
@@ -2555,7 +2666,7 @@ let letbind (v : 'a exp) (body : 'a exp -> 'a exp) : 'a exp =
      let body = body (annot_exp (E_id id) l env typ) in
      fix_eff_exp (annot_exp (E_let (lb, body)) l env (typ_of body))
   | None ->
-     raise (Reporting_basic.err_unreachable l "no type information")
+     raise (Reporting_basic.err_unreachable l __POS__ "no type information")
 
 
 let rec mapCont (f : 'b -> ('b -> 'a exp) -> 'a exp) (l : 'b list) (k : 'b list -> 'a exp) : 'a exp = 
@@ -2780,8 +2891,6 @@ let rewrite_defs_letbind_effects =
        k (rewrap (E_sizeof nexp))
     | E_constraint nc ->
        k (rewrap (E_constraint nc))
-    | E_sizeof_internal annot ->
-       k (rewrap (E_sizeof_internal annot))
     | E_assign (lexp,exp1) ->
        n_lexp lexp (fun lexp ->
        n_exp_name exp1 (fun exp1 ->
@@ -2791,11 +2900,6 @@ let rewrite_defs_letbind_effects =
        n_exp_name exp1 (fun exp1 ->
        n_exp_name exp2 (fun exp2 ->
        k (rewrap (E_assert (exp1,exp2)))))
-    | E_internal_cast (annot',exp') ->
-       n_exp_name exp' (fun exp' ->
-       k (rewrap (E_internal_cast (annot',exp'))))
-    | E_internal_exp _ -> k exp
-    | E_internal_exp_user _ -> k exp
     | E_var (lexp,exp1,exp2) ->
        n_lexp lexp (fun lexp ->
        n_exp exp1 (fun exp1 ->
@@ -2805,11 +2909,6 @@ let rewrite_defs_letbind_effects =
        k (rewrap (E_internal_return exp1)))
     | E_internal_value v ->
        k (rewrap (E_internal_value v))
-    | E_comment str ->
-       k (rewrap (E_comment str))
-    | E_comment_struc exp' ->
-       n_exp exp' (fun exp' ->
-       k (rewrap (E_comment_struc exp')))
     | E_return exp' ->
        n_exp_name exp' (fun exp' ->
        k (rewrap (E_return exp')))
@@ -2863,7 +2962,7 @@ let rewrite_defs_internal_lets =
     | LEXP_id id -> P_aux (P_id id, annot)
     | LEXP_cast (typ, id) -> add_p_typ typ (P_aux (P_id id, annot))
     | LEXP_tup lexps -> P_aux (P_tup (List.map pat_of_local_lexp lexps), annot)
-    | _ -> raise (Reporting_basic.err_unreachable l "unexpected local lexp") in
+    | _ -> raise (Reporting_basic.err_unreachable l __POS__ "unexpected local lexp") in
 
   let e_let (lb,body) =
     match lb with
@@ -2881,7 +2980,7 @@ let rewrite_defs_internal_lets =
        then E_internal_plet (pat,exp',body)
        else E_let (lb,body) in
 
-  let e_internal_let = fun (lexp,exp1,exp2) ->
+  let e_var = fun (lexp,exp1,exp2) ->
     let paux, annot = match lexp with
     | LEXP_aux (LEXP_id id, annot) ->
        (P_id id, annot)
@@ -2893,7 +2992,7 @@ let rewrite_defs_internal_lets =
     else
       E_let (LB_aux (LB_val (P_aux (paux, annot), exp1), annot), exp2) in
 
-  let alg = { id_exp_alg with e_let = e_let; e_internal_let = e_internal_let } in
+  let alg = { id_exp_alg with e_let = e_let; e_var = e_var } in
   rewrite_defs_base
     { rewrite_exp = (fun _ exp -> fold_exp alg (propagate_exp_effect exp))
     ; rewrite_pat = rewrite_pat
@@ -2950,7 +3049,7 @@ let fresh_stringappend_id () =
   id
 
 let unk = Parse_ast.Unknown
-let unkt = (Parse_ast.Unknown, None)
+let unkt = (Parse_ast.Unknown, empty_tannot)
 
 let construct_bool_match env (match_on : tannot exp) (pexp : tannot pexp) : tannot exp =
   let true_exp = annot_exp (E_lit (mk_lit L_true)) unk env bool_typ in
@@ -3015,7 +3114,7 @@ let rec rewrite_defs_pat_string_append =
        let new_expr = annot_exp (E_case (drop_exp, [new_pat2_pexp])) unk env (typ_of expr) in
 
        (* construct final result *)
-       annot_pat (P_id id) unk env string_typ, guard1 :: guard2 :: guards, new_expr
+       annot_pat (P_id id) unk env string_typ, [guard1; guard2], new_expr
 
     (*
         (builtin x) ^^ pat2 => expr ---> s# if match maybe_atoi s# {
@@ -3026,7 +3125,7 @@ let rec rewrite_defs_pat_string_append =
                                                  None => false
                                                }
                                          => let (x, len#) = match maybe_int_of_prefix s# {
-                                                              Some (n#, len#) => (n#, len#)
+                                                              Some (x, len#) => (x, len#)
                                                             } in
                                             match string_drop(s#, len#) {
                                               pat2 => expr
@@ -3038,7 +3137,6 @@ let rec rewrite_defs_pat_string_append =
                  :: pats
                ), psa_annot)
          when Env.is_mapping mapping_id env ->
-
        (* common things *)
        let mapping_prefix_func =
          match mapping_id with
@@ -3052,7 +3150,6 @@ let rec rewrite_defs_pat_string_append =
        in
 
        let s_id = fresh_stringappend_id () in
-       let n_id = fresh_stringappend_id () in
        let len_id = fresh_stringappend_id () in
 
        (* construct drop expression -- string_drop(s#, len#) *)
@@ -3065,11 +3162,22 @@ let rec rewrite_defs_pat_string_append =
                                         [annot_exp (E_id s_id) unk env string_typ]))
                         unk env mapping_inner_typ in
        (* construct some pattern -- Some (n#, len#) *)
-       let opt_typ = app_typ (mk_id "option") [Typ_arg_aux (Typ_arg_typ (tuple_typ [mapping_inner_typ; nat_typ]), unk)] in
+       let opt_typ = app_typ (mk_id "option") [Typ_arg_aux (Typ_arg_typ mapping_inner_typ, unk)] in
+       let tup_arg_pat = match arg_pats with
+         | [] -> assert false
+         | [arg_pat] -> arg_pat
+         | arg_pats -> annot_pat (P_tup arg_pats) unk env (tuple_typ (List.map pat_typ_of arg_pats))
+       in
+
        let some_pat = annot_pat (P_app (mk_id "Some",
-                                        [annot_pat (P_id n_id) unk env mapping_inner_typ;
+                                        [tup_arg_pat;
                                          annot_pat (P_id len_id) unk env nat_typ]))
                         unk env opt_typ in
+       let some_pat, some_pat_env, _ = bind_pat env (strip_pat some_pat) opt_typ in
+
+       (* need to add the Some(...) env to tup_arg_pats for pat_to_exp below as it calls the typechecker *)
+       let tup_arg_pat = map_pat_annot (fun (l, tannot) -> (l, replace_env some_pat_env tannot)) tup_arg_pat in
+
        (* construct None pattern *)
        let none_pat = annot_pat (P_app (mk_id "None", [annot_pat (P_lit (mk_lit L_unit)) unk env unit_typ])) unk env opt_typ in
 
@@ -3095,11 +3203,11 @@ let rec rewrite_defs_pat_string_append =
                                             annot_exp (E_case (func_exp, [
                                                              Pat_aux (Pat_exp (some_pat,
                                                                                annot_exp (E_tuple [
-                                                                                           annot_exp (E_id n_id) unk env mapping_inner_typ;
+                                                                                           pat_to_exp tup_arg_pat;
                                                                                            annot_exp (E_id len_id) unk env nat_typ
-                                                                                 ]) unk env (tuple_typ [mapping_inner_typ; nat_typ])
+                                                                                 ]) unk env mapping_inner_typ
                                                                         ), unkt)
-                                              ])) unk env (tuple_typ [mapping_inner_typ; nat_typ])
+                                              ])) unk env mapping_inner_typ
                            )) unk env mapping_inner_typ in
        let new_letbind =
          match arg_pats with
@@ -3118,7 +3226,7 @@ let rec rewrite_defs_pat_string_append =
 
        (* construct final result *)
        annot_pat (P_id s_id) unk env string_typ,
-       new_guard :: guards,
+       [new_guard],
        new_let
 
     | P_aux (P_string_append [pat], _) ->
@@ -3129,6 +3237,16 @@ let rec rewrite_defs_pat_string_append =
 
     | P_aux (P_string_append _, _) ->
        failwith ("encountered a variety of string append pattern that is not yet implemented: " ^ string_of_pat pat)
+
+    | P_aux (P_or(pat1, pat2), p_annot) ->
+       (* todo: this is wrong - no idea what is happening here *)
+       let (pat1', guards1, expr1) = rewrite_pat env (pat1, guards, expr) in
+       let (pat2', guards2, expr2) = rewrite_pat env (pat2, guards, expr) in
+       (P_aux (P_or(pat1', pat2'), p_annot), guards1 @ guards2, expr2)
+
+    | P_aux (P_not(pat), p_annot) ->
+       let (pat', guards, expr) = rewrite_pat env (pat, guards, expr) in
+       (P_aux (P_not(pat'), p_annot), guards, expr)
 
     | P_aux (P_as (inner_pat, inner_id), p_annot) ->
        let inner_pat, guards, expr = rewrite_pat env (inner_pat, guards, expr) in
@@ -3211,7 +3329,9 @@ let rewrite_defs_mapping_patterns =
     let env = pat_env_of pat in
     match pat with
       (*
-          mapping(args) => expr ----> s# if mapping_matches(s#) => let args = mapping(s#) in expr
+          mapping(args) if g => expr ----> s# if mapping_matches(s#)
+                                                 & (if mapping_matches(s#) then let args = mapping(s#) in g)
+                                             => let args = mapping(s#) in expr
 
           (plus 'infer the mapping type' shenanigans)
        *)
@@ -3259,7 +3379,12 @@ let rewrite_defs_mapping_patterns =
 
        let new_let = annot_exp (E_let (new_letbind, expr)) unk env (typ_of expr) in
 
-       annot_pat (P_id s_id) unk env mapping_in_typ, new_guard :: guards, new_let
+       let false_exp = annot_exp (E_lit (L_aux (L_false, unk))) unk env bool_typ in
+       let new_other_guards = annot_exp (E_if (new_guard,
+                                               (annot_exp (E_let (new_letbind, fold_typed_guards env guards)) unk env bool_typ),
+                                               false_exp)) unk env bool_typ in
+
+       annot_pat (P_id s_id) unk env mapping_in_typ, [new_guard; new_other_guards], new_let
 
     | P_aux (P_as (inner_pat, inner_id), p_annot) ->
        let inner_pat, guards, expr = rewrite_pat env (inner_pat, guards, expr) in
@@ -3294,6 +3419,13 @@ let rewrite_defs_mapping_patterns =
        let pat1, guards, expr = rewrite_pat env (pat1, guards, expr) in
        let pat2, guards, expr = rewrite_pat env (pat2, guards, expr) in
        P_aux (P_cons (pat1, pat2), p_annot), guards, expr
+    | P_aux (P_or (pat1, pat2), p_annot) ->
+       let pat1, guards, expr = rewrite_pat env (pat1, guards, expr) in
+       let pat2, guards, expr = rewrite_pat env (pat2, guards, expr) in
+       P_aux (P_or (pat1, pat2), p_annot), guards, expr
+    | P_aux (P_not p, p_annot) ->
+       let p', guards, expr = rewrite_pat env (p, guards, expr) in
+       P_aux (P_not p', p_annot), guards, expr
     | P_aux (P_id _, _)
     | P_aux (P_lit _, _)
     | P_aux (P_wild, _) -> pat, guards, expr
@@ -3333,6 +3465,10 @@ let rewrite_no_strings (L_aux (lit, _)) = match lit with
   | L_string _ -> false
   | _ -> true
 
+let rewrite_lit_ocaml (L_aux (lit, _)) = match lit with
+  | L_num _ | L_string _ | L_hex _ | L_bin _ | L_real _ | L_unit -> false
+  | _ -> true
+
 let rewrite_defs_pat_lits rewrite_lit =
   let rewrite_pexp (Pat_aux (pexp_aux, annot) as pexp) =
     let guards = ref [] in
@@ -3341,6 +3477,9 @@ let rewrite_defs_pat_lits rewrite_lit =
     let rewrite_pat = function
       (* HACK: ignore strings for now *)
       | P_lit (L_aux (L_string _, _)) as p_aux, p_annot -> P_aux (p_aux, p_annot)
+      (* Matching on unit is always the same as matching on wildcard *)
+      | P_lit (L_aux (L_unit, _) as lit), p_annot when rewrite_lit lit ->
+         P_aux (P_wild, p_annot)
       | P_lit lit, p_annot when rewrite_lit lit ->
          let env = env_of_annot p_annot in
          let typ = typ_of_annot p_annot in
@@ -3350,7 +3489,8 @@ let rewrite_defs_pat_lits rewrite_lit =
          guards := guard :: !guards;
          incr counter;
          P_aux (P_id id, p_annot)
-      | p_aux, p_annot -> P_aux (p_aux, p_annot)
+      | p_aux, p_annot ->
+         P_aux (p_aux, p_annot)
     in
 
     match pexp_aux with
@@ -3358,15 +3498,15 @@ let rewrite_defs_pat_lits rewrite_lit =
        begin
          let pat = fold_pat { id_pat_alg with p_aux = rewrite_pat } pat in
          match !guards with
-         | [] -> pexp
+         | [] -> Pat_aux (Pat_exp (pat, exp), annot)
          | (g :: gs) ->
-            let guard_annot = (fst annot, Some (env_of exp, bool_typ, no_effect)) in
+            let guard_annot = (fst annot, mk_tannot (env_of exp) bool_typ no_effect) in
             Pat_aux (Pat_when (pat, List.fold_left (fun g g' -> E_aux (E_app (mk_id "and_bool", [g; g']), guard_annot)) g gs, exp), annot)
        end
     | Pat_when (pat, guard, exp) ->
        begin
          let pat = fold_pat { id_pat_alg with p_aux = rewrite_pat } pat in
-         let guard_annot = (fst annot, Some (env_of exp, bool_typ, no_effect)) in
+         let guard_annot = (fst annot, mk_tannot (env_of exp) bool_typ no_effect) in
          Pat_aux (Pat_when (pat, List.fold_left (fun g g' -> E_aux (E_app (mk_id "and_bool", [g; g']), guard_annot)) guard !guards, exp), annot)
        end
   in
@@ -3460,7 +3600,7 @@ let rec rewrite_var_updates ((E_aux (expaux,((l,_) as annot))) as exp) =
        let ord_exp, kids, constr, lower, upper, lower_exp, upper_exp =
          match destruct_numeric env (typ_of exp1), destruct_numeric env (typ_of exp2) with
            | None, _ | _, None ->
-              raise (Reporting_basic.err_unreachable el "Could not determine loop bounds")
+              raise (Reporting_basic.err_unreachable el __POS__ "Could not determine loop bounds")
            | Some (kids1, constr1, n1), Some (kids2, constr2, n2) ->
               let kids = kids1 @ kids2 in
               let constr = nc_and constr1 constr2 in
@@ -3538,7 +3678,7 @@ let rec rewrite_var_updates ((E_aux (expaux,((l,_) as annot))) as exp) =
          let env = env_of_annot annot in
          let typ = typ_of e1 in
          let eff = union_eff_exps [c;e1;e2] in
-         let v = E_aux (E_if (c,e1,e2), (gen_loc el, Some (env, typ, eff))) in
+         let v = E_aux (E_if (c,e1,e2), (gen_loc el, mk_tannot env typ eff)) in
          Added_vars (v, tuple_pat (if overwrite then varpats else pat :: varpats))
     | E_case (e1,ps) | E_try (e1, ps) ->
        let is_case = match expaux with E_case _ -> true | _ -> false in
@@ -3563,10 +3703,10 @@ let rec rewrite_var_updates ((E_aux (expaux,((l,_) as annot))) as exp) =
          let rewrite_pexp (Pat_aux (pexp, (l, _))) = match pexp with
            | Pat_exp (pat, exp) ->
              let exp = rewrite_var_updates (add_vars overwrite exp vars) in
-             let pannot = (l, Some (env_of exp, typ_of exp, effect_of exp)) in
+             let pannot = (l, mk_tannot (env_of exp) (typ_of exp) (effect_of exp)) in
              Pat_aux (Pat_exp (pat, exp), pannot)
            | Pat_when _ ->
-             raise (Reporting_basic.err_unreachable l
+             raise (Reporting_basic.err_unreachable l __POS__
                "Guarded patterns should have been rewritten already") in
          let ps = List.map rewrite_pexp ps in
          let expaux = if is_case then E_case (e1, ps) else E_try (e1, ps) in
@@ -3580,7 +3720,7 @@ let rec rewrite_var_updates ((E_aux (expaux,((l,_) as annot))) as exp) =
          | Local (_, typ) ->
             add_p_typ typ (annot_pat (P_id id) pl env typ)
          | _ ->
-            raise (Reporting_basic.err_unreachable pl
+            raise (Reporting_basic.err_unreachable pl __POS__
               ("Failed to look up type of variable " ^ string_of_id id)) in
        if effectful exp then
          Same_vars (E_aux (E_assign (lexp,vexp),annot))
@@ -3626,7 +3766,7 @@ let rec rewrite_var_updates ((E_aux (expaux,((l,_) as annot))) as exp) =
        | LEXP_aux (LEXP_cast (typ, id), _) ->
           unaux_pat (add_p_typ typ (annot_pat (P_id id) l env (typ_of v))), typ
        | _ ->
-         raise (Reporting_basic.err_unreachable l
+         raise (Reporting_basic.err_unreachable l __POS__
            "E_var with a lexp that is not a variable") in
      let lb = fix_eff_lb (annot_letbind (paux, v) l env typ) in
      let exp = fix_eff_exp (annot_exp (E_let (lb, body)) l env (typ_of body)) in
@@ -3665,9 +3805,10 @@ let remove_reference_types exp =
     | Typ_arg_aux (Typ_arg_typ t, a) -> Typ_arg_aux (Typ_arg_typ (rewrite_t t), a)
     | _ -> t_arg in
 
-  let rec rewrite_annot = function
-    | (l, None) -> (l, None)
-    | (l, Some (env, typ, eff)) -> (l, Some (env, rewrite_t typ, eff)) in
+  let rec rewrite_annot (l, tannot) =
+    match destruct_tannot tannot with
+    | None -> l, empty_tannot
+    | Some (_, typ, _) -> l, replace_typ (rewrite_t typ) tannot in
 
   map_exp_annot rewrite_annot exp
 
@@ -3691,7 +3832,7 @@ let rewrite_defs_remove_superfluous_letbinds =
          when Id.compare id id' = 0 && small exp1 ->
           let (E_aux (_,e1annot)) = exp1 in
           E_aux (E_internal_return (exp1),e1annot)
-       | _ -> E_aux (exp,annot) 
+       | _ -> E_aux (exp,annot)
        end
     | _ -> E_aux (exp,annot) in
 
@@ -3705,7 +3846,6 @@ let rewrite_defs_remove_superfluous_letbinds =
     ; rewrite_def = rewrite_def
     ; rewrite_defs = rewrite_defs_base
     }
-  
 
 let rewrite_defs_remove_superfluous_returns =
 
@@ -3784,12 +3924,12 @@ let merge_funcls (Defs defs) =
     | (FCL_aux (FCL_Funcl (id,_),(l,_)))::_ ->
        let var = mk_id "merge#var" in
        let l_g = Parse_ast.Generated l in
-       let ann_g : _ * tannot = (l_g,None) in
+       let ann_g : _ * tannot = (l_g,empty_tannot) in
        let clauses = List.map (fun (FCL_aux (FCL_Funcl (_,pexp),_)) -> pexp) fcls in
        FD_aux (FD_function (r,t,e,[
          FCL_aux (FCL_Funcl (id,Pat_aux (Pat_exp (P_aux (P_id var,ann_g),
                                                   E_aux (E_case (E_aux (E_id var,ann_g),clauses),ann_g)),ann_g)),
-                  (l,None))]),ann)
+                  (l,empty_tannot))]),ann)
   in
   let merge_in_def = function
     | DEF_fundef f -> DEF_fundef (merge_function f)
@@ -3798,30 +3938,30 @@ let merge_funcls (Defs defs) =
   in Defs (List.map merge_in_def defs)
 
 
-let rec exp_of_mpat (MP_aux (mpat, annot)) =
-  let empty_vec = E_aux (E_vector [], annot) in
-  let concat_vectors annot vec1 vec2 = (* TODO FIXME, this should be OK for typing but doesn't attach location information properly *)
-    E_aux (E_vector_append (vec1, vec2), annot)
+let rec exp_of_mpat ((MP_aux (mpat, (l,annot))) as mp_aux) =
+  let empty_vec = E_aux (E_vector [], (l,())) in
+  let concat_vectors vec1 vec2 =
+    E_aux (E_vector_append (vec1, vec2), (l,()))
   in
-  let empty_string = E_aux (E_lit (L_aux (L_string "", Parse_ast.Unknown)), annot) in
-  let string_append annot str1 str2 =
-    E_aux (E_app (mk_id "string_append", [str1; str2]), annot)
+  let empty_string = E_aux (E_lit (L_aux (L_string "", Parse_ast.Unknown)), (l,())) in
+  let string_append str1 str2 =
+    E_aux (E_app (mk_id "string_append", [str1; str2]), (l,()))
   in
   match mpat with
-  | MP_lit lit                      -> E_aux (E_lit lit, annot)
-  | MP_id id                        -> E_aux (E_id id, annot)
-  | MP_app (id, args)               -> E_aux (E_app (id, (List.map exp_of_mpat args)), annot)
-  | MP_record (mfpats, flag)        -> E_aux (E_record (fexps_of_mfpats mfpats flag annot), annot)
-  | MP_vector mpats                 -> E_aux (E_vector (List.map exp_of_mpat mpats), annot)
-  | MP_vector_concat mpats          -> List.fold_right (concat_vectors annot) (List.map exp_of_mpat mpats) empty_vec
-  | MP_tup mpats                    -> E_aux (E_tuple (List.map exp_of_mpat mpats), annot)
-  | MP_list mpats                   -> E_aux (E_list (List.map exp_of_mpat mpats), annot)
-  | MP_cons (mpat1, mpat2)          -> E_aux (E_cons (exp_of_mpat mpat1, exp_of_mpat mpat2), annot)
-  | MP_string_append mpats          -> List.fold_right (string_append annot) (List.map exp_of_mpat mpats) empty_string
-  | MP_typ (mpat, typ)              -> E_aux (E_cast (typ, exp_of_mpat mpat), annot)
-  | MP_as (mpat, id)                -> E_aux (E_case (E_aux (E_id id, annot), [
-                                                    Pat_aux (Pat_exp (pat_of_mpat mpat, exp_of_mpat mpat), annot)
-                                                ]), annot) (* TODO FIXME ditto *)
+  | MP_lit lit                      -> E_aux (E_lit lit, (l,annot))
+  | MP_id id                        -> E_aux (E_id id, (l,annot))
+  | MP_app (id, args)               -> E_aux (E_app (id, (List.map exp_of_mpat args)), (l,annot))
+  | MP_record (mfpats, flag)        -> E_aux (E_record (fexps_of_mfpats mfpats flag (l,annot)), (l,annot))
+  | MP_vector mpats                 -> E_aux (E_vector (List.map exp_of_mpat mpats), (l,annot))
+  | MP_vector_concat mpats          -> List.fold_right concat_vectors (List.map (fun m -> strip_exp (exp_of_mpat m)) mpats) empty_vec
+  | MP_tup mpats                    -> E_aux (E_tuple (List.map exp_of_mpat mpats), (l,annot))
+  | MP_list mpats                   -> E_aux (E_list (List.map exp_of_mpat mpats), (l,annot))
+  | MP_cons (mpat1, mpat2)          -> E_aux (E_cons (exp_of_mpat mpat1, exp_of_mpat mpat2), (l,annot))
+  | MP_string_append mpats          -> List.fold_right string_append (List.map (fun m -> strip_exp (exp_of_mpat m)) mpats) empty_string
+  | MP_typ (mpat, typ)              -> E_aux (E_cast (typ, exp_of_mpat mpat), (l,annot))
+  | MP_as (mpat, id)                -> E_aux (E_case (E_aux (E_id id, (l,annot)), [
+                                                    Pat_aux (Pat_exp (pat_of_mpat mpat, exp_of_mpat mpat), (l,annot))
+                                                ]), (l,annot)) (* TODO FIXME location information? *)
 
 
 and fexps_of_mfpats mfpats flag annot =
@@ -3866,12 +4006,43 @@ let rewrite_defs_realise_mappings (Defs defs) =
     | MPat_aux (MPat_pat mpat, annot) -> Pat_aux (Pat_exp (pat_of_mpat mpat, exp), annot)
     | MPat_aux (MPat_when (mpat, guard), annot) -> Pat_aux (Pat_when (pat_of_mpat mpat, guard, exp), annot)
   in
-  let realise_mapcl forwards id (MCL_aux (MCL_mapcl (mpexp1, mpexp2), (l, ()))) =
-    realise_mpexps forwards mpexp1 mpexp2
+  let realise_single_mpexp mpexp exp =
+    match mpexp with
+    | MPat_aux (MPat_pat mpat, annot) ->
+       Pat_aux (Pat_exp (pat_of_mpat mpat, exp), annot)
+    | MPat_aux (MPat_when (mpat, guard), annot) ->
+       Pat_aux (Pat_when (pat_of_mpat mpat, guard, exp), annot)
   in
-  let realise_bool_mapcl forwards id (MCL_aux (MCL_mapcl (mpexp1, mpexp2), (l, ()))) =
-    let mpexp = if forwards then mpexp1 else mpexp2 in
-    realise_mpexps true mpexp (mk_mpexp (MPat_pat (mk_mpat (MP_lit (mk_lit L_true)))))
+  let realise_mapcl forwards id mapcl =
+    match mapcl with
+    | (MCL_aux (MCL_bidir (mpexp1, mpexp2), (l, ()))) ->
+       [realise_mpexps forwards mpexp1 mpexp2]
+    | (MCL_aux (MCL_forwards (mpexp, exp), (l, ()))) ->
+       if forwards then
+         [realise_single_mpexp mpexp exp]
+       else
+         []
+    | (MCL_aux (MCL_backwards (mpexp, exp), (l, ()))) ->
+       if forwards then
+         []
+       else
+         [realise_single_mpexp mpexp exp]
+  in
+  let realise_bool_mapcl forwards id mapcl =
+    match mapcl with
+    | (MCL_aux (MCL_bidir (mpexp1, mpexp2), (l, ()))) ->
+       let mpexp = if forwards then mpexp1 else mpexp2 in
+       [realise_mpexps true mpexp (mk_mpexp (MPat_pat (mk_mpat (MP_lit (mk_lit L_true)))))]
+    | (MCL_aux (MCL_forwards (mpexp, exp), (l, ()))) ->
+       if forwards then
+         [realise_single_mpexp mpexp (mk_lit_exp L_true)]
+       else
+         []
+    | (MCL_aux (MCL_backwards (mpexp, exp), (l, ()))) ->
+       if forwards then
+         []
+       else
+         [realise_single_mpexp mpexp (mk_lit_exp L_true)]
   in
   let arg_id = mk_id "arg#" in
   let arg_exp = (mk_exp (E_id arg_id)) in
@@ -3887,21 +4058,36 @@ let rewrite_defs_realise_mappings (Defs defs) =
     | MPat_aux (MPat_when (mpat, guard), aux_annot) ->
        MPat_aux (MPat_when (mk_mpat (MP_string_append [mpat; mk_mpat (MP_id placeholder_id)]), guard), aux_annot)
   in
-  let realise_prefix_mapcl forwards id (MCL_aux (MCL_mapcl (mpexp1, mpexp2), (l, ()))) =
-    let mpexp = if forwards then mpexp1 else mpexp2 in
-    let other = if forwards then mpexp2 else mpexp1 in
+  let realise_prefix_mapcl forwards id mapcl =
     let strlen = (
         mk_mpat (MP_app ( mk_id "sub_nat",
-                     [
-                       mk_mpat (MP_app ( mk_id "string_length" , [mk_mpat (MP_id arg_id        )]));
-                       mk_mpat (MP_app ( mk_id "string_length" , [mk_mpat (MP_id placeholder_id)]));
-                     ]
+                          [
+                            mk_mpat (MP_app ( mk_id "string_length" , [mk_mpat (MP_id arg_id        )]));
+                            mk_mpat (MP_app ( mk_id "string_length" , [mk_mpat (MP_id placeholder_id)]));
+                          ]
           ))
       ) in
-    match other with
-    | MPat_aux (MPat_pat mpat2, _)
-      | MPat_aux (MPat_when (mpat2, _), _)->
-       realise_mpexps true (append_placeholder mpexp) (mk_mpexp (MPat_pat (mk_mpat (MP_app ((mk_id "Some"), [ mk_mpat (MP_tup [mpat2; strlen]) ])))))
+    match mapcl with
+    | (MCL_aux (MCL_bidir (mpexp1, mpexp2), (l, ()))) -> begin
+       let mpexp = if forwards then mpexp1 else mpexp2 in
+       let other = if forwards then mpexp2 else mpexp1 in
+       match other with
+       | MPat_aux (MPat_pat mpat2, _)
+         | MPat_aux (MPat_when (mpat2, _), _)->
+          [realise_mpexps true (append_placeholder mpexp) (mk_mpexp (MPat_pat (mk_mpat (MP_app ((mk_id "Some"), [ mk_mpat (MP_tup [mpat2; strlen]) ])))))]
+      end
+    | (MCL_aux (MCL_forwards (mpexp, exp), (l, ()))) -> begin
+        if forwards then
+          [realise_single_mpexp (append_placeholder mpexp) (mk_exp (E_app ((mk_id "Some"), [mk_exp (E_tuple [exp; exp_of_mpat strlen])])))]
+        else
+          []
+      end
+    | (MCL_aux (MCL_backwards (mpexp, exp), (l, ()))) -> begin
+        if forwards then
+          []
+        else
+          [realise_single_mpexp (append_placeholder mpexp) (mk_exp (E_app ((mk_id "Some"), [mk_exp (E_tuple [exp; exp_of_mpat strlen])])))]
+      end
   in
   let realise_mapdef (MD_aux (MD_mapping (id, _, mapcls), ((l, (tannot:tannot)) as annot))) =
     let forwards_id = mk_id (string_of_id id ^ "_forwards") in
@@ -3936,12 +4122,12 @@ let rewrite_defs_realise_mappings (Defs defs) =
     let backwards_matches_spec, env = Type_check.check_val_spec env backwards_matches_spec in
 
     let no_tannot = (Typ_annot_opt_aux (Typ_annot_opt_none, Parse_ast.Unknown)) in
-    let forwards_match = mk_exp (E_case (arg_exp, (List.map (fun mapcl -> strip_mapcl mapcl |> realise_mapcl true forwards_id) mapcls))) in
-    let backwards_match = mk_exp (E_case (arg_exp, (List.map (fun mapcl -> strip_mapcl mapcl |> realise_mapcl false backwards_id) mapcls))) in
+    let forwards_match = mk_exp (E_case (arg_exp, ((List.map (fun mapcl -> strip_mapcl mapcl |> realise_mapcl true forwards_id) mapcls) |> List.flatten))) in
+    let backwards_match = mk_exp (E_case (arg_exp, ((List.map (fun mapcl -> strip_mapcl mapcl |> realise_mapcl false backwards_id) mapcls) |> List.flatten))) in
 
     let wildcard = mk_pexp (Pat_exp (mk_pat P_wild, mk_exp (E_lit (mk_lit L_false)))) in
-    let forwards_matches_match = mk_exp (E_case (arg_exp, (List.map (fun mapcl -> strip_mapcl mapcl |> realise_bool_mapcl true forwards_matches_id) mapcls) @ [wildcard])) in
-    let backwards_matches_match = mk_exp (E_case (arg_exp, (List.map (fun mapcl -> strip_mapcl mapcl |> realise_bool_mapcl false backwards_matches_id) mapcls) @ [wildcard])) in
+    let forwards_matches_match = mk_exp (E_case (arg_exp, ((List.map (fun mapcl -> strip_mapcl mapcl |> realise_bool_mapcl true forwards_matches_id) mapcls) |> List.flatten) @ [wildcard])) in
+    let backwards_matches_match = mk_exp (E_case (arg_exp, ((List.map (fun mapcl -> strip_mapcl mapcl |> realise_bool_mapcl false backwards_matches_id) mapcls) |> List.flatten) @ [wildcard])) in
 
     let forwards_fun = (FD_aux (FD_function (non_rec, no_tannot, effect_pure, [mk_funcl forwards_id arg_pat forwards_match]), (l, ()))) in
     let backwards_fun = (FD_aux (FD_function (non_rec, no_tannot, effect_pure, [mk_funcl backwards_id arg_pat backwards_match]), (l, ()))) in
@@ -3964,7 +4150,7 @@ let rewrite_defs_realise_mappings (Defs defs) =
               let forwards_prefix_typ = Typ_aux (Typ_fn (typ1, app_typ (mk_id "option") [Typ_arg_aux (Typ_arg_typ (tuple_typ [typ2; nat_typ]), Parse_ast.Unknown)], no_effect), Parse_ast.Unknown) in
               let forwards_prefix_spec = VS_aux (VS_val_spec (mk_typschm typq forwards_prefix_typ, prefix_id, (fun _ -> None), false), (Parse_ast.Unknown,())) in
               let forwards_prefix_spec, env = Type_check.check_val_spec env forwards_prefix_spec in
-              let forwards_prefix_match = mk_exp (E_case (arg_exp, (List.map (fun mapcl -> strip_mapcl mapcl |> realise_prefix_mapcl true prefix_id) mapcls) @ [prefix_wildcard])) in
+              let forwards_prefix_match = mk_exp (E_case (arg_exp, ((List.map (fun mapcl -> strip_mapcl mapcl |> realise_prefix_mapcl true prefix_id) mapcls) |> List.flatten) @ [prefix_wildcard])) in
               let forwards_prefix_fun = (FD_aux (FD_function (non_rec, no_tannot, effect_pure, [mk_funcl prefix_id arg_pat forwards_prefix_match]), (l, ()))) in
               typ_debug (lazy (Printf.sprintf "forwards prefix matches for mapping %s: %s\n%!" (string_of_id id) (Pretty_print_sail.doc_fundef forwards_prefix_fun |> Pretty_print_sail.to_string)));
               let forwards_prefix_fun, _ = Type_check.check_fundef env forwards_prefix_fun in
@@ -3974,7 +4160,7 @@ let rewrite_defs_realise_mappings (Defs defs) =
                 let backwards_prefix_typ = Typ_aux (Typ_fn (typ2, app_typ (mk_id "option") [Typ_arg_aux (Typ_arg_typ (tuple_typ [typ1; nat_typ]), Parse_ast.Unknown)], no_effect), Parse_ast.Unknown) in
                 let backwards_prefix_spec = VS_aux (VS_val_spec (mk_typschm typq backwards_prefix_typ, prefix_id, (fun _ -> None), false), (Parse_ast.Unknown,())) in
                 let backwards_prefix_spec, env = Type_check.check_val_spec env backwards_prefix_spec in
-                let backwards_prefix_match = mk_exp (E_case (arg_exp, (List.map (fun mapcl -> strip_mapcl mapcl |> realise_prefix_mapcl false prefix_id) mapcls) @ [prefix_wildcard])) in
+                let backwards_prefix_match = mk_exp (E_case (arg_exp, ((List.map (fun mapcl -> strip_mapcl mapcl |> realise_prefix_mapcl false prefix_id) mapcls) |> List.flatten) @ [prefix_wildcard])) in
                 let backwards_prefix_fun = (FD_aux (FD_function (non_rec, no_tannot, effect_pure, [mk_funcl prefix_id arg_pat backwards_prefix_match]), (l, ()))) in
                 typ_debug (lazy (Printf.sprintf "backwards prefix matches for mapping %s: %s\n%!" (string_of_id id) (Pretty_print_sail.doc_fundef backwards_prefix_fun |> Pretty_print_sail.to_string)));
                 let backwards_prefix_fun, _ = Type_check.check_fundef env backwards_prefix_fun in
@@ -4001,6 +4187,360 @@ let rewrite_defs_realise_mappings (Defs defs) =
   in
   Defs (List.map rewrite_def defs |> List.flatten)
 
+
+(* Rewrite to make all pattern matches in Coq output exhaustive.
+   Assumes that guards, vector patterns, etc have been rewritten already,
+   and the scattered functions have been merged.
+   Will add escape effect where a default is needed, so effects will
+   need recalculated afterwards.
+
+   Also detects and removes redundant wildcard patterns at the end of the match.
+   (We could do more, but this is sufficient to deal with the code generated by
+   the mappings rewrites.)
+
+   Note: if this naive implementation turns out to be too slow or buggy, we
+   could look at implementing Maranget JFP 17(3), 2007.
+ *)
+
+let opt_coq_warn_nonexhaustive = ref false
+
+module MakeExhaustive =
+struct
+
+type rlit =
+  | RL_unit
+  (* TODO: zero and one are currently replaced by RL_inf to deal with BU;
+     needs more careful thought about semantics of BU *)
+  | RL_zero
+  | RL_one
+  | RL_true
+  | RL_false
+  | RL_inf
+
+let string_of_rlit = function
+  | RL_unit -> "()"
+  | RL_zero -> "bitzero"
+  | RL_one -> "bitone"
+  | RL_true -> "true"
+  | RL_false -> "false"
+  | RL_inf -> "..."
+
+let rlit_of_lit (L_aux (l,_)) =
+  match l with
+  | L_unit -> RL_unit
+  | L_zero -> (*RL_zero*) RL_inf
+  | L_one -> (*RL_one*) RL_inf
+  | L_true -> RL_true
+  | L_false -> RL_false
+  | L_num _ | L_hex _ | L_bin _ | L_string _ | L_real _ -> RL_inf
+  | L_undef -> assert false
+
+let inv_rlit_of_lit (L_aux (l,_)) =
+  match l with
+  | L_unit -> []
+  | L_zero -> (*[RL_one]*) [RL_inf]
+  | L_one -> (*[RL_zero]*) [RL_inf]
+  | L_true -> [RL_false]
+  | L_false -> [RL_true]
+  | L_num _ | L_hex _ | L_bin _ | L_string _ | L_real _ -> [RL_inf]
+  | L_undef -> assert false
+
+type residual_pattern =
+  | RP_any
+  | RP_lit of rlit
+  | RP_enum of id
+  | RP_app of id * residual_pattern list
+  | RP_tup of residual_pattern list
+  | RP_nil
+  | RP_cons of residual_pattern * residual_pattern
+
+let rec string_of_rp = function
+  | RP_any -> "_"
+  | RP_lit rlit -> string_of_rlit rlit
+  | RP_enum id -> string_of_id id
+  | RP_app (f,args) -> string_of_id f ^ "(" ^ String.concat "," (List.map string_of_rp args) ^ ")"
+  | RP_tup rps -> "(" ^ String.concat "," (List.map string_of_rp rps) ^ ")"
+  | RP_nil -> "[| |]"
+  | RP_cons (rp1,rp2) -> string_of_rp rp1 ^ "::" ^ string_of_rp rp2
+
+type ctx = {
+  env : Env.t;
+  enum_to_rest: (residual_pattern list) Bindings.t;
+  constructor_to_rest: (residual_pattern list) Bindings.t
+}
+
+let make_enum_mappings ids m =
+  IdSet.fold (fun id m ->
+    Bindings.add id
+      (List.map (fun e -> RP_enum e) (IdSet.elements (IdSet.remove id ids))) m)
+    ids
+    m
+
+let make_cstr_mappings env ids m =
+  let ids = IdSet.elements ids in
+  let constructors = List.map
+    (fun id ->
+      let _,ty = Env.get_val_spec id env in
+      let args = match ty with
+        | Typ_aux (Typ_fn (Typ_aux (Typ_tup tys,_),_,_),_) -> List.map (fun _ -> RP_any) tys
+        | _ -> [RP_any]
+      in RP_app (id,args)) ids in
+  let rec aux ids acc l =
+    match ids, l with
+    | [], [] -> m
+    | id::ids, rp::t ->
+       let m = aux ids (acc@[rp]) t in
+       Bindings.add id (acc@t) m
+    | _ -> assert false
+  in aux ids [] constructors
+
+let ctx_from_pattern_completeness_ctx env =
+  let ctx = Env.pattern_completeness_ctx env in
+  { env = env;
+    enum_to_rest = Bindings.fold (fun _ ids m -> make_enum_mappings ids m) 
+      ctx.Pattern_completeness.enums Bindings.empty;
+    constructor_to_rest = Bindings.fold (fun _ ids m -> make_cstr_mappings env ids m)
+      ctx.Pattern_completeness.variants Bindings.empty
+  }
+
+let printprefix = ref "  "
+
+let rec remove_clause_from_pattern ctx (P_aux (rm_pat,ann)) res_pat =
+  let subpats rm_pats res_pats =
+    let res_pats' = List.map2 (remove_clause_from_pattern ctx) rm_pats res_pats in
+    let rec aux acc fixed residual =
+      match fixed, residual with
+      | [], [] -> []
+      | (fh::ft), (rh::rt) ->
+         let rt' = aux (acc@[fh]) ft rt in
+         let newr = List.map (fun x -> acc @ (x::ft)) rh in
+         newr @ rt'
+      | _,_ -> assert false (* impossible because we managed map2 above *)
+    in aux [] res_pats res_pats'
+  in
+  let inconsistent () =
+    raise (Reporting_basic.err_unreachable (fst ann) __POS__
+             ("Inconsistency during exhaustiveness analysis with " ^
+                 string_of_rp res_pat))
+  in
+  (*let _ = print_endline (!printprefix ^ "pat: " ^string_of_pat (P_aux (rm_pat,ann))) in
+  let _ = print_endline (!printprefix ^ "res_pat: " ^string_of_rp res_pat) in
+  let _ = printprefix := "  " ^ !printprefix in*)
+  let rp' =
+  match rm_pat with
+  | P_wild -> []
+  | P_id id when (match Env.lookup_id id ctx.env with Unbound | Local _ -> true | _ -> false) -> []
+  | P_lit lit ->
+     (match res_pat with
+     | RP_any -> List.map (fun l -> RP_lit l) (inv_rlit_of_lit lit)
+     | RP_lit RL_inf -> [res_pat]
+     | RP_lit lit' -> if lit' = rlit_of_lit lit then [] else [res_pat]
+     | _ -> inconsistent ())
+  | P_as (p,_) 
+  | P_typ (_,p)
+  | P_var (p,_) 
+    -> remove_clause_from_pattern ctx p res_pat
+  | P_id id ->
+     (match Env.lookup_id id ctx.env with
+     | Enum enum ->
+        (match res_pat with
+        | RP_any -> Bindings.find id ctx.enum_to_rest
+        | RP_enum id' -> if Id.compare id id' == 0 then [] else [res_pat]
+        | _ -> inconsistent ())
+     | _ -> assert false)
+  | P_tup rm_pats ->
+     let previous_res_pats = 
+       match res_pat with
+       | RP_tup res_pats -> res_pats
+       | RP_any -> List.map (fun _ -> RP_any) rm_pats
+       | _ -> inconsistent ()
+     in
+     let res_pats' = subpats rm_pats previous_res_pats in
+     List.map (fun rps -> RP_tup rps) res_pats'
+  | P_app (id,args) ->
+     (match res_pat with
+     | RP_app (id',residual_args) ->
+        if Id.compare id id' == 0 then
+          let res_pats' = subpats args residual_args in
+          List.map (fun rps -> RP_app (id,rps)) res_pats'
+        else [res_pat]
+     | RP_any ->
+        let res_args = subpats args (List.map (fun _ -> RP_any) args) in
+        (List.map (fun l -> (RP_app (id,l))) res_args) @
+          (Bindings.find id ctx.constructor_to_rest)
+     | _ -> inconsistent ()
+     )
+  | P_list ps ->
+     (match ps with
+     | p1::ptl -> remove_clause_from_pattern ctx (P_aux (P_cons (p1,P_aux (P_list ptl,ann)),ann)) res_pat
+     | [] ->
+        match res_pat with
+        | RP_any -> [RP_cons (RP_any,RP_any)]
+        | RP_cons _ -> [res_pat]
+        | RP_nil -> []
+        | _ -> inconsistent ())
+  | P_cons (p1,p2) -> begin
+     let rp',rps = 
+       match res_pat with
+       | RP_cons (rp1,rp2) -> [], Some [rp1;rp2]
+       | RP_any -> [RP_nil], Some [RP_any;RP_any]
+       | RP_nil -> [RP_nil], None
+       | _ -> inconsistent ()
+     in
+     match rps with
+     | None -> rp'
+     | Some rps ->
+        let res_pats = subpats [p1;p2] rps in
+        rp' @ List.map (function [rp1;rp2] -> RP_cons (rp1,rp2) | _ -> assert false) res_pats
+  end
+  | P_record _ ->
+     raise (Reporting_basic.err_unreachable (fst ann) __POS__
+              "Record pattern not supported")
+  | P_vector _
+  | P_vector_concat _
+  | P_string_append _ ->
+     raise (Reporting_basic.err_unreachable (fst ann) __POS__
+              "Found pattern that should have been rewritten away in earlier stage")
+
+  (*in let _ = printprefix := String.sub (!printprefix) 0 (String.length !printprefix - 2)
+  in let _ = print_endline (!printprefix ^ "res_pats': " ^ String.concat "; " (List.map string_of_rp rp'))*)
+  in rp'
+
+let process_pexp env =
+  let ctx = ctx_from_pattern_completeness_ctx env in
+  fun rps patexp ->
+  (*let _ = print_endline ("res_pats: " ^ String.concat "; " (List.map string_of_rp rps)) in
+    let _ = print_endline ("pat: " ^ string_of_pexp patexp) in*)
+  match patexp with
+  | Pat_aux (Pat_exp (p,_),_) -> 
+     List.concat (List.map (remove_clause_from_pattern ctx p) rps)
+  | Pat_aux (Pat_when _,(l,_)) ->
+     raise (Reporting_basic.err_unreachable l __POS__
+              "Guarded pattern should have been rewritten away")
+
+(* We do some minimal redundancy checking to remove bogus wildcard patterns here *)
+let check_cases process is_wild loc_of cases =
+  let rec aux rps acc = function
+    | [] -> acc, rps
+    | [p] when is_wild p && match rps with [] -> true | _ -> false ->
+      let () = Reporting_basic.print_err false false
+        (loc_of p) "Match checking" "Redundant wildcard clause" in
+      acc, []
+    | h::t -> aux (process rps h) (h::acc) t
+  in
+  let cases, rps = aux [RP_any] [] cases in
+  List.rev cases, rps
+
+let pexp_is_wild = function
+  | (Pat_aux (Pat_exp (P_aux (P_wild,_),_),_)) -> true
+  | _ -> false
+
+let pexp_loc = function
+  | (Pat_aux (Pat_exp (P_aux (_,(l,_)),_),_)) -> l
+  | (Pat_aux (Pat_when (P_aux (_,(l,_)),_,_),_)) -> l
+
+let funcl_is_wild = function
+  | (FCL_aux (FCL_Funcl (_,pexp),_)) -> pexp_is_wild pexp
+
+let funcl_loc (FCL_aux (_,(l,_))) = l
+
+let rewrite_case (e,ann) =
+  match e with
+  | E_case (e1,cases) ->
+     begin
+     let env = env_of_annot ann in
+     let cases, rps = check_cases (process_pexp env) pexp_is_wild pexp_loc cases in
+     match rps with
+     | [] -> E_aux (E_case (e1,cases),ann)
+     | (example::_) ->
+
+        let _ =
+          if !opt_coq_warn_nonexhaustive
+          then Reporting_basic.print_err false false
+            (fst ann) "Non-exhaustive matching" ("Example: " ^ string_of_rp example) in
+
+        let l = Parse_ast.Generated Parse_ast.Unknown in
+        let p = P_aux (P_wild, (l, empty_tannot)) in
+        let ann' = mk_tannot env (typ_of_annot ann) (mk_effect [BE_escape]) in
+        (* TODO: use an expression that specifically indicates a failed pattern match *)
+        let b = E_aux (E_exit (E_aux (E_lit (L_aux (L_unit, l)),(l,empty_tannot))),(l,ann')) in
+        E_aux (E_case (e1,cases@[Pat_aux (Pat_exp (p,b),(l,empty_tannot))]),ann)
+     end
+  | _ -> E_aux (e,ann)
+
+let rewrite_fun rewriters (FD_aux (FD_function (r,t,e,fcls),f_ann)) =
+  let id,fcl_ann =
+    match fcls with
+    | FCL_aux (FCL_Funcl (id,_),ann) :: _ -> id,ann
+    | [] -> raise (Reporting_basic.err_unreachable (fst f_ann) __POS__
+                 "Empty function")
+  in
+  let env = env_of_annot fcl_ann in
+  let process_funcl rps (FCL_aux (FCL_Funcl (_,pexp),_)) = process_pexp env rps pexp in
+  let fcls, rps = check_cases process_funcl funcl_is_wild funcl_loc fcls in
+  let fcls' = List.map (function FCL_aux (FCL_Funcl (id,pexp),ann) ->
+                                  FCL_aux (FCL_Funcl (id, rewrite_pexp rewriters pexp),ann))
+                fcls in
+  match rps with
+  | [] -> FD_aux (FD_function (r,t,e,fcls'),f_ann)
+  | (example::_) ->
+     let _ =
+       if !opt_coq_warn_nonexhaustive
+       then Reporting_basic.print_err false false
+              (fst f_ann) "Non-exhaustive matching" ("Example: " ^ string_of_rp example) in
+
+     let l = Parse_ast.Generated Parse_ast.Unknown in
+     let p = P_aux (P_wild, (l, empty_tannot)) in
+     let ann' = mk_tannot env (typ_of_annot fcl_ann) (mk_effect [BE_escape]) in
+     (* TODO: use an expression that specifically indicates a failed pattern match *)
+     let b = E_aux (E_exit (E_aux (E_lit (L_aux (L_unit, l)),(l,empty_tannot))),(l,ann')) in
+     let default = FCL_aux (FCL_Funcl (id,Pat_aux (Pat_exp (p,b),(l,empty_tannot))),fcl_ann) in
+
+     FD_aux (FD_function (r,t,e,fcls'@[default]),f_ann)
+  
+
+let rewrite =
+  let alg = { id_exp_alg with e_aux = rewrite_case } in
+  rewrite_defs_base
+    { rewrite_exp = (fun _ -> fold_exp alg)
+    ; rewrite_pat = rewrite_pat
+    ; rewrite_let = rewrite_let
+    ; rewrite_lexp = rewrite_lexp
+    ; rewrite_fun = rewrite_fun
+    ; rewrite_def = rewrite_def
+    ; rewrite_defs = rewrite_defs_base
+    }
+
+
+end
+
+(* Splitting a function (e.g., an execute function on an AST) can produce
+   new functions that appear to be recursive but are not.  This checks to
+   see if the flag can be turned off.  Doesn't handle mutual recursion
+   for now. *)
+let minimise_recursive_functions (Defs defs) =
+  let funcl_is_rec (FCL_aux (FCL_Funcl (id,pexp),_)) =
+    fold_pexp
+      { (pure_exp_alg false (||)) with
+        e_app = (fun (id',args) ->
+          Id.compare id id' == 0 || List.exists (fun x -> x) args);
+        e_app_infix = (fun (arg1,id',arg2) ->
+          arg1 || arg2 || Id.compare id id' == 0)
+      } pexp
+  in
+  let rewrite_function (FD_aux (FD_function (recopt,topt,effopt,funcls),ann) as fd) =
+    match recopt with
+    | Rec_aux (Rec_nonrec, _) -> fd
+    | Rec_aux (Rec_rec, l) ->
+       if List.exists funcl_is_rec funcls
+       then fd
+       else FD_aux (FD_function (Rec_aux (Rec_nonrec, Generated l),topt,effopt,funcls),ann)
+  in
+  let rewrite_def = function
+    | DEF_fundef fd -> DEF_fundef (rewrite_function fd)
+    | d -> d
+  in Defs (List.map rewrite_def defs)
+
 let recheck_defs defs = fst (Type_error.check initial_env defs)
 
 let remove_mapping_valspecs (Defs defs) =
@@ -4012,11 +4552,55 @@ let remove_mapping_valspecs (Defs defs) =
   Defs (List.filter allowed_def defs)
 
 
+let opt_mono_rewrites = ref false
+let opt_mono_complex_nexps = ref true
+
+let mono_rewrites defs =
+  if !opt_mono_rewrites then
+    Monomorphise.mono_rewrites defs
+  else defs
+
+let rewrite_toplevel_nexps defs =
+  if !opt_mono_complex_nexps then
+    Monomorphise.rewrite_toplevel_nexps defs
+  else defs
+
+let opt_mono_split = ref ([]:((string * int) * string) list)
+let opt_dmono_analysis = ref 0
+let opt_auto_mono = ref false
+let opt_dall_split_errors = ref false
+let opt_dmono_continue = ref false
+
+let monomorphise defs =
+  let open Monomorphise in
+  monomorphise
+    { auto = !opt_auto_mono;
+      debug_analysis = !opt_dmono_analysis;
+      all_split_errors = !opt_dall_split_errors;
+      continue_anyway = !opt_dmono_continue }
+    !opt_mono_split
+    defs
+
+let if_mono f defs =
+  match !opt_mono_split, !opt_auto_mono with
+  | [], false -> defs
+  | _, _ -> f defs
+
 let rewrite_defs_lem = [
   ("realise_mappings", rewrite_defs_realise_mappings);
   ("remove_mapping_valspecs", remove_mapping_valspecs);
   ("pat_string_append", rewrite_defs_pat_string_append);
   ("mapping_builtins", rewrite_defs_mapping_patterns);
+  ("mono_rewrites", mono_rewrites);
+  ("recheck_defs", if_mono recheck_defs);
+  ("rewrite_toplevel_nexps", if_mono rewrite_toplevel_nexps);
+  ("monomorphise", if_mono monomorphise);
+  ("recheck_defs", if_mono recheck_defs);
+  ("add_bitvector_casts", if_mono Monomorphise.add_bitvector_casts);
+  ("rewrite_atoms_to_singletons", if_mono Monomorphise.rewrite_atoms_to_singletons);
+  ("recheck_defs", if_mono recheck_defs);
+  ("rewrite_undefined", rewrite_undefined_if_gen false);
+  ("rewrite_defs_vector_string_pats_to_bit_list", rewrite_defs_vector_string_pats_to_bit_list);
   ("pat_lits", rewrite_defs_pat_lits rewrite_lit_lem);
   ("vector_concat_assignments", rewrite_vector_concat_assignments);
   ("tuple_assignments", rewrite_tuple_assignments);
@@ -4039,6 +4623,50 @@ let rewrite_defs_lem = [
   ("sizeof", rewrite_sizeof);
   ("early_return", rewrite_defs_early_return);
   ("fix_val_specs", rewrite_fix_val_specs);
+  (* early_return currently breaks the types *)
+  ("recheck_defs", recheck_defs);
+  ("remove_blocks", rewrite_defs_remove_blocks);
+  ("letbind_effects", rewrite_defs_letbind_effects);
+  ("remove_e_assign", rewrite_defs_remove_e_assign);
+  ("internal_lets", rewrite_defs_internal_lets);
+  ("remove_superfluous_letbinds", rewrite_defs_remove_superfluous_letbinds);
+  ("remove_superfluous_returns", rewrite_defs_remove_superfluous_returns);
+  ("merge function clauses", merge_funcls);
+  ("recheck_defs", recheck_defs)
+  ]
+
+let rewrite_defs_coq = [
+  ("realise_mappings", rewrite_defs_realise_mappings);
+  ("remove_mapping_valspecs", remove_mapping_valspecs);
+  ("pat_string_append", rewrite_defs_pat_string_append);
+  ("mapping_builtins", rewrite_defs_mapping_patterns);
+  ("rewrite_undefined", rewrite_undefined_if_gen true);
+  ("rewrite_defs_vector_string_pats_to_bit_list", rewrite_defs_vector_string_pats_to_bit_list);
+  ("pat_lits", rewrite_defs_pat_lits rewrite_lit_lem);
+  ("vector_concat_assignments", rewrite_vector_concat_assignments);
+  ("tuple_assignments", rewrite_tuple_assignments);
+  ("simple_assignments", rewrite_simple_assignments);
+  ("remove_vector_concat", rewrite_defs_remove_vector_concat);
+  ("remove_bitvector_pats", rewrite_defs_remove_bitvector_pats);
+  ("remove_numeral_pats", rewrite_defs_remove_numeral_pats);
+  ("guarded_pats", rewrite_defs_guarded_pats);
+  ("bitvector_exps", rewrite_bitvector_exps);
+  (* ("register_ref_writes", rewrite_register_ref_writes); *)
+  ("nexp_ids", rewrite_defs_nexp_ids);
+  ("fix_val_specs", rewrite_fix_val_specs);
+  ("split_execute", rewrite_split_fun_constr_pats "execute");
+  ("minimise_recursive_functions", minimise_recursive_functions);
+  ("recheck_defs", recheck_defs);
+  ("exp_lift_assign", rewrite_defs_exp_lift_assign);
+  (* ("constraint", rewrite_constraint); *)
+  (* ("remove_assert", rewrite_defs_remove_assert); *)
+  ("top_sort_defs", top_sort_defs);
+  ("trivial_sizeof", rewrite_trivial_sizeof);
+  ("sizeof", rewrite_sizeof);
+  ("early_return", rewrite_defs_early_return);
+  ("make_cases_exhaustive", MakeExhaustive.rewrite);
+  ("fix_val_specs", rewrite_fix_val_specs);
+  ("recheck_defs", recheck_defs);
   ("remove_blocks", rewrite_defs_remove_blocks);
   ("letbind_effects", rewrite_defs_letbind_effects);
   ("remove_e_assign", rewrite_defs_remove_e_assign);
@@ -4055,7 +4683,9 @@ let rewrite_defs_ocaml = [
   ("realise_mappings", rewrite_defs_realise_mappings);
   ("pat_string_append", rewrite_defs_pat_string_append);
   ("mapping_builtins", rewrite_defs_mapping_patterns);
-  ("pat_lits", rewrite_defs_pat_lits rewrite_no_strings);
+  ("rewrite_undefined", rewrite_undefined_if_gen false);
+  ("rewrite_defs_vector_string_pats_to_bit_list", rewrite_defs_vector_string_pats_to_bit_list);
+  ("pat_lits", rewrite_defs_pat_lits rewrite_lit_ocaml);
   ("vector_concat_assignments", rewrite_vector_concat_assignments);
   ("tuple_assignments", rewrite_tuple_assignments);
   ("simple_assignments", rewrite_simple_assignments);
@@ -4077,6 +4707,8 @@ let rewrite_defs_c = [
   ("realise_mappings", rewrite_defs_realise_mappings);
   ("pat_string_append", rewrite_defs_pat_string_append);
   ("mapping_builtins", rewrite_defs_mapping_patterns);
+  ("rewrite_undefined", rewrite_undefined_if_gen false);
+  ("rewrite_defs_vector_string_pats_to_bit_list", rewrite_defs_vector_string_pats_to_bit_list);
   ("pat_lits", rewrite_defs_pat_lits rewrite_no_strings);
   ("vector_concat_assignments", rewrite_vector_concat_assignments);
   ("tuple_assignments", rewrite_tuple_assignments);
@@ -4088,7 +4720,7 @@ let rewrite_defs_c = [
   ("constraint", rewrite_constraint);
   ("trivial_sizeof", rewrite_trivial_sizeof);
   ("sizeof", rewrite_sizeof);
-  ("merge function clauses", merge_funcls);
+  ("merge_function_clauses", merge_funcls);
   ("recheck_defs", recheck_defs)
   ]
 
@@ -4097,10 +4729,10 @@ let rewrite_defs_interpreter = [
     ("realise_mappings", rewrite_defs_realise_mappings);
     ("pat_string_append", rewrite_defs_pat_string_append);
     ("mapping_builtins", rewrite_defs_mapping_patterns);
+    ("rewrite_undefined", rewrite_undefined_if_gen false);
     ("vector_concat_assignments", rewrite_vector_concat_assignments);
     ("tuple_assignments", rewrite_tuple_assignments);
     ("simple_assignments", rewrite_simple_assignments);
-    ("remove_vector_concat", rewrite_defs_remove_vector_concat);
     ("constraint", rewrite_constraint);
     ("trivial_sizeof", rewrite_trivial_sizeof);
     ("sizeof", rewrite_sizeof);

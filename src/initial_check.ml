@@ -112,7 +112,7 @@ let typquant_to_quantkinds k_env typquant =
             | KOpt_aux(KOpt_none(v),l) | KOpt_aux(KOpt_kind(_,v),l) ->
               (match Envmap.apply k_env (var_to_string v) with
               | Some(typ) -> typ::rst
-              | None -> raise (Reporting_basic.err_unreachable l "Envmap didn't get an entry during typschm processing"))
+              | None -> raise (Reporting_basic.err_unreachable l __POS__ "Envmap didn't get an entry during typschm processing"))
           end)
         qlist
         [])
@@ -132,6 +132,8 @@ let typ_error l msg opt_id opt_var opt_kind =
 let string_of_parse_id_aux = function
   | Parse_ast.Id v -> v
   | Parse_ast.DeIid v -> v
+
+let string_of_parse_id (Parse_ast.Id_aux(id, l)) = string_of_parse_id_aux id
 
 let string_contains str char =
   try (ignore (String.index str char); true) with
@@ -155,7 +157,7 @@ let to_ast_base_kind (Parse_ast.BK_aux(k,l')) =
 
 let to_ast_kind (k_env : kind Envmap.t) (Parse_ast.K_aux(Parse_ast.K_kind(klst),l)) : (Ast.kind * kind) =
   match klst with
-  | [] -> raise (Reporting_basic.err_unreachable l "Kind with empty kindlist encountered")
+  | [] -> raise (Reporting_basic.err_unreachable l __POS__ "Kind with empty kindlist encountered")
   | [k] -> let k_ast,k_typ = to_ast_base_kind k in
            K_aux(K_kind([k_ast]),l), k_typ
   | ks -> let k_pairs = List.map to_ast_base_kind ks in
@@ -202,7 +204,7 @@ let rec to_ast_typ (k_env : kind Envmap.t) (def_ord : order) (t: Parse_ast.atyp)
                   let rise = match def_ord with
                     | Ord_aux(Ord_inc,dl) ->  to_ast_nexp k_env (make_r b r)
                     | Ord_aux(Ord_dec,dl) ->  to_ast_nexp k_env (make_r r b)
-                    | _ -> raise (Reporting_basic.err_unreachable l "Default order not inc or dec") in
+                    | _ -> raise (Reporting_basic.err_unreachable l __POS__ "Default order not inc or dec") in
                   Typ_app(Id_aux(Id "vector",il),
                           [Typ_arg_aux (Typ_arg_nexp base,Parse_ast.Unknown);
                            Typ_arg_aux (Typ_arg_nexp rise,Parse_ast.Unknown);
@@ -218,7 +220,7 @@ let rec to_ast_typ (k_env : kind Envmap.t) (def_ord : order) (t: Parse_ast.atyp)
 		let (base,rise) = match def_ord with
 		  | Ord_aux(Ord_inc,dl) -> (to_ast_nexp k_env b), (to_ast_nexp k_env r)
 		  | Ord_aux(Ord_dec,dl) -> (to_ast_nexp k_env (make_sub_one r)), (to_ast_nexp k_env r)
-		  | _ -> raise (Reporting_basic.err_unreachable l "Default order not inc or dec") in
+		  | _ -> raise (Reporting_basic.err_unreachable l __POS__ "Default order not inc or dec") in
 		Typ_app(Id_aux(Id "vector",il),
 			[Typ_arg_aux (Typ_arg_nexp base,Parse_ast.Unknown);
 			 Typ_arg_aux (Typ_arg_nexp rise,Parse_ast.Unknown);
@@ -332,7 +334,7 @@ and to_ast_typ_arg (k_env : kind Envmap.t) (def_ord : order) (kind : kind) (arg 
     | K_Typ -> Typ_arg_typ (to_ast_typ k_env def_ord arg)
     | K_Nat  -> Typ_arg_nexp (to_ast_nexp k_env arg)
     | K_Ord -> Typ_arg_order (to_ast_order k_env def_ord arg)
-    | _ -> raise (Reporting_basic.err_unreachable l ("To_ast_typ_arg received Lam kind or infer kind: " ^ kind_to_string kind))),
+    | _ -> raise (Reporting_basic.err_unreachable l __POS__ ("To_ast_typ_arg received Lam kind or infer kind: " ^ kind_to_string kind))),
     l)
 
 and to_ast_nexp_constraint (k_env : kind Envmap.t) (c : Parse_ast.n_constraint) : n_constraint =
@@ -388,7 +390,7 @@ let to_ast_typquant (k_env: kind Envmap.t) (tq : Parse_ast.typquant) : typquant 
       let kopt,k_env,k_env_local = (match kind,ktyp with
         | Some(k),Some(kt) -> KOpt_kind(k,v), (Envmap.insert k_env (key,kt)), (Envmap.insert local_env (key,kt))
 	| None, Some(kt) -> KOpt_none(v), (Envmap.insert k_env (key,kt)), (Envmap.insert local_env (key,kt))
-	| _ -> raise (Reporting_basic.err_unreachable l "Envmap in dom is true but apply gives None")) in
+	| _ -> raise (Reporting_basic.err_unreachable l __POS__ "Envmap in dom is true but apply gives None")) in
       KOpt_aux(kopt,l),k_env,local_names,k_env_local
   in
   match tq with
@@ -453,15 +455,18 @@ let rec to_ast_pat (k_env : kind Envmap.t) (def_ord : order) (Parse_ast.P_aux(pa
     (match pat with
     | Parse_ast.P_lit(lit) -> P_lit(to_ast_lit lit)
     | Parse_ast.P_wild -> P_wild
+    | Parse_ast.P_or(pat1, pat2) ->
+       P_or (to_ast_pat k_env def_ord pat1, to_ast_pat k_env def_ord pat2)
     | Parse_ast.P_var (pat, Parse_ast.ATyp_aux (Parse_ast.ATyp_id id, _)) ->
        P_as (to_ast_pat k_env def_ord pat, to_ast_id id)
     | Parse_ast.P_typ(typ,pat) -> P_typ(to_ast_typ k_env def_ord typ,to_ast_pat k_env def_ord pat)
     | Parse_ast.P_id(id) -> P_id(to_ast_id id)
     | Parse_ast.P_var (pat, typ) -> P_var (to_ast_pat k_env def_ord pat, to_ast_typ_pat typ)
-    | Parse_ast.P_app(id,pats) ->
-      if pats = []
-      then P_id (to_ast_id id)
-      else P_app(to_ast_id id, List.map (to_ast_pat k_env def_ord) pats)
+    | Parse_ast.P_app(id, []) -> P_id (to_ast_id id)
+    | Parse_ast.P_app(id, pats) ->
+       if List.length pats == 1 && string_of_parse_id id = "~"
+       then P_not (to_ast_pat k_env def_ord (List.hd pats))
+       else P_app(to_ast_id id, List.map (to_ast_pat k_env def_ord) pats)
     | Parse_ast.P_record(fpats,_) ->
       P_record(List.map
                  (fun (Parse_ast.FP_aux(Parse_ast.FP_Fpat(id,fp),l)) ->
@@ -523,11 +528,11 @@ and to_ast_exp (k_env : kind Envmap.t) (def_ord : order) (Parse_ast.E_aux(exp,l)
     | Parse_ast.E_record fexps ->
        (match to_ast_fexps true k_env def_ord fexps with
         | Some fexps -> E_record fexps
-        | None -> raise (Reporting_basic.err_unreachable l "to_ast_fexps with true returned none"))
+        | None -> raise (Reporting_basic.err_unreachable l __POS__ "to_ast_fexps with true returned none"))
     | Parse_ast.E_record_update(exp,fexps) ->
       (match to_ast_fexps true k_env def_ord fexps with
       | Some(fexps) -> E_record_update(to_ast_exp k_env def_ord exp, fexps)
-      | _ -> raise (Reporting_basic.err_unreachable l "to_ast_fexps with true returned none"))
+      | _ -> raise (Reporting_basic.err_unreachable l __POS__ "to_ast_fexps with true returned none"))
     | Parse_ast.E_field(exp,id) -> E_field(to_ast_exp k_env def_ord exp, to_ast_id id)
     | Parse_ast.E_case(exp,pexps) -> E_case(to_ast_exp k_env def_ord exp, List.map (to_ast_case k_env def_ord) pexps)
     | Parse_ast.E_try (exp, pexps) -> E_try (to_ast_exp k_env def_ord exp, List.map (to_ast_case k_env def_ord) pexps)
@@ -540,7 +545,7 @@ and to_ast_exp (k_env : kind Envmap.t) (def_ord : order) (Parse_ast.E_aux(exp,l)
     | Parse_ast.E_throw exp -> E_throw (to_ast_exp k_env def_ord exp)
     | Parse_ast.E_return exp -> E_return(to_ast_exp k_env def_ord exp)
     | Parse_ast.E_assert(cond,msg) -> E_assert(to_ast_exp k_env def_ord cond, to_ast_exp k_env def_ord msg)
-    | _ -> raise (Reporting_basic.err_unreachable l "Unparsable construct in to_ast_exp")
+    | _ -> raise (Reporting_basic.err_unreachable l __POS__ "Unparsable construct in to_ast_exp")
     ), (l,()))
 
 and to_ast_lexp (k_env : kind Envmap.t) (def_ord : order) (Parse_ast.E_aux(exp,l) : Parse_ast.exp) : unit lexp =
@@ -622,26 +627,16 @@ and to_ast_record_try (k_env:kind Envmap.t) (def_ord:order) (Parse_ast.E_aux(exp
 
 let to_ast_default (names, k_env, default_order) (default : Parse_ast.default_typing_spec) : default_spec envs_out =
   match default with
-  | Parse_ast.DT_aux(df,l) ->
-    (match df with
-    | Parse_ast.DT_kind(bk,v) ->
-      let k,k_typ = to_ast_base_kind bk in
-      let v = to_ast_var v in
-      let key = var_to_string v in
-      DT_aux(DT_kind(k,v),l),(names,(Envmap.insert k_env (key,k_typ)),default_order)
-    | Parse_ast.DT_typ(typschm,id) ->
-      let tps,_,_ = to_ast_typschm k_env default_order typschm in
-      DT_aux(DT_typ(tps,to_ast_id id),l),(names,k_env,default_order)
-    | Parse_ast.DT_order(bk,o) ->
-      let k,k_typ = to_ast_base_kind bk in
-      (match (k,o) with
-	| (BK_aux(BK_order, _), Parse_ast.ATyp_aux(Parse_ast.ATyp_inc,lo)) ->
-	  let default_order = Ord_aux(Ord_inc,lo) in
-	  DT_aux(DT_order default_order,l),(names,k_env,default_order)
-	| (BK_aux(BK_order, _), Parse_ast.ATyp_aux(Parse_ast.ATyp_dec,lo)) ->
-	  let default_order = Ord_aux(Ord_dec,lo) in
-	  DT_aux(DT_order default_order,l),(names,k_env,default_order)
-	| _ -> typ_error l "Inc and Dec must have kind Order" None None None))
+  | Parse_ast.DT_aux(Parse_ast.DT_order(bk,o),l) ->
+     let k,k_typ = to_ast_base_kind bk in
+     (match (k,o) with
+      | (BK_aux(BK_order, _), Parse_ast.ATyp_aux(Parse_ast.ATyp_inc,lo)) ->
+         let default_order = Ord_aux(Ord_inc,lo) in
+         DT_aux(DT_order default_order,l),(names,k_env,default_order)
+      | (BK_aux(BK_order, _), Parse_ast.ATyp_aux(Parse_ast.ATyp_dec,lo)) ->
+         let default_order = Ord_aux(Ord_dec,lo) in
+         DT_aux(DT_order default_order,l),(names,k_env,default_order)
+      | _ -> typ_error l "Inc and Dec must have kind Order" None None None)
 
 let to_ast_spec (names,k_env,default_order) (val_:Parse_ast.val_spec) : (unit val_spec) envs_out =
   match val_ with
@@ -815,7 +810,9 @@ let to_ast_mpexp (names,k_env,def_ord) (Parse_ast.MPat_aux(mpexp, l)) =
 
 let to_ast_mapcl (names,k_env,def_ord) (Parse_ast.MCL_aux(mapcl, l)) =
   match mapcl with
-  | Parse_ast.MCL_mapcl (mpexp1, mpexp2) -> MCL_aux (MCL_mapcl (to_ast_mpexp (names,k_env,def_ord) mpexp1, to_ast_mpexp (names,k_env,def_ord) mpexp2), (l, ()))
+  | Parse_ast.MCL_bidir (mpexp1, mpexp2) -> MCL_aux (MCL_bidir (to_ast_mpexp (names,k_env,def_ord) mpexp1, to_ast_mpexp (names,k_env,def_ord) mpexp2), (l, ()))
+  | Parse_ast.MCL_forwards (mpexp, exp) -> MCL_aux (MCL_forwards (to_ast_mpexp (names,k_env,def_ord) mpexp, to_ast_exp k_env def_ord exp), (l, ()))
+  | Parse_ast.MCL_backwards (mpexp, exp) -> MCL_aux (MCL_backwards (to_ast_mpexp (names,k_env,def_ord) mpexp, to_ast_exp k_env def_ord exp), (l, ()))
 
 let to_ast_mapdef (names,k_env,def_ord) (Parse_ast.MD_aux(md,l):Parse_ast.mapdef) : (unit mapdef) envs_out =
   match md with
@@ -851,7 +848,7 @@ let to_ast_alias_spec k_env def_ord (Parse_ast.E_aux(e,le)) =
 				  Parse_ast.E_aux(Parse_ast.E_id second,ls)) ->
 	AL_concat(RI_aux(RI_id (to_ast_id first),(lf,())),
 		  RI_aux(RI_id (to_ast_id second),(ls,())))
-      | _ -> raise (Reporting_basic.err_unreachable le "Found an expression not supported by parser in to_ast_alias_spec")
+      | _ -> raise (Reporting_basic.err_unreachable le __POS__ "Found an expression not supported by parser in to_ast_alias_spec")
     ), (le,()))
 
 let to_ast_dec (names,k_env,def_ord) (Parse_ast.DEC_aux(regdec,l)) =
@@ -996,7 +993,7 @@ let to_ast_def (names, k_env, def_ord) partial_defs def : def_progress envs_out 
                  ((Finished def), envs),partial_defs
               | _, true ->
                  typ_error l "Scattered definition ended multiple times" (Some id) None None
-              | _ -> raise (Reporting_basic.err_unreachable l "Something in partial_defs other than fundef and type"))))
+              | _ -> raise (Reporting_basic.err_unreachable l __POS__ "Something in partial_defs other than fundef and type"))))
 
 let rec to_ast_defs_helper envs partial_defs = function
   | [] -> ([],envs,partial_defs)
@@ -1009,7 +1006,7 @@ let rec to_ast_defs_helper envs partial_defs = function
                 (match (def_in_progress id partial_defs) with
                  | None ->
                    raise
-                     (Reporting_basic.err_unreachable l "Id stored in place holder not retrievable from partial defs")
+                     (Reporting_basic.err_unreachable l __POS__ "Id stored in place holder not retrievable from partial defs")
                  | Some(d,k) ->
                    if (snd !d)
                    then (fst !d) :: defs, envs, partial_defs
@@ -1049,7 +1046,6 @@ let initial_kind_env =
     ("list", {k = K_Lam( [{k = K_Typ}], {k = K_Typ})});
     ("reg", {k = K_Lam( [{k = K_Typ}], {k= K_Typ})});
     ("register", {k = K_Lam( [{k = K_Typ}], {k= K_Typ})});
-    ("ref", {k = K_Lam( [{k = K_Typ}], {k= K_Typ})});
     ("range", {k = K_Lam( [ {k = K_Nat}; {k= K_Nat}], {k = K_Typ}) });
     ("vector", {k = K_Lam( [{k = K_Nat}; {k= K_Ord} ; {k=K_Typ}], {k=K_Typ}) } );
     ("atom", {k = K_Lam( [ {k=K_Nat} ], {k=K_Typ})});

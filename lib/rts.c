@@ -7,7 +7,7 @@
 #include"elf.h"
 
 static uint64_t g_elf_entry;
-static uint64_t g_cycle_count = 0;
+uint64_t g_cycle_count = 0;
 static uint64_t g_cycle_limit;
 
 void sail_match_failure(sail_string msg)
@@ -448,8 +448,19 @@ static struct option options[] = {
   {"entry",      required_argument, 0, 'n'},
   {"image",      required_argument, 0, 'i'},
   {"verbosity",  required_argument, 0, 'v'},
+  {"help",       no_argument,       0, 'h'},
   {0, 0, 0, 0}
 };
+
+static void print_usage()
+{
+  struct option *opt = options;
+  while (opt->name) {
+    printf("\t -%c\t %s\n", (char)opt->val, opt->name);
+    opt++;
+  }
+  exit(EXIT_SUCCESS);
+}
 
 int process_arguments(int argc, char *argv[])
 {
@@ -459,7 +470,7 @@ int process_arguments(int argc, char *argv[])
 
   while (true) {
     int option_index = 0;
-    c = getopt_long(argc, argv, "e:n:i:b:l:C:", options, &option_index);
+    c = getopt_long(argc, argv, "e:n:i:b:l:C:h", options, &option_index);
 
     if (c == -1) break;
 
@@ -534,8 +545,13 @@ int process_arguments(int argc, char *argv[])
       }
       break;
 
+    case 'h':
+      print_usage();
+      break;
+
     default:
       fprintf(stderr, "Unrecognized option %s\n", optarg);
+      print_usage();
       return -1;
     }
   }

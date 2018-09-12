@@ -54,7 +54,13 @@ module Big_int = Nat_big_num
 
 type mut = Immutable | Mutable
 
-type lvar = Register of effect * effect * typ | Enum of typ | Local of mut * typ | Unbound
+type 'a lvar = Register of effect * effect * 'a | Enum of 'a | Local of mut * 'a | Unbound
+
+let lvar_typ = function
+  | Local (_, typ) -> typ
+  | Register (_, _, typ) -> typ
+  | Enum typ -> typ
+  | Unbound -> failwith "No type for unbound variable"
 
 let no_annot = (Parse_ast.Unknown, ())
 
@@ -280,7 +286,6 @@ let unit_typ = mk_id_typ (mk_id "unit")
 let bit_typ = mk_id_typ (mk_id "bit")
 let real_typ = mk_id_typ (mk_id "real")
 let app_typ id args = mk_typ (Typ_app (id, args))
-let ref_typ typ = mk_typ (Typ_app (mk_id "ref", [mk_typ_arg (Typ_arg_typ typ)]))
 let register_typ typ = mk_typ (Typ_app (mk_id "register", [mk_typ_arg (Typ_arg_typ typ)]))
 let atom_typ nexp =
   mk_typ (Typ_app (mk_id "atom", [mk_typ_arg (Typ_arg_nexp (nexp_simp nexp))]))
@@ -414,12 +419,6 @@ and map_exp_annot_aux f = function
   | E_throw exp -> E_throw (map_exp_annot f exp)
   | E_return exp -> E_return (map_exp_annot f exp)
   | E_assert (test, msg) -> E_assert (map_exp_annot f test, map_exp_annot f msg)
-  | E_internal_cast (annot, exp) -> E_internal_cast (f annot, map_exp_annot f exp)
-  | E_internal_exp annot -> E_internal_exp (f annot)
-  | E_sizeof_internal annot -> E_sizeof_internal (f annot)
-  | E_internal_exp_user (annot1, annot2) -> E_internal_exp_user (f annot1, f annot2)
-  | E_comment str -> E_comment str
-  | E_comment_struc exp -> E_comment_struc (map_exp_annot f exp)
   | E_internal_value v -> E_internal_value v
   | E_var (lexp, exp1, exp2) -> E_var (map_lexp_annot f lexp, map_exp_annot f exp1, map_exp_annot f exp2)
   | E_internal_plet (pat, exp1, exp2) -> E_internal_plet (map_pat_annot f pat, map_exp_annot f exp1, map_exp_annot f exp2)
@@ -438,6 +437,8 @@ and map_pat_annot f (P_aux (pat, annot)) = P_aux (map_pat_annot_aux f pat, f ann
 and map_pat_annot_aux f = function
   | P_lit lit -> P_lit lit
   | P_wild -> P_wild
+  | P_or (pat1, pat2) -> P_or  (map_pat_annot f pat1, map_pat_annot f pat2)
+  | P_not pat         -> P_not (map_pat_annot f pat)
   | P_as (pat, id) -> P_as (map_pat_annot f pat, id)
   | P_typ (typ, pat) -> P_typ (typ, map_pat_annot f pat)
   | P_id id -> P_id id
@@ -456,8 +457,13 @@ and map_mpexp_annot_aux f = function
   | MPat_pat mpat -> MPat_pat (map_mpat_annot f mpat)
   | MPat_when (mpat, guard) -> MPat_when (map_mpat_annot f mpat, map_exp_annot f guard)
 
-and map_mapcl_annot f (MCL_aux (MCL_mapcl (mpexp1, mpexp2), annot)) =
-  MCL_aux (MCL_mapcl (map_mpexp_annot f mpexp1, map_mpexp_annot f mpexp2), f annot)
+and map_mapcl_annot f = function
+  | (MCL_aux (MCL_bidir (mpexp1, mpexp2), annot)) ->
+     MCL_aux (MCL_bidir (map_mpexp_annot f mpexp1, map_mpexp_annot f mpexp2), f annot)
+  | (MCL_aux (MCL_forwards (mpexp, exp), annot)) ->
+     MCL_aux (MCL_forwards (map_mpexp_annot f mpexp, map_exp_annot f exp), f annot)
+  | (MCL_aux (MCL_backwards (mpexp, exp), annot)) ->
+     MCL_aux (MCL_backwards (map_mpexp_annot f mpexp, map_exp_annot f exp), f annot)
 
 and map_mpat_annot f (MP_aux (mpat, annot)) = MP_aux (map_mpat_annot_aux f mpat, f annot)
 and map_mpat_annot_aux f = function
@@ -519,9 +525,7 @@ let def_loc = function
   | DEF_fixity (_, _, Id_aux (_, l))
   | DEF_overload (Id_aux (_, l), _) ->
     l
-  | DEF_internal_mutrec _
-  | DEF_comm _ ->
-    Parse_ast.Unknown
+  | DEF_internal_mutrec _ -> Parse_ast.Unknown
 
 let string_of_id = function
   | Id_aux (Id v, _) -> v
@@ -634,11 +638,6 @@ and string_of_n_constraint = function
   | NC_aux (NC_true, _) -> "true"
   | NC_aux (NC_false, _) -> "false"
 
-let string_of_annot = function
-  | Some (_, typ, eff) ->
-     "Some (_, " ^ string_of_typ typ ^ ", " ^ string_of_effect eff ^ ")"
-  | None -> "None"
-
 let string_of_quant_item_aux = function
   | QI_id (KOpt_aux (KOpt_none kid, _)) -> string_of_kid kid
   | QI_id (KOpt_aux (KOpt_kind (k, kid), _)) -> "(" ^ string_of_kid kid ^ " :: " ^ string_of_kind k ^ ")"
@@ -694,7 +693,7 @@ let rec string_of_exp (E_aux (exp, _)) =
   | E_vector_update (v, n, exp) -> "[" ^ string_of_exp v ^ " with " ^ string_of_exp n ^ " = " ^ string_of_exp exp ^ "]"
   | E_vector_update_subrange (v, n, m, exp) -> "[" ^ string_of_exp v ^ " with " ^ string_of_exp n ^ " .. " ^ string_of_exp m ^ " = " ^ string_of_exp exp ^ "]"
   | E_vector_subrange (v, n1, n2) -> string_of_exp v ^ "[" ^ string_of_exp n1 ^ " .. " ^ string_of_exp n2 ^ "]"
-  | E_vector_append (v1, v2) -> string_of_exp v1 ^ " : " ^ string_of_exp v2
+  | E_vector_append (v1, v2) -> string_of_exp v1 ^ " @ " ^ string_of_exp v2
   | E_if (cond, then_branch, else_branch) ->
      "if " ^ string_of_exp cond ^ " then " ^ string_of_exp then_branch ^ " else " ^ string_of_exp else_branch
   | E_field (exp, id) -> string_of_exp exp ^ "." ^ string_of_id id
@@ -715,13 +714,7 @@ let rec string_of_exp (E_aux (exp, _)) =
      "{ " ^ string_of_exp exp ^ " with " ^ string_of_list "; " string_of_fexp fexps ^ " }"
   | E_record (FES_aux (FES_Fexps (fexps, _), _)) ->
      "{ " ^ string_of_list "; " string_of_fexp fexps ^ " }"
-  | E_internal_cast _ -> "INTERNAL CAST"
-  | E_internal_exp _ -> "INTERNAL EXP"
-  | E_sizeof_internal _ -> "INTERNAL SIZEOF"
-  | E_internal_exp_user _ -> "INTERNAL EXP USER"
-  | E_comment _ -> "INTERNAL COMMENT"
-  | E_comment_struc _ -> "INTERNAL COMMENT STRUC"
-  | E_var _ -> "INTERNAL LET"
+  | E_var (lexp, binding, exp) -> "var " ^ string_of_lexp lexp ^ " = " ^ string_of_exp binding ^ " in " ^ string_of_exp exp
   | E_internal_return exp -> "internal_return (" ^ string_of_exp exp ^ ")"
   | E_internal_plet (pat, exp, body) -> "internal_plet " ^ string_of_pat pat ^ " = " ^ string_of_exp exp ^ " in " ^ string_of_exp body
   | E_nondet _ -> "NONDET"
@@ -742,6 +735,9 @@ and string_of_pat (P_aux (pat, l)) =
   match pat with
   | P_lit lit -> string_of_lit lit
   | P_wild -> "_"
+  | P_or (pat1, pat2) -> "(" ^ string_of_pat pat1 ^ " | " ^ string_of_pat pat2
+  ^ ")"
+  | P_not pat         -> "(!" ^ string_of_pat pat ^ ")"
   | P_id v -> string_of_id v
   | P_var (pat, tpat) -> string_of_pat pat ^ " as " ^ string_of_typ_pat tpat
   | P_typ (typ, pat) -> string_of_pat pat ^ " : " ^ string_of_typ typ
@@ -749,10 +745,10 @@ and string_of_pat (P_aux (pat, l)) =
   | P_app (f, pats) -> string_of_id f ^ "(" ^ string_of_list ", " string_of_pat pats ^ ")"
   | P_cons (pat1, pat2) -> string_of_pat pat1 ^ " :: " ^ string_of_pat pat2
   | P_list pats -> "[||" ^ string_of_list "," string_of_pat pats ^ "||]"
-  | P_vector_concat pats -> string_of_list " : " string_of_pat pats
+  | P_vector_concat pats -> string_of_list " @ " string_of_pat pats
   | P_vector pats -> "[" ^ string_of_list ", " string_of_pat pats ^ "]"
-  | P_as (pat, id) -> string_of_pat pat ^ " as " ^ string_of_id id
-  | P_string_append pats -> string_of_list " ^^ " string_of_pat pats
+  | P_as (pat, id) -> "(" ^ string_of_pat pat ^ " as " ^ string_of_id id ^ ")"
+  | P_string_append pats -> string_of_list " ^ " string_of_pat pats
   | _ -> "PAT"
 
 and string_of_mpat (MP_aux (pat, l)) =
@@ -763,9 +759,9 @@ and string_of_mpat (MP_aux (pat, l)) =
   | MP_app (f, pats) -> string_of_id f ^ "(" ^ string_of_list ", " string_of_mpat pats ^ ")"
   | MP_cons (pat1, pat2) -> string_of_mpat pat1 ^ " :: " ^ string_of_mpat pat2
   | MP_list pats -> "[||" ^ string_of_list "," string_of_mpat pats ^ "||]"
-  | MP_vector_concat pats -> string_of_list " : " string_of_mpat pats
+  | MP_vector_concat pats -> string_of_list " @ " string_of_mpat pats
   | MP_vector pats -> "[" ^ string_of_list ", " string_of_mpat pats ^ "]"
-  | MP_string_append pats -> string_of_list " ^^ " string_of_mpat pats
+  | MP_string_append pats -> string_of_list " ^ " string_of_mpat pats
   | MP_typ (mpat, typ) -> "(" ^ string_of_mpat mpat ^ " : " ^ string_of_typ typ ^ ")"
   | MP_as (mpat, id) -> "((" ^ string_of_mpat mpat ^ ") as " ^ string_of_id id ^ ")"
   | _ -> "MPAT"
@@ -799,6 +795,8 @@ let rec pat_ids (P_aux (pat_aux, _)) =
   | P_lit _ | P_wild -> IdSet.empty
   | P_id id -> IdSet.singleton id
   | P_as (pat, id) -> IdSet.add id (pat_ids pat)
+  | P_or (pat1, pat2) -> IdSet.union (pat_ids pat1) (pat_ids pat2)
+  | P_not (pat)       -> pat_ids pat
   | P_var (pat, _) | P_typ (_, pat) -> pat_ids pat
   | P_app (_, pats) | P_tup pats | P_vector pats | P_vector_concat pats | P_list pats ->
      List.fold_right IdSet.union (List.map pat_ids pats) IdSet.empty
@@ -962,13 +960,16 @@ let rec lexp_to_exp (LEXP_aux (lexp_aux, annot) as le) =
     let get_id (LEXP_aux(lexp,((l,_) as annot)) as le) = match lexp with
       | LEXP_id id | LEXP_cast (_, id) -> E_aux (E_id id, annot)
       | _ ->
-        raise (Reporting_basic.err_unreachable l
-          ("Unsupported sub-lexp " ^ string_of_lexp le ^ " in tuple")) in
+        raise (Reporting_basic.err_unreachable l __POS__
+         ("Unsupported sub-lexp " ^ string_of_lexp le ^ " in tuple")) in
     rewrap (E_tuple (List.map get_id les))
   | LEXP_vector (lexp, e) -> rewrap (E_vector_access (lexp_to_exp lexp, e))
   | LEXP_vector_range (lexp, e1, e2) -> rewrap (E_vector_subrange (lexp_to_exp lexp, e1, e2))
   | LEXP_field (lexp, id) -> rewrap (E_field (lexp_to_exp lexp, id))
   | LEXP_memory (id, exps) -> rewrap (E_app (id, exps))
+  | LEXP_vector_concat [] -> rewrap (E_vector [])
+  | LEXP_vector_concat (lexp :: lexps) ->
+     List.fold_left (fun exp lexp -> rewrap (E_vector_append (exp, lexp_to_exp lexp))) (lexp_to_exp lexp) lexps
   | LEXP_deref exp -> rewrap (E_app (mk_id "reg_deref", [exp]))
 
 let is_unit_typ = function
@@ -1020,7 +1021,7 @@ let is_order_inc = function
   | Ord_aux (Ord_inc, _) -> true
   | Ord_aux (Ord_dec, _) -> false
   | Ord_aux (Ord_var _, l) ->
-    raise (Reporting_basic.err_unreachable l "is_order_inc called on vector with variable ordering")
+    raise (Reporting_basic.err_unreachable l __POS__ "is_order_inc called on vector with variable ordering")
 
 let is_bit_typ = function
   | Typ_aux (Typ_id (Id_aux (Id "bit", _)), _) -> true
@@ -1241,7 +1242,8 @@ let rec subst id value (E_aux (e_aux, annot) as exp) =
 
     | E_return exp -> E_return (subst id value exp)
     | E_exit exp -> E_exit (subst id value exp)
-    (* Not sure about this, but id should always be immutable while id' must be mutable so should be ok. *)
+
+    (* id should always be immutable while id' must be mutable register name so should be ok to never substitute here *)
     | E_ref id' -> E_ref id'
     | E_throw exp -> E_throw (subst id value exp)
 
@@ -1251,7 +1253,10 @@ let rec subst id value (E_aux (e_aux, annot) as exp) =
     | E_assert (exp1, exp2) -> E_assert (subst id value exp1, subst id value exp2)
 
     | E_internal_value v -> E_internal_value v
-    | _ -> failwith ("subst " ^ string_of_exp exp)
+
+    | E_var (lexp, exp1, exp2) -> E_var (subst_lexp id value lexp, subst id value exp1, subst id value exp2)
+
+    | E_internal_plet _ | E_internal_return _ -> failwith ("subst " ^ string_of_exp exp)
   in
   wrap e_aux
 
@@ -1281,6 +1286,8 @@ and subst_lexp id value (LEXP_aux (lexp_aux, annot) as lexp) =
     | LEXP_tup lexps -> LEXP_tup (List.map (subst_lexp id value) lexps)
     | LEXP_vector (lexp, exp) -> LEXP_vector (subst_lexp id value lexp, subst id value exp)
     | LEXP_vector_range (lexp, exp1, exp2) -> LEXP_vector_range (subst_lexp id value lexp, subst id value exp1, subst id value exp2)
+    | LEXP_vector_concat lexps ->
+       LEXP_vector_concat (List.map (subst_lexp id value) lexps)
     | LEXP_field (lexp, id') -> LEXP_field (subst_lexp id value lexp, id')
   in
   wrap lexp_aux

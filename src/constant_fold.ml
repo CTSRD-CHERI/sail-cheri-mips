@@ -61,7 +61,7 @@ let optimize_constant_fold = ref false
 
 let rec fexp_of_ctor (field, value) =
   FE_aux (FE_Fexp (mk_id field, exp_of_value value), no_annot)
-  
+
 and exp_of_value =
   let open Value in
   function
@@ -90,12 +90,16 @@ let safe_primops =
     [ "print_endline";
       "prerr_endline";
       "putchar";
+      "print";
+      "prerr";
       "print_bits";
       "print_int";
       "print_string";
       "prerr_bits";
       "prerr_int";
       "prerr_string";
+      "read_ram";
+      "write_ram";
       "Elf_loader.elf_entry";
       "Elf_loader.elf_tohost"
     ]
@@ -112,14 +116,13 @@ let rec is_constant (E_aux (e_aux, _)) =
 and is_constant_fexp (FE_aux (FE_Fexp (_, exp), _)) = is_constant exp
 
 (* Wrapper around interpreter that repeatedly steps until done. *)
-let rec run ast frame =
+let rec run frame =
   match frame with
   | Interpreter.Done (state, v) -> v
   | Interpreter.Step (lazy_str, _, _, _) ->
-     prerr_endline (Lazy.force lazy_str);
-     run ast (Interpreter.eval_frame ast frame)
+     run (Interpreter.eval_frame frame)
   | Interpreter.Break frame ->
-     run ast (Interpreter.eval_frame ast frame)
+     run (Interpreter.eval_frame frame)
 
 (** This rewriting pass looks for function applications (E_app)
    expressions where every argument is a literal. It passes these
@@ -142,7 +145,7 @@ let rec rewrite_constant_function_calls' ast =
   let rewrite_count = ref 0 in
   let ok () = incr rewrite_count in
   let not_ok () = decr rewrite_count in
-  
+
   let lstate, gstate =
     Interpreter.initial_state ast safe_primops
   in
@@ -152,7 +155,7 @@ let rec rewrite_constant_function_calls' ast =
     let initial_monad = Interpreter.return (E_aux (e_aux, annot)) in
     try
       begin
-        let v = run ast (Interpreter.Step (lazy "", (lstate, gstate), initial_monad, [])) in
+        let v = run (Interpreter.Step (lazy "", (lstate, gstate), initial_monad, [])) in
         let exp = exp_of_value v in
         try (ok (); Type_check.check_exp (env_of_annot annot) exp (typ_of_annot annot)) with
         | Type_error (l, err) ->
@@ -168,27 +171,27 @@ let rec rewrite_constant_function_calls' ast =
        fold, just continue without optimising. *)
     | _ -> E_aux (e_aux, annot)
   in
-    
+
   let rw_funcall e_aux annot =
     match e_aux with
     | E_app (id, args) when List.for_all is_constant args ->
        evaluate e_aux annot
 
     | E_field (exp, id) when is_constant exp ->
-       evaluate e_aux annot      
+       evaluate e_aux annot
 
     | E_if (E_aux (E_lit (L_aux (L_true, _)), _), then_exp, _) -> ok (); then_exp
     | E_if (E_aux (E_lit (L_aux (L_false, _)), _), _, else_exp) -> ok (); else_exp
 
+    (* We only propagate lets in the simple case where we know that
+       the id will have the inferred type of the argument. For more
+       complex let bindings trying to propagate them may result in
+       type errors due to how type variables are bound by let bindings
+       *)
     | E_let (LB_aux (LB_val (P_aux (P_id id, _), bind), _), exp) when is_constant bind ->
        ok ();
        subst id bind exp
 
-    | E_let (LB_aux (LB_val (P_aux (P_typ (typ, P_aux (P_id id, _)), annot), bind), _), exp)
-         when is_constant bind ->
-       ok ();
-       subst id (E_aux (E_cast (typ, bind), annot)) exp
-       
     | _ -> E_aux (e_aux, annot)
   in
   let rw_exp = {

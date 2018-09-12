@@ -1,6 +1,8 @@
+/* The emulator fetch-execute-interrupt dispatch loop. */
+
 union FetchResult = {
-  F_Base : word,                       /* Base ISA */
-  F_RVC : half,                        /* Compressed ISA */
+  F_Base  : word,                      /* Base ISA */
+  F_RVC   : half,                      /* Compressed ISA */
   F_Error : (ExceptionType, xlenbits)  /* exception and PC */
 }
 
@@ -8,7 +10,7 @@ function isRVC(h : half) -> bool =
  ~ (h[1 .. 0] == 0b11)
 
 val fetch : unit -> FetchResult effect {escape, rmem, rreg, wmv, wreg}
-function fetch() -> FetchResult = {
+function fetch() -> FetchResult =
   /* check for legal PC */
   if (PC[0] != 0b0 | (PC[1] != 0b0 & (~ (haveRVC()))))
   then F_Error(E_Fetch_Addr_Align, PC)
@@ -39,54 +41,58 @@ function fetch() -> FetchResult = {
       }
     }
   }
-}
 
-/* returns whether an instruction was retired, and whether to increment the step count in the trace */
-val step : int -> (bool, bool) effect {barr, eamem, escape, exmem, rmem, rreg, wmv, wreg}
+/* returns whether to increment the step count in the trace */
+val step : int -> bool effect {barr, eamem, escape, exmem, rmem, rreg, wmv, wreg}
 function step(step_no) = {
-  match curInterrupt(cur_privilege, mip, mie, mideleg) {
-    Some(intr, priv) => {
-      print_bits("Handling interrupt: ", intr);
-      handle_interrupt(intr, priv);
-      (false, false)
-    },
-    None() => {
-      match fetch() {
-        F_Error(e, addr) => {
-          handle_mem_exception(addr, e);
-          (false, false)
-        },
-        F_RVC(h) => {
-          match decodeCompressed(h) {
-            None() => {
-              print("[" ^ string_of_int(step_no) ^ "] [" ^ cur_privilege ^ "]: " ^ BitStr(PC) ^ " (" ^ BitStr(h) ^ ") <no-decode>");
-              handle_decode_exception(EXTZ(h));
-              (false, true)
-            },
-            Some(ast) => {
-              print("[" ^ string_of_int(step_no) ^ "] [" ^ cur_privilege ^ "]: " ^ BitStr(PC) ^ " (" ^ BitStr(h) ^ ") " ^ ast);
-              nextPC = PC + 2;
-              (execute(ast), true)
+  minstret_written = false;     /* see note for minstret */
+  let (retired, stepped) : (bool, bool) =
+    match curInterrupt(cur_privilege, mip, mie, mideleg) {
+      Some(intr, priv) => {
+        print_bits("Handling interrupt: ", intr);
+        handle_interrupt(intr, priv);
+        (false, false)
+      },
+      None() => {
+        match fetch() {
+          F_Error(e, addr) => {
+            handle_mem_exception(addr, e);
+            (false, false)
+          },
+          F_RVC(h) => {
+            match decodeCompressed(h) {
+              None() => {
+                print("[" ^ string_of_int(step_no) ^ "] [" ^ cur_privilege ^ "]: " ^ BitStr(PC) ^ " (" ^ BitStr(h) ^ ") <no-decode>");
+                handle_decode_exception(EXTZ(h));
+                (false, true)
+              },
+              Some(ast) => {
+                print("[" ^ string_of_int(step_no) ^ "] [" ^ cur_privilege ^ "]: " ^ BitStr(PC) ^ " (" ^ BitStr(h) ^ ") " ^ ast);
+                nextPC = PC + 2;
+                (execute(ast), true)
+              }
             }
-          }
-        },
-        F_Base(w) => {
-          match decode(w) {
-            None() => {
-              print("[" ^ string_of_int(step_no) ^ "] [" ^ cur_privilege ^ "]: " ^ BitStr(PC) ^ " (" ^ BitStr(w) ^ ") <no-decode>");
-              handle_decode_exception(EXTZ(w));
-              (false, true)
-            },
-            Some(ast) => {
-              print("[" ^ string_of_int(step_no) ^ "] [" ^ cur_privilege ^ "]: " ^ BitStr(PC) ^ " (" ^ BitStr(w) ^ ") " ^ ast);
-              nextPC = PC + 4;
-              (execute(ast), true)
+          },
+          F_Base(w) => {
+            match decode(w) {
+              None() => {
+                print("[" ^ string_of_int(step_no) ^ "] [" ^ cur_privilege ^ "]: " ^ BitStr(PC) ^ " (" ^ BitStr(w) ^ ") <no-decode>");
+                handle_decode_exception(EXTZ(w));
+                (false, true)
+              },
+              Some(ast) => {
+                print("[" ^ string_of_int(step_no) ^ "] [" ^ cur_privilege ^ "]: " ^ BitStr(PC) ^ " (" ^ BitStr(w) ^ ") " ^ ast);
+                nextPC = PC + 4;
+                (execute(ast), true)
+              }
             }
           }
         }
       }
-    }
-  }
+    };
+  PC = nextPC;
+  if retired then retire_instruction();
+  stepped
 }
 
 val loop : unit -> unit effect {barr, eamem, escape, exmem, rmem, rreg, wmv, wreg}
@@ -95,11 +101,7 @@ function loop () = {
   i : int = 0;
   step_no : int = 0;
   while (~ (htif_done)) do {
-    minstret_written = false;     /* see note for minstret */
-    let (retired, stepped) = step(step_no);
-    PC = nextPC;
-    if retired then retire_instruction();
-
+    let stepped = step(step_no);
     if stepped then step_no = step_no + 1;
 
     /* check htif exit */

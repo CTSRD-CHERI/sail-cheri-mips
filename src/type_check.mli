@@ -67,9 +67,6 @@ val opt_no_effects : bool ref
    assignments in l-expressions. *)
 val opt_no_lexp_bounds_check : bool ref
 
-(** Note: Partial function -- fails for Unknown lvars *)
-val lvar_typ : lvar -> typ
-  
 (** {2 Type errors} *)
 
 type type_error =
@@ -163,7 +160,7 @@ module Env : sig
      lvar type. Returns Unbound if the identifier is unbound, and
      won't throw any exceptions. If the raw option is true, then look
      up the type without any flow typing modifiers. *)
-  val lookup_id : ?raw:bool -> id -> t -> lvar
+  val lookup_id : ?raw:bool -> id -> t -> typ lvar
 
   val is_union_constructor : id -> t -> bool
 
@@ -197,6 +194,7 @@ module Env : sig
 
   val empty : t
 
+  val pattern_completeness_ctx : t -> Pattern_completeness.ctx
 end
 
 (** Push all the type variables and constraints from a typquant into
@@ -222,7 +220,24 @@ val dvector_typ : Env.t -> nexp -> typ -> typ
 val exist_typ : (kid -> n_constraint) -> (kid -> typ) -> typ
 
 (** The type of type annotations *)
-type tannot = (Env.t * typ * effect) option
+type tannot
+
+(** The canonical view of a type annotation is that it is a tuple
+   containing an environment (env), a type (typ), and an effect such
+   that check_X env (strip_X X) typ succeeds, where X is typically exp
+   (i.e an expression). Note that it is specifically not guaranteed
+   that calling destruct_tannot followed by mk_tannot returns an
+   identical type annotation. *)
+val destruct_tannot : tannot -> (Env.t * typ * effect) option
+val mk_tannot : Env.t -> typ -> effect -> tannot
+
+val empty_tannot : tannot
+val is_empty_tannot : tannot -> bool
+
+val destruct_tannot : tannot -> (Env.t * typ * effect) option
+val string_of_tannot : tannot -> string (* For debugging only *)
+val replace_typ : typ -> tannot -> tannot
+val replace_env : Env.t -> tannot -> tannot
 
 (** {2 Removing type annotations} *)
 
@@ -272,7 +287,7 @@ val check_case : Env.t -> typ -> unit pexp -> typ -> tannot pexp
 
 val check_fundef : Env.t -> 'a fundef -> tannot def list * Env.t
 
-val check_val_spec : Env.t -> 'a val_spec -> tannot def list * Env.t  
+val check_val_spec : Env.t -> 'a val_spec -> tannot def list * Env.t
 
 val prove : Env.t -> n_constraint -> bool
 
@@ -318,6 +333,10 @@ val effect_of_pat : tannot pat -> effect
 val effect_of_annot : tannot -> effect
 val add_effect_annot : tannot -> effect -> tannot
 
+(* Returns the type that an expression was checked against, if any.
+   Note that these may be removed if an expression is rewritten. *)
+val expected_typ_of : Ast.l * tannot -> typ option
+
 (** {2 Utilities } *)
 
 val destruct_atom_nexp : Env.t -> typ -> nexp option
@@ -336,7 +355,6 @@ val destruct_vector : Env.t -> typ -> (nexp * order * typ) option
 type uvar =
   | U_nexp of nexp
   | U_order of order
-  | U_effect of effect
   | U_typ of typ
 
 val string_of_uvar : uvar -> string
@@ -354,6 +372,10 @@ val alpha_equivalent : Env.t -> typ -> typ -> bool
 
 (** Throws Invalid_argument if the argument is not a E_app expression *)
 val instantiation_of : tannot exp -> uvar KBindings.t
+
+(** Doesn't use the type of the expression when calculating instantiations.
+    May fail if the arguments aren't sufficient to calculate all unifiers. *)
+val instantiation_of_without_type : tannot exp -> uvar KBindings.t
 
 (* Type variable instantiations that inference will extract from constraints *)
 val instantiate_simple_equations : quant_item list -> uvar KBindings.t

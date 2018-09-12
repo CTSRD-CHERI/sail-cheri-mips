@@ -129,7 +129,7 @@ let rec run () =
        | Step (out, state, _, stack) ->
           begin
             try
-              current_mode := Evaluation (eval_frame !interactive_ast frame)
+              current_mode := Evaluation (eval_frame frame)
             with
             | Failure str -> print_endline str; current_mode := Normal
           end;
@@ -154,7 +154,7 @@ let rec run_steps n =
        | Step (out, state, _, stack) ->
           begin
             try
-              current_mode := Evaluation (eval_frame !interactive_ast frame)
+              current_mode := Evaluation (eval_frame frame)
             with
             | Failure str -> print_endline str; current_mode := Normal
           end;
@@ -194,6 +194,8 @@ let help = function
      "(:u | :unload) - Unload all loaded files."
   | ":output" ->
      ":output <file> - Redirect evaluating expression output to a file."
+  | ":option" ->
+     ":option string - Parse string as if it was an option passed on the command line. Try :option -help."
   | cmd ->
      "Either invalid command passed to help, or no documentation for " ^ cmd ^ ". Try :help :help."
 
@@ -253,7 +255,7 @@ let handle_input' input =
             else print_endline "Invalid argument for :clear, expected either :clear on or :clear off"
          | ":commands" ->
             let commands =
-              [ "Universal commands - :(t)ype :(i)nfer :(q)uit :(v)erbose :clear :commands :help :output";
+              [ "Universal commands - :(t)ype :(i)nfer :(q)uit :(v)erbose :clear :commands :help :output :option";
                 "Normal mode commands - :elf :(l)oad :(u)nload";
                 "Evaluation mode commands - :(r)un :(s)tep :(n)ormal";
                 "";
@@ -269,6 +271,14 @@ let handle_input' input =
             in
             let ids = Specialize.polymorphic_functions is_kopt !interactive_ast in
             List.iter (fun id -> print_endline (string_of_id id)) (IdSet.elements ids)
+         | ":option" ->
+            begin
+              try
+                let args = Str.split (Str.regexp " +") arg in
+                Arg.parse_argv ~current:(ref 0) (Array.of_list ("sail" :: args)) Sail.options (fun _ -> ()) "";
+              with
+              | Arg.Bad message | Arg.Help message -> print_endline message
+            end;
          | ":spec" ->
             let ast, env = Specialize.specialize !interactive_ast !interactive_env in
             interactive_ast := ast;
@@ -282,7 +292,7 @@ let handle_input' input =
             let ast = Process_file.rewrite_ast_c !interactive_ast in
             let ast, env = Specialize.specialize ast !interactive_env in
             let ctx = initial_ctx env in
-            let byte_ast = bytecode_ast ctx (fun cdefs -> List.concat (List.map (flatten_instrs ctx) cdefs)) ast in
+            let byte_ast = bytecode_ast ctx (List.map flatten_instrs) ast in
             let chan = open_out arg in
             Util.opt_colors := false;
             Pretty_print_sail.pretty_sail chan (separate_map hardline Bytecode_util.pp_cdef byte_ast);
@@ -331,7 +341,7 @@ let handle_input' input =
           (* An expression in normal mode is type checked, then puts
              us in evaluation mode. *)
           let exp = Type_check.infer_exp !interactive_env (Initial_check.exp_of_string Ast_util.dec_ord str) in
-          current_mode := Evaluation (eval_frame !interactive_ast (Step (lazy "", !interactive_state, return exp, [])));
+          current_mode := Evaluation (eval_frame (Step (lazy "", !interactive_state, return exp, [])));
           print_program ()
        | Empty -> ()
      end
@@ -365,7 +375,7 @@ let handle_input' input =
                begin
                  try
                    interactive_state := state;
-                   current_mode := Evaluation (eval_frame !interactive_ast frame);
+                   current_mode := Evaluation (eval_frame frame);
                    print_program ()
                  with
                  | Failure str -> print_endline str; current_mode := Normal

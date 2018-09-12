@@ -60,6 +60,7 @@ fragment :: 'F_' ::=
   | string ( fragment0 , ... , fragmentn ) :: :: call
   | fragment . string                      :: :: field
   | string                                 :: :: raw
+  | poly fragment                          :: :: poly
 
 % init / clear -> create / kill
 
@@ -96,18 +97,19 @@ ctyp :: 'CT_' ::=
   | list ( ctyp )                  :: :: list
 % A vector type for non-bit vectors, and a list type.
   | ref ( ctyp )                   :: :: ref
+  | poly                           :: :: poly
 
 cval :: 'CV_' ::=
   {{ ocaml fragment * ctyp }}
   {{ lem fragment * ctyp }}
 
 clexp :: 'CL_' ::=
-  | id                :: :: id
-  | id . string       :: :: field
-  | * id              :: :: addr
-  | id -> string      :: :: addr_field
-  | current_exception :: :: current_exception
-  | have_exception    :: :: have_exception
+  | id : ctyp                :: :: id
+  | clexp . string           :: :: field
+  | * clexp                  :: :: addr
+  | clexp . nat              :: :: tuple
+  | current_exception : ctyp :: :: current_exception
+  | have_exception           :: :: have_exception
 
 ctype_def :: 'CTD_' ::=
   {{ com C type definition }}
@@ -126,9 +128,8 @@ instr :: 'I_' ::=
   | if ( cval ) { instr0 ; ... ; instrn }
     else { instr0 ; ... ; instrm } : ctyp          :: :: if
   | jump ( cval ) string                           :: :: jump
-  | clexp = bool id ( cval0 , ... , cvaln ) : ctyp :: :: funcall
+  | clexp = bool id ( cval0 , ... , cvaln )        :: :: funcall
   | clexp = cval                                   :: :: copy
-  | clexp = ( ctyp ) id : ctyp'                    :: :: convert
   | clear ctyp id                                  :: :: clear
   | return cval                                    :: :: return
   | { instr0 ; ... ; instrn }                      :: :: block
@@ -138,6 +139,7 @@ instr :: 'I_' ::=
   | C string                                       :: :: raw % only used for GCC attributes
   | string :                                       :: :: label
   | goto string                                    :: :: goto
+  | undefined ctyp                                 :: :: undefined
   | match_failure                                  :: :: match_failure
 
 % For optimising away allocations.
