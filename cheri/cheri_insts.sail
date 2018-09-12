@@ -929,6 +929,7 @@ function clause execute (CCall(cs, cb, 0b00000000001)) = /* selector=1 */
         sealed=false,
         otype=zeros()
       });
+      nextPC = to_bits(64, getCapOffset(cs_val));
     }
 }
 
