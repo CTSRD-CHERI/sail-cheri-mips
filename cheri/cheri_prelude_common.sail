@@ -44,7 +44,6 @@ scattered function decode
 register PCC        : CapReg
 register nextPCC    : CapReg
 register delayedPCC : CapReg
-register inCCallDelay : bits(1)
 register DDC : CapReg
 register C01 : CapReg
 register C02 : CapReg
@@ -230,6 +229,13 @@ function execute_branch_pcc(newPCC) = {
   branchPending = 0b1;
 }
 
+val set_next_pcc : CapReg -> unit effect {wreg} 
+function set_next_pcc(newPCC) = {
+  nextPCC    = newPCC;
+  delayedPCC = newPCC; /* always write delayedPCC together with nextPCC so 
+                          that non-capability branches don't override PCC */
+}
+
 function SignalException (ex) = 
   {
     if (not (CP0Status.EXL())) then {
@@ -241,19 +247,14 @@ function SignalException (ex) =
       else
         EPCC = capStructToCapReg(int_to_cap(to_bits(64, getCapBase(pcc)) + unsigned(pc)));
     };
-
-    nextPCC    = KCC;
-    delayedPCC = KCC; /* always write delayedPCC together with nextPCC so 
-                          that non-capability branches don't override PCC */
+    set_next_pcc(KCC);
     let base = getCapBase(capRegToCapStruct(KCC)) in
     SignalExceptionMIPS(ex, to_bits(64, base));
   }
 
 function ERETHook() : unit -> unit =
   {
-    nextPCC    = EPCC;
-    delayedPCC = EPCC; /* always write delayedPCC together with nextPCC so 
-                          that non-capability branches don't override PCC */
+    set_next_pcc(EPCC);
   }
 
 val raise_c2_exception8 : forall ('o : Type) . (CapEx, bits(8)) -> 'o effect {escape, rreg, wreg}
@@ -480,8 +481,6 @@ function cp2_next_pc () = {
   PCC = nextPCC;
   if inBranchDelay then {
     nextPCC = delayedPCC;
-  } else {
-    inCCallDelay = 0b0;
   };
 }
 

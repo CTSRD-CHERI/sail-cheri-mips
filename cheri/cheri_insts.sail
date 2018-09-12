@@ -919,11 +919,10 @@ function clause execute (CCall(cs, cb, 0b00000000001)) = /* selector=1 */
     raise_c2_exception(CapEx_LengthViolation, cs)
   else
     {
-      execute_branch_pcc({cs_val with
+      set_next_pcc(capStructToCapReg({cs_val with
         sealed=false,
         otype=zeros()
-      });
-      inCCallDelay  = 0b1;
+      }));
       C26 = capStructToCapReg({cb_val with
         sealed=false,
         otype=zeros()
