@@ -947,7 +947,7 @@ function clause execute (CBX(cb, imm, notset)) =
     execute_branch(PC + offset);
   }
   else
-    execute_branch(PC + 4);  /* Next instruction should still cause the BD flag to be set on trap */
+    execute_branch(PC + 8);  /* Next instruction should still cause the BD flag to be set on trap */
 }
 
 union clause ast = CBZ : (regno, bits(16), bool)
@@ -960,7 +960,7 @@ function clause execute (CBZ(cb, imm, notzero)) =
     execute_branch(PC + offset);
   }
   else
-    execute_branch(PC + 4);  /* Next instruction should still cause the BD flag to be set on trap */
+    execute_branch(PC + 8);  /* Next instruction should still cause the BD flag to be set on trap */
 }
 
 union clause ast = CJALR : (regno, regno, bool)
