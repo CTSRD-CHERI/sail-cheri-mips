@@ -894,6 +894,8 @@ function clause execute (CCall(cs, cb, 0b00000000001)) = /* selector=1 */
 {
   /* Jump-like implementation of CCall that unseals arguments */
   checkCP2usable();
+  if inBranchDelay then
+    SignalException(ResI);
   cs_val = readCapReg(cs);
   cb_val = readCapReg(cb);
   cs_cursor = getCapCursor(cs_val);
