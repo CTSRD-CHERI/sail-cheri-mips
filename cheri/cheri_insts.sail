@@ -340,7 +340,20 @@ function clause execute (CReadHwr(cd, sel)) =
       23 => capRegToCapStruct(KR2C),
       29 => capRegToCapStruct(KCC),
       30 => capRegToCapStruct(KDC),
-      31 => capRegToCapStruct(EPCC),
+      31 => /* CP0EPC and EPCC.offset are supposed to be one register. We fake
+            this by writing CP0EPC when EPCC is written and setting EPCC.offset
+            when EPCC is read. */
+            let (success, epcc) = setCapOffset(capRegToCapStruct(EPCC), CP0EPC) in
+            if (success) then
+              epcc
+            else
+              /* Unrepresentable EPCC -- this should only happen if CP0EPC is
+              written with something far outside bounds of EPCC. Exceptions should
+              not cause an unrepresentable EPCC because the PC of the faulting
+              instruction is necessarily in-bounds (or nearly in-bounds). For jumps
+              that take the PC out-of-bounds the CP2 exception occurs on the jump,
+              not the target. */
+              int_to_cap(to_bits(64, getCapBase(epcc)) + unsigned(CP0EPC)),
       _  => {assert(false, "should be unreachable code"); undefined}
     };
     writeCapReg(cd, capVal);
@@ -376,7 +389,13 @@ function clause execute (CWriteHwr(cb, sel)) =
       23 => KR2C  = capStructToCapReg(capVal),
       29 => KCC   = capStructToCapReg(capVal),
       30 => KDC   = capStructToCapReg(capVal),
-      31 => EPCC  = capStructToCapReg(capVal),
+      31 => {
+            EPCC   = capStructToCapReg(capVal);
+            /* CP0EPC and EPCC.offset are supposed to be one register. We fake
+            this by writing CP0EPC when EPCC is written and setting EPCC.offset
+            when EPCC is read. */
+            CP0EPC = to_bits(64, getCapOffset(capVal))
+            },
       _  => assert(false, "should be unreachable code")
     };
   };

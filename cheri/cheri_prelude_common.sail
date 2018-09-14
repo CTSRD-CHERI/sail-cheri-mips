@@ -240,13 +240,7 @@ function set_next_pcc(newPCC) = {
 function SignalException (ex) = 
   {
     if (not (CP0Status.EXL())) then {
-      let pc  = PC in 
-      let pcc = capRegToCapStruct(PCC) in
-      let (success, epcc) = setCapOffset(pcc, pc) in
-      if (success) then
-        EPCC = capStructToCapReg(epcc)
-      else
-        EPCC = capStructToCapReg(int_to_cap(to_bits(64, getCapBase(pcc)) + unsigned(pc)));
+      EPCC = PCC
     };
     set_next_pcc(KCC);
     let base = getCapBase(capRegToCapStruct(KCC)) in
