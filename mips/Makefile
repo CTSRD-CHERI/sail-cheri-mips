@@ -4,7 +4,7 @@ export SAIL_DIR
 SAIL_LIB_DIR:=$(SAIL_DIR)/lib
 MIPS_SAIL_DIR:=$(SAIL_DIR)/mips
 
-SAIL:=$(SAIL_DIR)/sail
+SAIL:=sail
 
 MIPS_PRE:=$(MIPS_SAIL_DIR)/prelude.sail $(MIPS_SAIL_DIR)/mips_prelude.sail
 MIPS_TLB:=$(MIPS_SAIL_DIR)/mips_tlb.sail

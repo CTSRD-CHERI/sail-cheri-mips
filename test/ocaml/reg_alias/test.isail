@@ -1,6 +1,0 @@
-initialize_registers()
-:run
-:output result
-main()
-:run
-:quit

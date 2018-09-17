@@ -1,4 +1,0 @@
-ifndef SAILDIR
-SAILDIR=../..
-endif
-INCLUDES = $(SAILDIR)/snapshots/hol4/sail/cheri $(SAILDIR)/snapshots/hol4/sail/lib/hol
