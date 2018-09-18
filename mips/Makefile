@@ -1,28 +1,22 @@
-THIS_MAKEFILE := $(realpath $(lastword $(MAKEFILE_LIST)))
-SAIL_DIR:=$(realpath $(dir $(THIS_MAKEFILE))..)
-export SAIL_DIR
-SAIL_LIB_DIR:=$(SAIL_DIR)/lib
-MIPS_SAIL_DIR:=$(SAIL_DIR)/mips
+include ../etc/sail.mk
 
-SAIL:=sail
+MIPS_PRE:=prelude.sail mips_prelude.sail
+MIPS_TLB:=mips_tlb.sail
+MIPS_TLB_STUB:=mips_tlb_stub.sail
+MIPS_SAILS:=mips_wrappers.sail mips_ast_decl.sail mips_insts.sail mips_ri.sail mips_epilogue.sail
+MIPS_MAIN:=main.sail
 
-MIPS_PRE:=$(MIPS_SAIL_DIR)/prelude.sail $(MIPS_SAIL_DIR)/mips_prelude.sail
-MIPS_TLB:=$(MIPS_SAIL_DIR)/mips_tlb.sail
-MIPS_TLB_STUB:=$(MIPS_SAIL_DIR)/mips_tlb_stub.sail
-MIPS_SAILS:=$(MIPS_SAIL_DIR)/mips_wrappers.sail $(MIPS_SAIL_DIR)/mips_ast_decl.sail $(MIPS_SAIL_DIR)/mips_insts.sail $(MIPS_SAIL_DIR)/mips_ri.sail $(MIPS_SAIL_DIR)/mips_epilogue.sail
-MIPS_MAIN:=$(MIPS_SAIL_DIR)/main.sail
-
-mips: $(MIPS_PRE) $(MIPS_TLB) $(MIPS_SAILS) $(MIPS_MAIN) ../sail
+mips: $(MIPS_PRE) $(MIPS_TLB) $(MIPS_SAILS) $(MIPS_MAIN)
 	$(SAIL) -ocaml -o mips -memo_z3 $(filter %.sail, $^)
 
-mips.c: $(MIPS_PRE) $(MIPS_TLB) $(MIPS_SAILS) $(MIPS_MAIN) Makefile ../sail
+mips.c: $(MIPS_PRE) $(MIPS_TLB) $(MIPS_SAILS) $(MIPS_MAIN) Makefile
 	$(SAIL) -O -memo_z3 -c $(filter %.sail, $^) 1> $@
 
 C_WARNINGS=-Wall -Wno-unused-but-set-variable -Wno-unused-label -Wno-unused-function -Wno-maybe-uninitialized
 C_OPT=-O2
 GCOV_FLAGS=
-mips_c: mips.c ../lib/sail.h ../lib/*.c Makefile
-	gcc $(C_OPT) $(C_WARNINGS) $(GCOV_FLAGS) -g -I ../lib $< ../lib/*.c -lgmp -lz -o $@
+mips_c: mips.c $(SAIL_LIB_DIR)/sail.h $(SAIL_LIB_DIR)/*.c Makefile
+	gcc $(C_OPT) $(C_WARNINGS) $(GCOV_FLAGS) -g -I $(SAIL_LIB_DIR) $< $(SAIL_LIB_DIR)/*.c -lgmp -lz -o $@
 
 # Note that for coverage purposes O1 appears optimal. O0 means lots of obviously dead code but O2 risks reducing granularity too much.
 mips_c_gcov: C_OPT=-O1
@@ -48,7 +42,7 @@ mips.v: $(MIPS_PRE) $(MIPS_TLB) $(MIPS_SAILS)
 mips_types.v: mips.v
 
 MIPS_COQ = mips_types.v mips_extras.v mips.v
-COQ_LIBS = -R ../../bbv/theories bbv -R ../lib/coq Sail
+COQ_LIBS = -R ../../bbv/theories bbv -R $(SAIL_LIB_DIR)/coq Sail
 
 %.vo: %.v
 	coqc $(COQ_LIBS) $<
@@ -58,8 +52,8 @@ M%.thy: m%.lem m%_types.lem mips_extras.lem
 	lem -isa -outdir . -lib Sail=$(SAIL_DIR)/src/gen_lib -lib Sail=$(SAIL_DIR)/src/lem_interp $^
 	sed -i 's/datatype ast/datatype (plugins only: size) ast/' M$*_types.thy
 
-%Script.sml: %.lem %_types.lem $(MIPS_SAIL_DIR)/mips_extras.lem
-	lem -hol -outdir . -lib $(SAIL_DIR)/lib/hol -i $(SAIL_DIR)/lib/hol/sail2_prompt_monad.lem -i $(SAIL_DIR)/lib/hol/sail2_prompt.lem -lib $(SAIL_DIR)/src/gen_lib -lib $(SAIL_DIR)/src/lem_interp $^
+%Script.sml: %.lem %_types.lem mips_extras.lem
+	lem -hol -outdir . -lib $(SAIL_LIB_DIR)/hol -i $(SAIL_LIB_DIR)/hol/sail2_prompt_monad.lem -i $(SAIL_LIB_DIR)/hol/sail2_prompt.lem -lib $(SAIL_DIR)/src/gen_lib -lib $(SAIL_DIR)/src/lem_interp $^
 
 %Theory.uo: %Script.sml
 	Holmake $@

@@ -1,11 +1,7 @@
-THIS_MAKEFILE := $(realpath $(lastword $(MAKEFILE_LIST)))
-SAIL_DIR:=$(realpath $(dir $(THIS_MAKEFILE))..)
-export SAIL_DIR
-SAIL_LIB_DIR:=$(SAIL_DIR)/lib
-MIPS_SAIL_DIR:=$(SAIL_DIR)/mips
-CHERI_SAIL_DIR:=$(SAIL_DIR)/cheri
-SAIL:=sail
-SAIL_LIB_HEADERS:=
+include ../etc/sail.mk
+
+MIPS_SAIL_DIR:=../mips
+CHERI_SAIL_DIR:=.
 
 MIPS_PRE:=$(MIPS_SAIL_DIR)/prelude.sail $(MIPS_SAIL_DIR)/mips_prelude.sail
 MIPS_TLB:=$(MIPS_SAIL_DIR)/mips_tlb.sail
@@ -40,8 +36,8 @@ cheri.c: $(CHERI_SAILS) $(CHERI_MAIN)
 
 C_OPT=-O2
 GCOV_FLAGS=
-cheri_c: cheri.c ../lib/sail.h Makefile
-	gcc $(C_OPT) $(GCOV_FLAGS) $< ../lib/*.c -lgmp -lz -I ../lib/ -o $@
+cheri_c: cheri.c $(SAIL_LIB_DIR)/sail.h Makefile
+	gcc $(C_OPT) $(GCOV_FLAGS) $< $(SAIL_LIB_DIR)/*.c -lgmp -lz -I $(SAIL_LIB_DIR) -o $@
 
 # Note that for coverage purposes O1 appears optimal. O0 means lots of obviously dead code but O2 risks reducing granularity too much.
 cheri_c_gcov: C_OPT=-O1
@@ -78,8 +74,8 @@ cheri128_trace: $(CHERI128_SAILS) $(CHERI_MAIN)
 cheri128.c: $(CHERI128_SAILS) $(CHERI_MAIN)
 	$(SAIL) -memo_z3 -O -c $^ 1> $@
 
-cheri128_c: cheri128.c ../lib/sail.h Makefile
-	gcc $(C_OPT) $(GCOV_FLAGS) $< ../lib/*.c -lgmp -lz -I ../lib/ -o $@
+cheri128_c: cheri128.c $(SAIL_LIB_DIR)/sail.h Makefile
+	gcc $(C_OPT) $(GCOV_FLAGS) $< $(SAIL_LIB_DIR)/*.c -lgmp -lz -I $(SAIL_LIB_DIR) -o $@
 
 # Note that for coverage purposes O1 appears optimal. O0 means lots of obviously dead code but O2 risks reducing granularity too much.
 cheri128_c_gcov: C_OPT=-O1
@@ -131,7 +127,7 @@ COQ_LIBS = -R ../../bbv/theories bbv -R ../lib/coq Sail
 cheri.vo: cheri_types.vo mips_extras.vo
 
 clean:
-	rm -rf cheri cheri_trace cheri_coverage cheri128 cheri128_trace _sbuild inst_*.sail cheri.c sail_latex sail_latexcc coverage_report
+	rm -rf cheri cheri_trace cheri_coverage cheri_c cheri128 cheri128_trace cheri128_c _sbuild inst_*.sail cheri.c sail_latex sail_latexcc coverage_report
 	rm -f cheriScript.sml cheri_typesScript.sml mips_extrasScript.sml
 	rm -f cheri.v cheri_types.v $(CHERI_COQ:%.v=%.vo) $(CHERI_COQ:%.v=%.glob) $(CHERI_COQ:%.v=.%.aux)
 	-Holmake cleanAll
