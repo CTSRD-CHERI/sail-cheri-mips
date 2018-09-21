@@ -950,9 +950,8 @@ function clause execute (CBX(cb, imm, notset)) =
   {
     let offset : bits(64) = (sign_extend(imm @ 0b00) + 4) in
     execute_branch(PC + offset);
-  }
-  else
-    execute_branch(PC + 8);  /* Next instruction should still cause the BD flag to be set on trap */
+  };
+  nextInBranchDelay = 0b1;
 }
 
 union clause ast = CBZ : (regno, bits(16), bool)
@@ -963,9 +962,8 @@ function clause execute (CBZ(cb, imm, notzero)) =
   {
     let offset : bits(64) = (sign_extend(imm @ 0b00) + 4) in
     execute_branch(PC + offset);
-  }
-  else
-    execute_branch(PC + 8);  /* Next instruction should still cause the BD flag to be set on trap */
+  };
+  nextInBranchDelay = 0b1;
 }
 
 union clause ast = CJALR : (regno, regno, bool)
@@ -998,7 +996,8 @@ function clause execute(CJALR(cd, cb, link)) =
         else
             assert(false, "");
       execute_branch_pcc(cb_val);
-    }
+    };
+  nextInBranchDelay = 0b1;
 }
 
 union clause ast = CLoad : (regno, regno, regno, bits(8), bool, WordType, bool)

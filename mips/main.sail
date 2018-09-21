@@ -8,9 +8,10 @@ register instCount : int
 val fetch_and_execute : unit -> bool effect {barr, eamem, escape, rmem, rreg, wmv, wreg, undef, wmvt, rmemt}
 function fetch_and_execute () = {
   PC = nextPC;
-  inBranchDelay = branchPending;
+  inBranchDelay = nextInBranchDelay;
+  nextPC = if branchPending then delayedPC else PC + 4;
+  nextInBranchDelay = 0b0;
   branchPending = 0b0;
-  nextPC = if inBranchDelay then delayedPC else PC + 4;
   cp2_next_pc();
   instCount = instCount + 1;
   if UART_WRITTEN then {

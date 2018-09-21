@@ -227,6 +227,7 @@ function execute_branch_pcc(newPCC) = {
   delayedPC = to_bits(64, getCapOffset(newPCC));
   delayedPCC = capStructToCapReg(newPCC);
   branchPending = 0b1;
+  nextInBranchDelay = 0b1;
 }
 
 val set_next_pcc : CapReg -> unit effect {wreg} 

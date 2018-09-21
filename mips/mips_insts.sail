@@ -942,7 +942,7 @@ function clause execute (BEQ(rs, rd, imm, ne, likely)) =
         if (likely) then
           nextPC = PC + 8 /* skip branch delay */
         else
-          execute_branch(PC + 8);  /* Next instruction should still cause the BD flag to be set on trap */
+          nextInBranchDelay = 0b1;
       }
   }
 
@@ -1001,7 +1001,7 @@ function clause execute (BCMPZ(rs, imm, cmp, link, likely)) =
       }
     else
       {
-        execute_branch(PC + 8);  /* Next instruction should still cause the BD flag to be set on trap */
+        nextInBranchDelay = 0b1;
       };
     if (link) then
       wGPR(0b11111) = linkVal
