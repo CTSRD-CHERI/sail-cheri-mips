@@ -56,7 +56,7 @@ M%.thy: m%.lem m%_types.lem mips_extras.lem
 	lem -hol -outdir . -lib $(SAIL_LIB_DIR)/hol -i $(SAIL_LIB_DIR)/hol/sail2_prompt_monad.lem -i $(SAIL_LIB_DIR)/hol/sail2_prompt.lem -lib $(SAIL_DIR)/src/gen_lib -lib $(SAIL_DIR)/src/lem_interp $^
 
 %Theory.uo: %Script.sml
-	Holmake $@
+	SAIL_LIB_DIR="$(SAIL_LIB_DIR)" Holmake $@
 
 LOC_FILES:=$(MIPS_PRE) $(MIPS_TLB) $(MIPS_SAILS) $(MIPS_MAIN)
 include ../etc/loc.mk

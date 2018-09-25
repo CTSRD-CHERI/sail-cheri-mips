@@ -114,7 +114,7 @@ C%.thy: c%.lem c%_types.lem $(MIPS_SAIL_DIR)/mips_extras.lem
 	lem -hol -outdir . -lib $(SAIL_DIR)/lib/hol -i $(SAIL_DIR)/lib/hol/sail2_prompt_monad.lem -i $(SAIL_DIR)/lib/hol/sail2_prompt.lem -lib $(SAIL_DIR)/src/gen_lib -lib $(SAIL_DIR)/src/lem_interp $^
 
 %Theory.uo: %Script.sml
-	Holmake $@
+	SAIL_LIB_DIR="$(SAIL_LIB_DIR)" Holmake $@
 
 cheri.v cheri_types.v: $(CHERI_SAILS)
 	$(SAIL) -coq -o cheri -coq_lib mips_extras -undefined_gen -memo_z3 -dcoq_undef_axioms $^

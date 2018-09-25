@@ -1,11 +1,11 @@
 LEMDIR=../../lem/hol-lib
 
-INCLUDES = $(LEMDIR) ../lib/hol
+INCLUDES = $(LEMDIR) $(SAIL_LIB_DIR)/hol
 
 all: cheriTheory.uo
 .PHONY: all
 
 ifdef POLY
-BASE_HEAP = ../lib/hol/sail-heap
+BASE_HEAP = $(SAIL_LIB_DIR)/hol/sail-heap
 
 endif
