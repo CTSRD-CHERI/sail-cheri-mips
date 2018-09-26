@@ -994,7 +994,7 @@ function clause execute(CJALR(cd, cb, link)) =
         if (success) then
             writeCapReg(cd, linkCap)
         else
-            assert(false, "");
+            assert(false, "Link cap should always be representable.");
       execute_branch_pcc(cb_val);
     };
   nextInBranchDelay = 0b1;
