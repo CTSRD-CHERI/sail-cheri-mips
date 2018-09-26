@@ -296,8 +296,9 @@ register inBranchDelay : bits(1)      /* Set by main loop when in branch delay s
 register branchPending : bits(1)      /* Set by branch instructions when branch taken so know to branch to delayedPC after branch delay slot */
 register delayedPC : bits(64)         /* Set by branch instructions to target of branch */
 
-val execute_branch : bits(64) -> unit effect {wreg}
-function execute_branch(pc) = {
+val execute_branch : bits(64) -> unit effect {rreg, wreg, escape}
+val execute_branch_mips : bits(64) -> unit effect {wreg}
+function execute_branch_mips(pc) = {
   delayedPC = pc;
   branchPending = 0b1;
   nextInBranchDelay = 0b1;

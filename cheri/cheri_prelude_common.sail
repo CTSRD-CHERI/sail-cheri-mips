@@ -422,6 +422,16 @@ function addrWrapperUnaligned(addr, accessType, width) =
       to_bits(64, vAddr);
   }
 
+function execute_branch (pc) = {
+  let pcc = capRegToCapStruct(PCC);
+  let len = getCapLength(pcc);
+  /* Check the branch is within PCC bounds. Note that PC is offset to
+  base so branches below base will be negative / very large and
+  greater than top. */
+  if unsigned(pc) + 4 > len then
+    raise_c2_exception_noreg(CapEx_LengthViolation);
+  execute_branch_mips(pc); }
+
 $ifdef _MIPS_TLB_STUB
 val TranslatePC : bits(64) -> bits(64) effect {rreg, wreg, escape}
 $else
