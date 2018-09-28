@@ -343,9 +343,10 @@ function clause execute (CReadHwr(cd, sel)) =
       31 => /* CP0EPC and EPCC.offset are supposed to be one register. We fake
             this by writing CP0EPC when EPCC is written and setting EPCC.offset
             when EPCC is read. */
-            let (success, epcc) = setCapOffset(capRegToCapStruct(EPCC), CP0EPC) in
+            let epcc = capRegToCapStruct(EPCC) in
+            let (success, epcc2) = setCapOffset(epcc, CP0EPC) in
             if (success) then
-              epcc
+              epcc2
             else
               /* Unrepresentable EPCC -- this should only happen if CP0EPC is
               written with something far outside bounds of EPCC. Exceptions should
