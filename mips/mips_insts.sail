@@ -884,6 +884,8 @@ function clause decode (0b000010 @ offset : bits(26)) =
   Some(J(offset))
 function clause execute (J(offset)) =
   {
+    if (inBranchDelay) then
+       SignalException(ResI);
     execute_branch((PC + 4)[63..28] @ offset @ 0b00);
   }
 
@@ -893,6 +895,8 @@ function clause decode (0b000011 @ offset : bits(26)) =
   Some(JAL(offset))
 function clause execute (JAL(offset)) =
   {
+    if (inBranchDelay) then
+       SignalException(ResI);
     execute_branch((PC + 4)[63..28] @ offset @ 0b00);
     wGPR(0b11111) = PC + 8;
   }
@@ -903,6 +907,8 @@ function clause decode (0b000000 @ rs : regno @ 0b00000 @ 0b00000 @ hint : regno
   Some(JR(rs)) /* hint is ignored */
 function clause execute (JR(rs)) =
   {
+    if (inBranchDelay) then
+       SignalException(ResI);
     execute_branch(rGPR(rs));
   }
 
@@ -912,6 +918,8 @@ function clause decode (0b000000 @ rs : regno @ 0b00000 @ rd : regno @ hint : re
   Some(JALR(rs, rd)) /* hint is ignored */
 function clause execute (JALR(rs, rd)) =
   {
+    if (inBranchDelay) then
+       SignalException(ResI);
     execute_branch(rGPR(rs));
     wGPR(rd)      = PC + 8;
   }
@@ -932,6 +940,8 @@ function clause decode (0b010101 @ rs : regno @ rt : regno @ imm : imm16) =
   Some(BEQ(rs, rt, imm, true , true))   /* BNEL */
 function clause execute (BEQ(rs, rd, imm, ne, likely)) =
   {
+    if (inBranchDelay) then
+       SignalException(ResI);
     if ((rGPR(rs) == rGPR(rd)) ^ ne) then
       {
         let offset : bits(64) = (sign_extend(imm @ 0b00) + 4) in
@@ -987,6 +997,8 @@ function clause decode (0b010110 @ rs : regno @ 0b00000 @ imm : imm16) =
 
 function clause execute (BCMPZ(rs, imm, cmp, link, likely)) =
   {
+    if (inBranchDelay) then
+       SignalException(ResI);
     linkVal = PC + 8;
     regVal = rGPR(rs);
     condition = compare(cmp, regVal, zero_extend(0b0));
@@ -1035,6 +1047,8 @@ union clause ast = WAIT : unit
 function clause decode (0b010000 @ 0x80000 @ 0b100000) =
   Some(WAIT()) /* we only accept code == 0 */
 function clause execute (WAIT()) = {
+  if (inBranchDelay) then
+    SignalException(ResI);
   nextPC = PC;
 }
 

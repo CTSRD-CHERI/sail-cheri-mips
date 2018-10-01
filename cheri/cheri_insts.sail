@@ -885,6 +885,8 @@ function clause execute (CCall(cs, cb, 0b00000000000)) = /* selector=0 */
 {
   /* Partial implementation of CCall with checks in hardware, but raising a trap to perform trusted stack manipulation */
   checkCP2usable();
+  if inBranchDelay then
+    SignalException(ResI);
   cs_val = readCapReg(cs);
   cb_val = readCapReg(cb);
   cs_cursor = getCapCursor(cs_val);
@@ -966,6 +968,8 @@ union clause ast = CBX : (regno, bits(16), bool)
 function clause execute (CBX(cb, imm, notset)) =
 {
   checkCP2usable();
+  if (inBranchDelay) then
+     SignalException(ResI);
   if (((readCapReg(cb)).tag) ^ notset) then
   {
     let offset : bits(64) = (sign_extend(imm @ 0b00) + 4) in
@@ -978,6 +982,8 @@ union clause ast = CBZ : (regno, bits(16), bool)
 function clause execute (CBZ(cb, imm, notzero)) =
 {
   checkCP2usable();
+  if (inBranchDelay) then
+     SignalException(ResI);
   if (((readCapReg(cb)) == null_cap) ^ notzero) then
   {
     let offset : bits(64) = (sign_extend(imm @ 0b00) + 4) in
@@ -990,6 +996,8 @@ union clause ast = CJALR : (regno, regno, bool)
 function clause execute(CJALR(cd, cb, link)) = 
 {
   checkCP2usable();
+  if (inBranchDelay) then
+     SignalException(ResI);
   cb_val = readCapReg(cb);
   cb_ptr = getCapCursor(cb_val);
   cb_top = getCapTop(cb_val);
