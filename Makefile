@@ -1,33 +1,28 @@
-.PHONY: all sail language clean archs isabelle-lib apply_header
+.PHONY: all language clean archs isabelle-lib apply_header
 
 INSTALL_DIR ?= .
 
-all: sail
-
-sail:
-	$(MAKE) -C src sail
-	ln -f -s src/sail.native sail
-
-isail:
-	$(MAKE) -C src isail
-	ln -f -s src/isail.native sail
+all: mips cheri
+	$(MAKE) -C mips mips mips_c
+	$(MAKE) -C cheri cheri cheri_c
+	$(MAKE) -C cheri cheri128 cheri128_c
 
 install:
-	if [ -z "$(SHARE_DIR)" ]; then echo SHARE_DIR is unset; false; fi
 	mkdir -p $(INSTALL_DIR)/bin
-	cp src/isail.native $(INSTALL_DIR)/bin/sail
-	mkdir -p $(SHARE_DIR)
-	cp -r lib $(SHARE_DIR)
-	mkdir -p $(SHARE_DIR)/src
-	cp src/elf_loader.ml $(SHARE_DIR)/src
-	cp src/sail_lib.ml $(SHARE_DIR)/src
-	cp src/util.ml $(SHARE_DIR)/src
-	cp -r src/gen_lib $(SHARE_DIR)/src
-	cp -r src/lem_interp $(SHARE_DIR)/src
+	cp -fv mips/mips $(INSTALL_DIR)/bin/sail-mips
+	cp -fv mips/mips_c $(INSTALL_DIR)/bin/sail-mips_c
+	cp -fv cheri/cheri $(INSTALL_DIR)/bin/sail-cheri
+	cp -fv cheri/cheri_c $(INSTALL_DIR)/bin/sail-cheri_c
+	cp -fv cheri/cheri128 $(INSTALL_DIR)/bin/sail-cheri128
+	cp -fv cheri/cheri128_c $(INSTALL_DIR)/bin/sail-cheri128_c
 
 uninstall:
-	if [ -z "$(SHARE_DIR)" ]; then echo SHARE_DIR is unset; false; else rm -rf $(SHARE_DIR); fi
-	rm -f $(INSTALL_DIR)/bin/sail
+	rm -f $(INSTALL_DIR)/bin/sail-mips
+	rm -f $(INSTALL_DIR)/bin/sail-mips_c
+	rm -f $(INSTALL_DIR)/bin/sail-cheri
+	rm -f $(INSTALL_DIR)/bin/sail-cheri_c
+	rm -f $(INSTALL_DIR)/bin/sail-cheri128
+	rm -f $(INSTALL_DIR)/bin/sail-cheri128_c
 
 language:
 	$(MAKE) -C language
