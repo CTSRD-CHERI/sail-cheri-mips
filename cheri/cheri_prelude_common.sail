@@ -85,15 +85,6 @@ register KCC   : CapReg /* kernel code capability */
 register KDC   : CapReg /* kernel data capability */
 register EPCC  : CapReg /* exception program counter capability */
 
-let IDCNO  : regno = 0b11010 /* C26, invoked data capability used be CCall */
-
-/* Special register used to have these numbers -- here for transition purposes */
-let KR1CNO : regno = 0b11011 /* C27 */
-let KR2CNO : regno = 0b11100 /* C28 */
-let KCCNO  : regno = 0b11101 /* C29 */
-let KDCNO  : regno = 0b11110 /* C30 */
-let EPCCNO : regno = 0b11111 /* C31 */
-
 let CapRegs : vector(32, dec, register(CapReg)) =
   [
     ref C31,
@@ -277,10 +268,7 @@ function raise_c2_exception8(capEx, regnum) =
 val raise_c2_exception : forall ('o : Type) . (CapEx, regno) -> 'o effect {escape, rreg, wreg}
 function raise_c2_exception(capEx, regnum) =
   let reg8 = 0b000 @ regnum in
-  if ((capEx == CapEx_AccessSystemRegsViolation) & (regnum == IDCNO)) then
-     raise_c2_exception8(CapEx_AccessCCallIDCViolation, reg8)
-  else
-     raise_c2_exception8(capEx, reg8)
+  raise_c2_exception8(capEx, reg8)
 
 val raise_c2_exception_noreg : forall ('o : Type) . (CapEx) -> 'o effect {escape, rreg, wreg}
 function raise_c2_exception_noreg(capEx) =
