@@ -3,7 +3,14 @@ include ../etc/sail.mk
 MIPS_SAIL_DIR:=../mips
 CHERI_SAIL_DIR:=.
 
-MIPS_PRE:=$(MIPS_SAIL_DIR)/prelude.sail $(MIPS_SAIL_DIR)/mips_prelude.sail
+TRACE?=no
+ifeq ($(TRACE),yes)
+TRACE_SAIL=trace.sail
+else
+TRACE_SAIL=notrace.sail
+endif
+
+MIPS_PRE:=$(MIPS_SAIL_DIR)/$(TRACE_SAIL) $(MIPS_SAIL_DIR)/prelude.sail $(MIPS_SAIL_DIR)/mips_prelude.sail
 MIPS_TLB:=$(MIPS_SAIL_DIR)/mips_tlb.sail
 MIPS_TLB_STUB:=$(MIPS_SAIL_DIR)/mips_tlb_stub.sail
 MIPS_INSTS:=$(MIPS_SAIL_DIR)/mips_insts.sail

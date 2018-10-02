@@ -133,6 +133,8 @@ let CapRegs : vector(32, dec, register(CapReg)) =
 let max_otype = MAX(24) /*0xffffff*/
 let have_cp2 = true
 
+val capToString : CapStruct -> string effect {escape}
+
 /*!
 This function reads a given capability register and returns its contents converted to a CapStruct.
 If the argument is zero then the null capability is returned.
@@ -155,12 +157,21 @@ function readCapRegDDC(n) =
   let i = unsigned(n) in
   capRegToCapStruct(reg_deref(CapRegs[i])) /* NB CapRegs[0] is points to DDC */
 
-function writeCapReg(n, cap) : (regno, CapStruct) -> unit =
+val writeCapReg  : (regno, CapStruct) -> unit effect {wreg, escape}
+function writeCapReg(n, cap) =
   if (n == 0b00000) then
     ()
-  else
-    let i = unsigned(n) in
-    (*CapRegs[i]) = capStructToCapReg(cap) 
+  else {
+    let i = unsigned(n);
+    if trace then {
+      prerr(string_of_int(i));
+      prerr(" <- ");
+      prerr_endline(capToString(cap));
+    } else {
+      skip_escape();
+    };
+    (*CapRegs[i]) = capStructToCapReg(cap);
+  }
 
 enum CapEx = {
   CapEx_None, 
@@ -489,7 +500,6 @@ function cp2_next_pc () = {
   };
 }
 
-val capToString : CapStruct -> string effect {escape}
 function capToString cap = {
          skip_escape(); /* because cheri128 getCapX functions contain asserts but cheri256 ones do not */
          concat_str(" t:",

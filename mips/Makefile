@@ -1,6 +1,13 @@
 include ../etc/sail.mk
 
-MIPS_PRE:=prelude.sail mips_prelude.sail
+TRACE?=no
+ifeq ($(TRACE),yes)
+TRACE_SAIL=trace.sail
+else
+TRACE_SAIL=notrace.sail
+endif
+
+MIPS_PRE:=$(TRACE_SAIL) prelude.sail mips_prelude.sail 
 MIPS_TLB:=mips_tlb.sail
 MIPS_TLB_STUB:=mips_tlb_stub.sail
 MIPS_SAILS:=mips_wrappers.sail mips_ast_decl.sail mips_insts.sail mips_ri.sail mips_epilogue.sail

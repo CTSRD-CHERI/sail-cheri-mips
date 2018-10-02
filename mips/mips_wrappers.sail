@@ -85,7 +85,7 @@ function SignalException (ex) = SignalExceptionMIPS(ex, 0x0000000000000000)
 val ERETHook : unit -> unit
 function ERETHook() = ()
 
-function init_cp2_state () = skip_wreg()
+function init_cp2_state () = {skip_wreg(); skip_escape()}
 function cp2_next_pc()     = {skip_wreg(); skip_rreg()}
 function dump_cp2_state () = {skip_rreg(); skip_escape();}
 function execute_branch (pc) = {skip_rreg(); skip_escape(); execute_branch_mips(pc);}

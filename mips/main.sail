@@ -21,7 +21,8 @@ function fetch_and_execute () = {
   /* the following skips are required on mips to fake the tag effects otherwise type checker complains  */
   skip_rmemt();
   skip_wmvt();
-  /* prerr_bits("PC: ", PC); */
+  if trace then
+    prerr_bits("PC: ", PC);
   loop_again = true;
   try {
     let pc_pa = TranslatePC(PC);
@@ -54,7 +55,7 @@ val elf_entry = {
   c: "elf_entry"
 } : unit -> int
 
-val init_registers : bits(64) -> unit effect {wreg}
+val init_registers : bits(64) -> unit effect {wreg, escape}
 
 function init_registers (initialPC) = {
   init_cp0_state();

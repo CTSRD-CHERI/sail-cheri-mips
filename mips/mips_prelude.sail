@@ -337,8 +337,10 @@ val wGPR : (bits(5), bits(64)) -> unit effect {wreg}
 function wGPR (idx, v) = {
   let i as atom(_) = unsigned(idx) in
   if i != 0 then {
-    /*prerr_string(string_of_int(i));
-    prerr_bits(" <- ", v);*/
+    if trace then {
+      prerr(string_of_int(i));
+      prerr_bits(" <- ", v);
+    };
     GPR[i] = v;
   };
 }
@@ -658,6 +660,6 @@ function init_cp0_state () : unit -> unit = {
   CP0Status->BEV() = bitone;
 }
 
-val init_cp2_state : unit -> unit effect {wreg}
+val init_cp2_state : unit -> unit effect {wreg, escape}
 val cp2_next_pc:     unit -> unit effect {rreg, wreg}
 val dump_cp2_state : unit -> unit effect {rreg, escape}
