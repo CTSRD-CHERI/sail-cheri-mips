@@ -488,6 +488,27 @@ function cp2_next_pc () = {
   };
 }
 
+val readEPCC : unit -> CapStruct effect {rreg}
+function readEPCC () = {
+  /* CP0EPC/CP0ErrorEPC and EPCC.offset are supposed to be one register.
+  We fake this by reading CP0EPC/CP0ErrorEPC and setting EPCC.offset
+  when EPCC is read. If status.ERL is set we use CP0ErrorEPC instead of EPC
+  to ensure that reading to EPCC will always fetch the value used by eret */
+  let epccOffset = if (CP0Status.ERL() == bitone) then CP0ErrorEPC else CP0EPC in
+  let epcc = capRegToCapStruct(EPCC) in /* Without this let statement the offset is added twice! */
+  let (success, epcc2) = setCapOffset(epcc, epccOffset) in
+  if (success) then
+    epcc2
+  else
+    /* Unrepresentable EPCC -- this should only happen if CP0EPC is
+    written with something far outside bounds of EPCC. Exceptions should
+    not cause an unrepresentable EPCC because the PC of the faulting
+    instruction is necessarily in-bounds (or nearly in-bounds). For jumps
+    that take the PC out-of-bounds the CP2 exception occurs on the jump,
+    not the target. */
+    int_to_cap(to_bits(64, getCapBase(epcc)) + unsigned(CP0EPC))
+}
+
 function capToString cap = {
          skip_escape(); /* because cheri128 getCapX functions contain asserts but cheri256 ones do not */
          concat_str(" t:",
@@ -519,6 +540,6 @@ function dump_cp2_state () = {
   /* KCC, KDC, EPCC */
   print(concat_str("DEBUG CAP HWREG 29", capToString(capRegToCapStruct(KCC))));
   print(concat_str("DEBUG CAP HWREG 30", capToString(capRegToCapStruct(KDC))));
-  print(concat_str("DEBUG CAP HWREG 31", capToString(capRegToCapStruct(EPCC))));
+  print(concat_str("DEBUG CAP HWREG 31", capToString(readEPCC())));
 
 }
