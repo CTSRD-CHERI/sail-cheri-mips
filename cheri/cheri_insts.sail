@@ -537,6 +537,15 @@ function clause execute (CMOVX(cd, cb, rt, ismovn)) =
     writeCapReg(cd) = readCapReg(cb);
 }
 
+/* CMove is currently a separate instruction, so split it here
+ * for documentation pureposes */
+union clause ast = CMove : (regno,regno)
+function clause execute (CMove(cd, cb)) =
+{
+  checkCP2usable();
+  writeCapReg(cd) = readCapReg(cb);
+}
+
 union clause ast = ClearRegs : (ClearRegSet, bits(16))
 function clause execute (ClearRegs(regset, m)) =
 {
@@ -1375,7 +1384,7 @@ function clause decode (0b010010 @ 0b00000 @ cb : regno @    0b00101 @    0b1111
 function clause decode (0b010010 @ 0b00000 @ cs : regno @ rt : regno @    0b01000 @ 0b111111) = Some(CCheckPerm(cs, rt))
 function clause decode (0b010010 @ 0b00000 @ cs : regno @ cb : regno @    0b01001 @ 0b111111) = Some(CCheckType(cs, cb))
 function clause decode (0b010010 @ 0b00000 @ cd : regno @ cb : regno @    0b01011 @ 0b111111) = Some(CClearTag(cd, cb))
-function clause decode (0b010010 @ 0b00000 @ cd : regno @ cs : regno @    0b01010 @ 0b111111) = Some(CMOVX(cd, cs, 0b00000, false)) /* CMOVE */
+function clause decode (0b010010 @ 0b00000 @ cd : regno @ cs : regno @    0b01010 @ 0b111111) = Some(CMove(cd, cs)) /* CMOVE */
 function clause decode (0b010010 @ 0b00000 @ cd : regno @ cb : regno @    0b01100 @ 0b111111) = Some(CJALR(cd, cb, true)) /* CJALR */
 
 function clause decode (0b010010 @ 0b00000 @ rd : regno @ cb : regno @    0b11110 @ 0b111111) = Some(CLoadTags(rd, cb))
