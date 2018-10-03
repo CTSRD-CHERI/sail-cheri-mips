@@ -340,11 +340,13 @@ function clause execute (CReadHwr(cd, sel)) =
       23 => capRegToCapStruct(KR2C),
       29 => capRegToCapStruct(KCC),
       30 => capRegToCapStruct(KDC),
-      31 => /* CP0EPC and EPCC.offset are supposed to be one register. We fake
-            this by writing CP0EPC when EPCC is written and setting EPCC.offset
-            when EPCC is read. */
+      31 => /* CP0EPC/CP0ErrorEPC and EPCC.offset are supposed to be one register.
+            We fake this by reading CP0EPC/CP0ErrorEPC and setting EPCC.offset
+            when EPCC is read. If status.ERL is set we use CP0ErrorEPC instead of EPC
+            to ensure that reading to EPCC will always fetch the value used by eret */
+            let epccOffset = if (CP0Status.ERL() == bitone) then CP0EPC else CP0ErrorEPC in
             let epcc = capRegToCapStruct(EPCC) in
-            let (success, epcc2) = setCapOffset(epcc, CP0EPC) in
+            let (success, epcc2) = setCapOffset(epcc, epccOffset) in
             if (success) then
               epcc2
             else
@@ -392,10 +394,14 @@ function clause execute (CWriteHwr(cb, sel)) =
       30 => KDC   = capStructToCapReg(capVal),
       31 => {
             EPCC   = capStructToCapReg(capVal);
-            /* CP0EPC and EPCC.offset are supposed to be one register. We fake
-            this by writing CP0EPC when EPCC is written and setting EPCC.offset
-            when EPCC is read. */
-            CP0EPC = to_bits(64, getCapOffset(capVal))
+            /* CP0EPC/CP0ErrorEPC and EPCC.offset are supposed to be one register.
+            We fake this by writing CP0EPC/CP0ErrorEPC from EPCC.offset when EPCC
+            is written. If status.ERL is set we use CP0ErrorEPC instead of EPC
+            to ensure that reading setting EPCC will set the value used by eret */
+            if (CP0Status.ERL() == bitone) then
+              CP0EPC = to_bits(64, getCapOffset(capVal))
+            else
+              CP0ErrorEPC = to_bits(64, getCapOffset(capVal));
             },
       _  => assert(false, "should be unreachable code")
     };
