@@ -1539,7 +1539,7 @@ function clause execute (MTC0(rt, rd, sel, double)) = {
         CP0Cause->IP() = CP0Cause.IP() & 0x7f; /* clear IP7 */
       },
       (0b01100,0b000) => {  /* 12 Status */
-        CP0Status->CU()  = reg_val[31..28];
+        CP0Status->CU()  = reg_val[31..28] & (0b0 @ have_cp2 @ 0b01); /* ignore writes for co-processors that are not present */
         CP0Status->BEV() = reg_val[22];
         CP0Status->IM()  = reg_val[15..8];
         CP0Status->KX()  = reg_val[7];
