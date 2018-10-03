@@ -1,10 +1,14 @@
-.PHONY: all language clean archs isabelle-lib apply_header
+.PHONY: all language clean archs isabelle-lib apply_header mips_sims cheri_sims
 
 INSTALL_DIR ?= .
 
-all: mips cheri
+all: mips_sims cheri_sims cheri128_sims
+
+mips_sims:
 	$(MAKE) -C mips mips mips_c
+cheri_sims:
 	$(MAKE) -C cheri cheri cheri_c
+cheri128_sims:
 	$(MAKE) -C cheri cheri128 cheri128_c
 
 install:
