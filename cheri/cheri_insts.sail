@@ -340,23 +340,7 @@ function clause execute (CReadHwr(cd, sel)) =
       23 => capRegToCapStruct(KR2C),
       29 => capRegToCapStruct(KCC),
       30 => capRegToCapStruct(KDC),
-      31 => /* CP0EPC/CP0ErrorEPC and EPCC.offset are supposed to be one register.
-            We fake this by reading CP0EPC/CP0ErrorEPC and setting EPCC.offset
-            when EPCC is read. If status.ERL is set we use CP0ErrorEPC instead of EPC
-            to ensure that reading to EPCC will always fetch the value used by eret */
-            let epccOffset = if (CP0Status.ERL() == bitone) then CP0ErrorEPC else CP0EPC in
-            let epcc = capRegToCapStruct(EPCC) in
-            let (success, epcc2) = setCapOffset(epcc, epccOffset) in
-            if (success) then
-              epcc2
-            else
-              /* Unrepresentable EPCC -- this should only happen if CP0EPC is
-              written with something far outside bounds of EPCC. Exceptions should
-              not cause an unrepresentable EPCC because the PC of the faulting
-              instruction is necessarily in-bounds (or nearly in-bounds). For jumps
-              that take the PC out-of-bounds the CP2 exception occurs on the jump,
-              not the target. */
-              int_to_cap(to_bits(64, getCapBase(epcc)) + unsigned(CP0EPC)),
+      31 => readEPCC(), /* Load EPCC with offset = CP0EPC/CP0ErrorEPC */
       _  => {assert(false, "should be unreachable code"); undefined}
     };
     writeCapReg(cd, capVal);
