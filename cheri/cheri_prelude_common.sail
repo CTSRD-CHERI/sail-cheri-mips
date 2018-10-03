@@ -441,6 +441,10 @@ function TranslatePC (vAddr) = {
     (SignalExceptionBadAddr(AdEL, to_bits(64, absPC))) /* XXX absPC may be truncated */
   else if not (pcc.tag) then
     (raise_c2_exception_noreg(CapEx_TagViolation))
+  else if (pcc.sealed) then
+    (raise_c2_exception_noreg(CapEx_SealViolation))
+  else if not(pcc.permit_execute) then
+    (raise_c2_exception_noreg(CapEx_PermitExecuteViolation))
   else if ((absPC + 4) > top) then
     (raise_c2_exception_noreg(CapEx_LengthViolation))
   else
