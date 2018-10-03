@@ -519,6 +519,8 @@ function dump_cp2_state () = {
   /* KCC, KDC, EPCC */
   print(concat_str("DEBUG CAP HWREG 29", capToString(capRegToCapStruct(KCC))));
   print(concat_str("DEBUG CAP HWREG 30", capToString(capRegToCapStruct(KDC))));
-  print(concat_str("DEBUG CAP HWREG 31", capToString(capRegToCapStruct(EPCC))));
+  let epccOffset = if (CP0Status.ERL() == bitone) then CP0ErrorEPC else CP0EPC in
+  let (success, epcc) = setCapOffset(capRegToCapStruct(EPCC), epccOffset) in
+  print(concat_str("DEBUG CAP HWREG 31", capToString(epcc)));
 
 }
