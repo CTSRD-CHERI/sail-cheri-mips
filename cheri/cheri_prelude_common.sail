@@ -506,7 +506,7 @@ function readEPCC () = {
     instruction is necessarily in-bounds (or nearly in-bounds). For jumps
     that take the PC out-of-bounds the CP2 exception occurs on the jump,
     not the target. */
-    int_to_cap(to_bits(64, getCapBase(epcc)) + unsigned(CP0EPC))
+    int_to_cap(to_bits(64, getCapBase(epcc)) + unsigned(epccOffset))
 }
 
 function capToString cap = {
