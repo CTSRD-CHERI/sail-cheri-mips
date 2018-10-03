@@ -344,7 +344,7 @@ function clause execute (CReadHwr(cd, sel)) =
             We fake this by reading CP0EPC/CP0ErrorEPC and setting EPCC.offset
             when EPCC is read. If status.ERL is set we use CP0ErrorEPC instead of EPC
             to ensure that reading to EPCC will always fetch the value used by eret */
-            let epccOffset = if (CP0Status.ERL() == bitone) then CP0EPC else CP0ErrorEPC in
+            let epccOffset = if (CP0Status.ERL() == bitone) then CP0ErrorEPC else CP0EPC in
             let epcc = capRegToCapStruct(EPCC) in
             let (success, epcc2) = setCapOffset(epcc, epccOffset) in
             if (success) then
@@ -399,9 +399,9 @@ function clause execute (CWriteHwr(cb, sel)) =
             is written. If status.ERL is set we use CP0ErrorEPC instead of EPC
             to ensure that reading setting EPCC will set the value used by eret */
             if (CP0Status.ERL() == bitone) then
-              CP0EPC = to_bits(64, getCapOffset(capVal))
+              CP0ErrorEPC = to_bits(64, getCapOffset(capVal))
             else
-              CP0ErrorEPC = to_bits(64, getCapOffset(capVal));
+              CP0EPC = to_bits(64, getCapOffset(capVal));
             },
       _  => assert(false, "should be unreachable code")
     };
