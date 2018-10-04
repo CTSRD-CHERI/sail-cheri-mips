@@ -1484,6 +1484,7 @@ function clause execute (MFC0(rt, rd, sel, double)) = {
                                         @ 0b0000), /* SA L2 assoc. */
           (0b10000,0b011) => 0x000000000c002000, /* 16, sel 3: Config3 zero except for bit 13 == ulri and BadInstr/BadInstrP */
           (0b10000,0b101) => 0x0000000000000000, /* 16, sel 5: Config5 beri specific -- no extended TLB */
+          (0b10000,0b110) => 0x0000000000000000, /* 16, sel 5: Config6 beri specific -- no extended TLB */
           (0b10001,0b000) => CP0LLAddr,        /* 17, sel 0: LLAddr */
           (0b10010,0b000) => zero_extend(0b0),        /* 18, WatchLo */
           (0b10011,0b000) => zero_extend(0b0),        /* 19, WatchHi */

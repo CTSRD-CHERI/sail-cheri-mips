@@ -29,7 +29,8 @@ function fetch_and_execute () = {
     /*print_bits("pa: ", pc_pa);*/
     LastInstrBits = CurrentInstrBits;
     let instr_next = MEMr_wrapper(pc_pa, 4);
-    /*print_bits("hex: ", instr_next);*/
+    if trace then
+        prerr_bits("op:", instr_next);
     let instr_ast = decode(instr_next);
     CurrentInstrBits = instr_next;
     match instr_ast {
@@ -41,10 +42,13 @@ function fetch_and_execute () = {
       None()    => { print("Decode failed"); loop_again=false } /* Never expect this -- unknown instruction should actually result in reserved instruction ISA-level exception (see mips_ri.sail). */
     }
   } catch {
-    ISAException() => () /*prerr_endline("EXCEPTION")*/
+    ISAException() => {
     /* ISA-level exception occurrred either during TranslatePC or execute --
        just continue from nextPC, which should have been set to the appropriate
        exception vector (along with clearing branchPending etc.) . */
+      if trace then
+        prerr_endline("EXCEPTION");
+    }
   };
   loop_again & not (cycle_limit_reached());
 }
