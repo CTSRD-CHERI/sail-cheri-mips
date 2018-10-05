@@ -124,7 +124,7 @@ let CapRegs : vector(32, dec, register(CapReg)) =
 let max_otype = MAX(24) /*0xffffff*/
 let have_cp2 = true
 
-val capToString : CapStruct -> string effect {escape}
+val capToString : (CapStruct, bool) -> string effect {escape}
 
 /*!
 This function reads a given capability register and returns its contents converted to a CapStruct.
@@ -157,7 +157,7 @@ function writeCapReg(n, cap) =
     if trace then {
       prerr(string_of_int(i));
       prerr(" <- ");
-      prerr_endline(capToString(cap));
+      prerr_endline(capToString(cap, false));
     } else {
       skip_escape();
     };
@@ -217,6 +217,33 @@ function CapExCode(ex) : CapEx -> bits(8)=
     CapEx_PermitUnsealViolation         => 0x1b
   }
 
+function string_of_capex (ex) : CapEx -> string = 
+  match ex {
+    CapEx_None                          => "None"                        ,
+    CapEx_LengthViolation               => "LengthViolation"             ,
+    CapEx_TagViolation                  => "TagViolation"                ,
+    CapEx_SealViolation                 => "SealViolation"               ,
+    CapEx_TypeViolation                 => "TypeViolation"               ,
+    CapEx_CallTrap                      => "CallTrap"                    ,
+    CapEx_ReturnTrap                    => "ReturnTrap"                  ,
+    CapEx_TSSUnderFlow                  => "TSSUnderFlow"                ,
+    CapEx_UserDefViolation              => "UserDefViolation"            ,
+    CapEx_TLBNoStoreCap                 => "TLBNoStoreCap"               ,
+    CapEx_InexactBounds                 => "InexactBounds"               ,
+    CapEx_GlobalViolation               => "GlobalViolation"             ,
+    CapEx_PermitExecuteViolation        => "PermitExecuteViolation"      ,
+    CapEx_PermitLoadViolation           => "PermitLoadViolation"         ,
+    CapEx_PermitStoreViolation          => "PermitStoreViolation"        ,
+    CapEx_PermitLoadCapViolation        => "PermitLoadCapViolation"      ,
+    CapEx_PermitStoreCapViolation       => "PermitStoreCapViolation"     ,
+    CapEx_PermitStoreLocalCapViolation  => "PermitStoreLocalCapViolation",
+    CapEx_PermitSealViolation           => "PermitSealViolation"         ,
+    CapEx_AccessSystemRegsViolation     => "AccessSystemRegsViolation"   ,
+    CapEx_PermitCCallViolation          => "PermitCCallViolation"        ,
+    CapEx_AccessCCallIDCViolation       => "AccessCCallIDCViolation"     ,
+    CapEx_PermitUnsealViolation         => "PermitUnsealViolation"
+  }
+
 bitfield CapCauseReg : bits(16) = {
   ExcCode : 15..8,
   RegNum : 7..0,
@@ -257,6 +284,12 @@ function ERETHook() : unit -> unit =
 val raise_c2_exception8 : forall ('o : Type) . (CapEx, bits(8)) -> 'o effect {escape, rreg, wreg}
 function raise_c2_exception8(capEx, regnum) =
   {
+    if trace then {
+      prerr(" C2Ex ");
+      prerr(string_of_capex(capEx));
+      prerr(" reg: ");
+      prerr_endline(BitStr(regnum));
+    };
     CapCause->ExcCode() = CapExCode(capEx);
     CapCause->RegNum()  = regnum;
     let mipsEx = 
@@ -513,8 +546,12 @@ function readEPCC () = {
     int_to_cap(to_bits(64, getCapBase(epcc)) + unsigned(epccOffset))
 }
 
-function capToString cap = {
+
+function capToString (cap, fixlen) = {
          skip_escape(); /* because cheri128 getCapX functions contain asserts but cheri256 ones do not */
+         len = getCapLength(cap);
+         /* When dumping caps at end of test we cap length at 64 bits for compatibility with test suite, when tracing we print the actual value */
+         len_str = if fixlen then BitStr(to_bits(64, min(len, MAX(64)))) else BitStr(to_bits(68, len));
          concat_str(" t:",
          concat_str(if cap.tag then "1" else "0",
          concat_str(" s:",
@@ -527,23 +564,23 @@ function capToString cap = {
          concat_str(BitStr(to_bits(64, getCapOffset(cap))),
          concat_str(" base:",
          concat_str(BitStr(to_bits(64, getCapBase(cap))),
-         concat_str(" length:", BitStr(to_bits(64, min(getCapLength(cap), MAX(64)))))))))))))))))
+         concat_str(" length:", len_str)))))))))))))
          }
 
 function dump_cp2_state () = {
-  print(concat_str("DEBUG CAP PCC", capToString(capRegToCapStruct(PCC))));
+  print(concat_str("DEBUG CAP PCC", capToString(capRegToCapStruct(PCC), true)));
   foreach(i from 0 to 31) {
-    print(concat_str("DEBUG CAP REG ", concat_str(string_of_int(i), capToString(readCapReg(to_bits(5, i))))))
+    print(concat_str("DEBUG CAP REG ", concat_str(string_of_int(i), capToString(readCapReg(to_bits(5, i)), true))))
   };
-  print(concat_str("DEBUG CAP HWREG 00", capToString(capRegToCapStruct(DDC))));
-  print(concat_str("DEBUG CAP HWREG 01", capToString(capRegToCapStruct(CTLSU))));
-  print(concat_str("DEBUG CAP HWREG 08", capToString(capRegToCapStruct(CTLSP))));
+  print(concat_str("DEBUG CAP HWREG 00", capToString(capRegToCapStruct(DDC), true)));
+  print(concat_str("DEBUG CAP HWREG 01", capToString(capRegToCapStruct(CTLSU), true)));
+  print(concat_str("DEBUG CAP HWREG 08", capToString(capRegToCapStruct(CTLSP), true)));
   /* TODO: these two should not be mirrored to match the FPGA */
-  print(concat_str("DEBUG CAP HWREG 22", capToString(capRegToCapStruct(KR1C))));
-  print(concat_str("DEBUG CAP HWREG 23", capToString(capRegToCapStruct(KR2C))));
+  print(concat_str("DEBUG CAP HWREG 22", capToString(capRegToCapStruct(KR1C), true)));
+  print(concat_str("DEBUG CAP HWREG 23", capToString(capRegToCapStruct(KR2C), true)));
   /* KCC, KDC, EPCC */
-  print(concat_str("DEBUG CAP HWREG 29", capToString(capRegToCapStruct(KCC))));
-  print(concat_str("DEBUG CAP HWREG 30", capToString(capRegToCapStruct(KDC))));
-  print(concat_str("DEBUG CAP HWREG 31", capToString(readEPCC())));
+  print(concat_str("DEBUG CAP HWREG 29", capToString(capRegToCapStruct(KCC), true)));
+  print(concat_str("DEBUG CAP HWREG 30", capToString(capRegToCapStruct(KDC), true)));
+  print(concat_str("DEBUG CAP HWREG 31", capToString(readEPCC(), true)));
 
 }

@@ -21,8 +21,10 @@ function fetch_and_execute () = {
   /* the following skips are required on mips to fake the tag effects otherwise type checker complains  */
   skip_rmemt();
   skip_wmvt();
-  if trace then
-    prerr_bits("PC: ", PC);
+  if trace then {
+    prerr("PC: ");
+    prerr(BitStr(PC));
+  };
   loop_again = true;
   try {
     let pc_pa = TranslatePC(PC);
@@ -30,7 +32,7 @@ function fetch_and_execute () = {
     LastInstrBits = CurrentInstrBits;
     let instr_next = MEMr_wrapper(pc_pa, 4);
     if trace then
-        prerr_bits("op:", instr_next);
+        prerr_bits(" op:", instr_next);
     let instr_ast = decode(instr_next);
     CurrentInstrBits = instr_next;
     match instr_ast {
@@ -42,13 +44,10 @@ function fetch_and_execute () = {
       None()    => { print("Decode failed"); loop_again=false } /* Never expect this -- unknown instruction should actually result in reserved instruction ISA-level exception (see mips_ri.sail). */
     }
   } catch {
-    ISAException() => {
+    ISAException() => ()
     /* ISA-level exception occurrred either during TranslatePC or execute --
        just continue from nextPC, which should have been set to the appropriate
        exception vector (along with clearing branchPending etc.) . */
-      if trace then
-        prerr_endline("EXCEPTION");
-    }
   };
   loop_again & not (cycle_limit_reached());
 }

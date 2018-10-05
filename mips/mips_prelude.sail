@@ -410,10 +410,36 @@ function ExceptionCode (ex) : Exception -> bits(5)=
       MCheck       => 0x18
    } in x[4..0]
 
+function string_of_exception(ex) : Exception -> string = 
+   match ex {
+      Interrupt    => "Interrupt",
+      TLBMod       => "TLBMod",
+      TLBL         => "TLBL",
+      TLBS         => "TLBS",
+      AdEL         => "AdEL",
+      AdES         => "AdES",
+      Sys          => "Sys",
+      Bp           => "Bp  ",
+      ResI         => "ResI",
+      CpU          => "CpU",
+      Ov           => "Ov",
+      Tr           => "Tr",
+      C2E          => "C2E",
+      C2Trap       => "C2Trap",
+      XTLBRefillL  => "XTLBRefillL",
+      XTLBRefillS  => "XTLBRefillS",
+      XTLBInvL     => "XTLBInvL",
+      XTLBInvS     => "XTLBInvS",
+      MCheck       => "MCheck"
+   }
 
 val SignalExceptionMIPS : forall ('o : Type) . (Exception, bits(64)) -> 'o effect {escape, rreg, wreg}
 function SignalExceptionMIPS (ex, kccBase) = 
   {
+    if trace then {
+      prerr(" EXCEPTION ");
+      prerr_endline(string_of_exception(ex));
+    };
     /* Only update EPC and BD if not already in EXL mode */
     if (~ (CP0Status.EXL())) then 
       {
