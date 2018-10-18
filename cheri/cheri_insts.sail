@@ -684,8 +684,8 @@ function clause execute (CBuildCap(cd, cb, ct)) =
     let (representable, cd2) = setCapOffset(cd1, to_bits(64, ct_offset)) in
     let cd3 = setCapPerms(cd2, ct_perms) in
     {
-      assert(exact, "");         /* base and top came from ct originally so will be exact */
-      assert(representable, ""); /* similarly offset should be representable XXX except for fastRepCheck */
+      assert(exact, "cbuildcap: setCapBounds was not exact");         /* base and top came from ct originally so will be exact */
+      assert(representable, "cbuildcap: offset was not representable"); /* similarly offset should be representable XXX except for fastRepCheck */
       writeCapReg(cd, cd3);
     }
 }
