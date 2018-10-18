@@ -34,7 +34,13 @@
 
 /* 128 bit cap + tag */
 type CapReg = bits(129)
+let max_otype = MAX(18)
 
+/*
+A partially decompressed version of a capability -- E, B, T,
+lenMSB, sealed and otype fields are not present in all formats and are
+populated by capRegToCapStruct
+ */
 struct CapStruct = {
   tag                    : bool    ,
   uperms                 : bits(4) ,
@@ -49,14 +55,20 @@ struct CapStruct = {
   permit_load            : bool    ,
   permit_execute         : bool    ,
   global                 : bool    ,
-  reserved               : bits(2) ,
+  reserved               : bits(3) ,
+  internal_e             : bool    ,
   E                      : bits(6) ,
+  lenMSB                 : bit     ,
   sealed                 : bool    ,
-  B                      : bits(20),
-  T                      : bits(20),
+  B                      : bits(23),
+  T                      : bits(23),
   otype                  : bits(24),
   address                : bits(64)
 }
+
+/* Reset E and T calculated to make top 2**65. */
+let resetE = 0b101011 /* 43 */
+let resetT = 0b010 @ 0x00000 /* bit 22 set */
 
 let null_cap : CapStruct = struct {
   tag                    = false,
@@ -73,10 +85,12 @@ let null_cap : CapStruct = struct {
   permit_execute         = false,
   global                 = false,
   reserved               = zeros(),
-  E                      = 0b110000, /* 48, encoded as 0 in memory due to xor */
+  internal_e             = true,
+  E                      = resetE,
+  lenMSB                 = bitzero,
   sealed                 = false,
   B                      = zeros(),
-  T                      = 0x10000,
+  T                      = resetT,
   otype                  = zeros(),
   address                = zeros()
 }
@@ -96,22 +110,59 @@ let default_cap : CapStruct = struct {
   permit_execute         = true,
   global                 = true,
   reserved               = zeros(),
-  E                      = 0b110000, /* 48, encoded as 0 in memory due to xor */
+  internal_e             = true,
+  E                      = resetE,
+  lenMSB                 = bitzero,
   sealed                 = false,
   B                      = zeros(),
-  T                      = 0x10000,
+  T                      = resetT,
   otype                  = zeros(),
   address                = zeros()
 }
 
 let 'cap_size = 16
 
-function capRegToCapStruct(c) : CapReg -> CapStruct =
-  let s : bool  = c[104] in
-  let Bc : bits(20) = if s then c[103..96] @ 0x000 else c[103..84] in
-  let Tc : bits(20) = if s then c[83..76] @ 0x000 else c[83..64] in
-  let otype : bits(24) = if s then c[95..84] @ c[75..64] else zeros() in
-  struct {
+/*
+Convert from capabilty bits (129 bits with tag) to a more convenient struct.
+ */
+function capRegToCapStruct(c) : CapReg -> CapStruct = {
+  internal_exponent : bool = c[109];
+  E : bits(6)  = zeros();
+  Bs : bits(23) = zeros();
+  T : bits(21) = zeros();
+  lenMSBs : bits(2) = zeros();
+  otype : bits(24) = zeros();
+  sealed : bool = c[108];
+  if internal_exponent then {
+    /* Exponent stored instead of T[2..0] and B[2..0] */
+    E = c[89..87] @ c [66..64];
+    /* Exponent chosen so that length MSBs is 01 */
+    lenMSBs = 0b01;
+    /* Sealed bit stored instead of second top bit of T */
+    if sealed then {
+      /* otype stored in T[11..3] and B[11..3] */
+      otype = zero_extend(c[98..90] @ c[75..67]);
+      T = c[107..99] @ 0x000;
+      Bs = c[86..76] @ 0x000;
+    } else {
+      T = c[107..90] @ 0b000;
+      Bs = c[86..67] @ 0b000;
+    };
+  } else {
+    /* Exponent zero */
+    lenMSBs = 0b0 @ c[108];
+    T = c[107..87];
+    Bs = c[86..64];
+  };
+  /* 
+  Reconstruct top two bits of T given T = B + len and:
+  1) the top two bits of B 
+  2) most significant two bits of length derived from format above
+  3) carry out of B[20..0] + len[20..0] that is implied if T[20..0] < B[20..0]
+  */
+  carry_out = if T[20..0] <_u Bs[20..0] then 0b01 else 0b00;
+  Ttop2 = Bs[22..21] + lenMSBs + carry_out;
+  return struct {
     tag                    = c[128],
     uperms                 = c[127..124],
     access_system_regs     = c[123],
@@ -125,14 +176,17 @@ function capRegToCapStruct(c) : CapReg -> CapStruct =
     permit_load            = c[115],
     permit_execute         = c[114],
     global                 = c[113],
-    reserved               = c[112..111],
-    E                      = c[110..105],
-    sealed                 = s,
-    B                      = Bc,
-    T                      = Tc,
+    reserved               = c[112..110],
+    internal_e             = internal_exponent,
+    E                      = E,
+    lenMSB                 = c[108],
+    sealed                 = sealed,
+    B                      = Bs,
+    T                      = Ttop2 @ T,
     otype                  = otype,
     address                = c[63..0]
   }
+}
 
 function getCapHardPerms(cap) : CapStruct -> bits(11) =
    (cap.access_system_regs
@@ -147,23 +201,44 @@ function getCapHardPerms(cap) : CapStruct -> bits(11) =
   @ cap.permit_execute
   @ cap.global)
 
-function capStructToMemBits128(cap) : CapStruct -> bits(128) =
-    let b : bits(20) = if cap.sealed then (cap.B)[19..12] @ (cap.otype)[23..12] else cap.B in
-    let t : bits(20) = if cap.sealed then (cap.T)[19..12] @ (cap.otype)[11..0]  else cap.T in
-    ( cap.uperms
+/*
+Convert from capabilty struct to bits (128 -- no tag) 
+ */
+function capStructToMemBits128(cap) : CapStruct -> bits(128) = {
+  sealedOrLenMSB : bits(1) = cap.lenMSB;
+  t_hi : bits(9)  = cap.T[20..12];
+  t_mid : bits(9) = cap.T[11..3];
+  t_lo : bits(3)  = cap.T[2..0];
+  b_hi : bits(11) = cap.B[22..12];
+  b_mid : bits(9) = cap.B[11..3];
+  b_lo : bits(3)  = cap.B[2..0];
+  if cap.internal_e then {
+    sealedOrLenMSB = cap.sealed;
+    t_lo = cap.E[5..3];
+    b_lo = cap.E[2..0];
+    if cap.sealed then {
+      t_mid = cap.otype[17..9];
+      b_mid = cap.otype[8..0];
+    }
+  };
+  return (cap.uperms
     @ getCapHardPerms(cap)
     @ cap.reserved
-    @ cap.E
-    @ cap.sealed
-    @ b
-    @ t
+    @ cap.internal_e
+    @ sealedOrLenMSB
+    @ t_hi
+    @ t_mid
+    @ t_lo
+    @ b_hi
+    @ b_mid
+    @ b_lo
     @ cap.address
-    )
+  );
+}
 
 function capStructToCapReg(cap) : CapStruct -> CapReg =
     (cap.tag @ capStructToMemBits128(cap))
 
-/* Reverse of above used when reading from memory */
 function memBitsToCapBits128(tag, b) : (bool, bits(128)) -> CapReg=
   (tag @ b)
 
@@ -203,12 +278,12 @@ function setCapPerms(cap, perms) : (CapStruct, bits(31)) -> CapStruct =
       }
 
 function sealCap(cap, otype) : (CapStruct, bits(24)) -> (bool, CapStruct) =
-    if (((cap.T)[11..0] == zeros()) & ((cap.B)[11..0] == zeros())) then
-        (true, {cap with sealed=true, otype=otype})
+    if (((cap.T)[11..0] == zeros()) & ((cap.B)[11..0] == zeros())) then /* XXX check internal_e */
+        (true, {cap with sealed=true, internal_e=true, otype=otype})
     else
         (false, cap /* XXX should be undefined? */ )
 
-function a_top_correction(a_mid, R, bound) : (bits(20), bits(20), bits(20)) -> bits(65) =
+function a_top_correction(a_mid, R, bound) : (bits(3), bits(3), bits(3)) -> bits(66) =
     match (a_mid <_u R, bound <_u R) {
       (false, false)  => zeros(),
       (false, true)   => zero_extend(0b1),
@@ -217,27 +292,27 @@ function a_top_correction(a_mid, R, bound) : (bits(20), bits(20), bits(20)) -> b
     }
 
 function getCapBase(c) : CapStruct -> uint64 =
-    let E = min(unsigned(c.E), 48) in
-    let Bc : bits(20) = c.B in
-    let a : bits(65) = zero_extend(c.address) in
-    let R : bits(20) = Bc - 0x01000 in /* wraps */
-    let a_mid : bits(20) = mask(a >> E) in
-    let correction = a_top_correction(a_mid, R, Bc) in
-    let a_top = a >> E+20 in
-    let base : bits(64) = mask(((a_top + correction) @ Bc) << E) in
+    let E = unsigned(c.E) in
+    let B3 : bits(3) = c.B[22..20] in
+    let a : bits(66) = zero_extend(c.address) in
+    let R : bits(3) = B3 - 0b001 in /* wraps */
+    let a_mid : bits(23) = mask(a >> E) in
+    let correction = a_top_correction(a_mid[22..20], R, B3) in
+    let a_top = (a >> E+23) in
+    let base : bits(64) = mask((a_top + correction) @ c.B @ replicate_bits(0b0, E)) in
     unsigned(base)
 
 function getCapTop (c) : CapStruct -> CapLen = 
-    let E = min(unsigned(c.E), 48) in
-    let Bc : bits(20) = c.B in
-    let T : bits(20) = c.T in
-    let a : bits(65) = zero_extend(c.address)  in
-    let R : bits(20) = Bc - 0x01000 in /* wraps */
-    let a_mid : bits(20) = mask(a >> E) in
-    let correction = a_top_correction(a_mid, R, T) in
-    let a_top = a >> E+20 in
-    let top1 : bits(65) = mask((a_top + correction) @ T) in
-    unsigned(top1 << E)
+    let E = unsigned(c.E) in
+    let B3 : bits(3) = c.B[22..20] in
+    let T3 : bits(3) = c.T[22..20] in
+    let a : bits(66) = zero_extend(c.address)  in
+    let R : bits(3) = B3 - 0b001 in /* wraps */
+    let a_mid : bits(23) = mask(a >> E) in
+    let correction = a_top_correction(a_mid[22..20], R, T3) in
+    let a_top = a >> E+23 in
+    let top : bits(65) = mask((a_top + correction) @ c.T @ replicate_bits(0b0, E)) in
+    unsigned(top)
 
 function getCapOffset(c) : CapStruct -> uint64 = 
     let base = getCapBase(c) in
@@ -252,15 +327,16 @@ function getCapLength(c) : CapStruct -> CapLen =
 
 function getCapCursor(cap) : CapStruct -> uint64 = unsigned(cap.address)
 
+/*
 function fastRepCheck(c, i) : (CapStruct, bits(64)) -> bool=
     let 'E = unsigned(c.E) in
-    if (E >= 44) then
+    if (E >= resetE) then
         true /* in this case representable region is whole address space */
     else
-        let E'       = min(E, 43) in
-        let i_top    = signed(i[63..E+20]) in
-        let i_mid : bits(20) = i[E+19..E] in
-        let a_mid : bits(20) = (c.address)[E+19..E] in
+        let E'       = min(E, resetE) in
+        let i_top    = signed(i >>_s (E+23)) in
+        let i_mid : bits(23) = truncate(i >>_s E)in
+        let a_mid : bits(23) = truncate(c.address >> E) in
         let R : bits(20)     = (c.B) - 0x01000 in
         let diff : bits(20)  = R - a_mid in
         let diff1 : bits(20) = diff - 1 in
@@ -275,57 +351,83 @@ function fastRepCheck(c, i) : (CapStruct, bits(64)) -> bool=
           (i_mid >=_u diff) & (R != a_mid)
         else
           false
+*/
+
+function capBoundsEqual (c1, c2) : (CapStruct, CapStruct) -> bool = 
+    let base1 = getCapBase(c1) in
+    let base2 = getCapBase(c2) in
+    let top1 = getCapTop(c1) in
+    let top2 = getCapTop(c2) in
+    (base1 == base2) & (top1 == top2)
 
 function setCapOffset(c, offset) : (CapStruct, bits(64)) -> (bool, CapStruct) =
-    let base : bits(64)       = to_bits(64, getCapBase(c)) in
-    let newAddress : bits(64) = base + offset in
+    let base64 : bits(64) = to_bits(64, getCapBase(c)) in
+    let newAddress : bits(64) = base64 + offset in
     let newCap     = { c with address = newAddress } in
-    let representable = fastRepCheck(c, (newAddress - c.address)) in
+    let representable = capBoundsEqual(c, newCap) in
+/*    let representable = fastRepCheck(c, (newAddress - c.address)) in*/
     (representable, newCap)
 
 function incCapOffset(c, delta) : (CapStruct, bits(64)) -> (bool, CapStruct) =
     let newAddress : bits(64) = c.address + delta in
     let newCap     = { c with address = newAddress } in
-    let representable = fastRepCheck(c, delta) in
+    let representable = capBoundsEqual(c, newCap) in
+/*    let representable = fastRepCheck(c, delta) in*/
     (representable, newCap)
 
-/** FUNCTION:integer HighestSetBit(bits(N) x) */
-
-val HighestSetBit : forall 'N , 'N >= 2. bits('N) -> {'n, 0 <= 'n < 'N . (bool, atom('n))}
-function HighestSetBit x = {
+val CountLeadingZeros : forall 'N , 'N >= 2. bits('N) -> {'n, 0 <= 'n <= 'N . atom('n)}
+function CountLeadingZeros x = {
   foreach (i from ('N - 1) to 0 by 1 in dec)
-    if [x[i]] == 0b1 then return (true, i);
-  return (false, 0)
+    if [x[i]] == 0b1 then return 'N - i - 1;
+  return 'N;
 }
 
-/* hw rounds up E to multiple of 4 */
-function roundUp(e) : range(0, 45) -> range(0, 48) =
-    let 'r = e % 4 in
-    if (r == 0)
-    then e
-    else (e - r + 4)
-
-function computeE (rlength) : bits(65) -> range(0, 48) =
-    let (nonzero, 'msb) = HighestSetBit((rlength + (rlength >> 6)) >> 19) in
-    if nonzero then 
-      /* above will always return <= 45 because 19 bits of zero are shifted in from right */
-      {assert(0 <= msb & msb <= 45); roundUp (min(msb,45)) }
-    else 
-      0
-
-function setCapBounds(cap, base, top) : (CapStruct, bits(64), bits(65)) -> (bool, CapStruct) =
-    /* {cap with base=base; length=(bits(64)) length; offset=0} */
-    let 'e = computeE(top - (0b0 @ base)) in
-    let Bc : bits(20) = mask(base >> e) in
-    let T : bits(20) = mask(top >> e) in
-    let e_mask : bits(65) = zero_extend(replicate_bits(0b1, e)) in
-    let e_bits = top & e_mask in
-    let T2 : bits(20) = T + (if unsigned(e_bits) == 0 then 0x00000 else 0x00001) in
-    let newCap  = {cap with address=base, E=to_bits(6, e), B=Bc, T=T2} in
-    let newBase = getCapBase(newCap) in
-    let newTop  = getCapTop(newCap) in
-    let exact   = (unsigned(base) == newBase) & (unsigned(top) == newTop) in
-    (exact, newCap)
+function setCapBounds(cap, base, top) : (CapStruct, bits(64), bits(65)) -> (bool, CapStruct) = {
+  /* {cap with base=base; length=(bits(64)) length; offset=0} */
+  base66 = 0b00 @ base;
+  top66  = 0b0  @ top;
+  let length : bits(66) = top66 - base66; // why 66?
+  /* roughly index of highest set bit excluding (MW-1) lower bits */
+  let e = 43 - CountLeadingZeros(length[64..22]);
+  let e0 = e == 0; // maxZero in bsv  
+  let lenMSB = if e0 then length[21] else bitzero; // sample len MW-2
+  // extract MW + 1 bits of top and base -- we might need extra one if we round up e
+  Bs : bits(23) = zeros();
+  T : bits(23) = zeros();
+  let newBaseBits : bits(24) = mask(base >> e);
+  let newTopBits  : bits(24) = mask(top >> e);
+  // If top has significant bits we are going to lose then we must round up T by one
+  // Construct a mask of e bits
+  roundedLength = length + (length >> 18);
+  newTopBitsRounded : bits(20) = mask((base66 + roundedLength) >> (e + 3));
+  roundedLength2 = length + (length >> 16);
+  newTopBitsRoundedHigher : bits(20) = mask((base66 + roundedLength2) >> (e + 4));
+  lmask : bits(66) = zero_extend(replicate_bits(0b1, e));
+  lmaskLo = lmask >> 19;
+  lostSignificantTop = ((top66 & lmaskLo) != zeros()) & not(e0);
+  lostSignificantBase = ((base66 & lmaskLo) != zeros()) & not(e0);
+  lengthMax = (length & (~(lmaskLo)))==(lmask&(~(lmaskLo)));
+  incE = false;
+  if (lengthMax & not(e0)) then {
+    // rounding means we have to increase e by one
+    incE = true;
+    Bs = newBaseBits[23..4] @ 0b000;
+    T = newTopBitsRoundedHigher @ 0b000;
+  } else if (lostSignificantTop) then {
+    // embedded exp case
+    Bs = newBaseBits[22..3] @ 0b000;
+    T = newTopBitsRounded @ 0b000;
+  } else {
+    /* e0 case */
+    Bs = newBaseBits[22..0];
+    T = newTopBits[22..0];
+  };
+  let newCap  = {cap with address=base, E=to_bits(6, if incE then e + 1 else e ), B=Bs, T=T, lenMSB=lenMSB, internal_e=not(e0)};
+  let newBase = getCapBase(newCap);
+  let newTop  = getCapTop(newCap);
+  let exact   = (unsigned(base) == newBase) & (unsigned(top) == newTop);
+  (exact, newCap)
+}
 
 function int_to_cap (offset) : bits(64) -> CapStruct = 
     {null_cap with address = offset}

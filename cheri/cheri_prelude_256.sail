@@ -34,6 +34,7 @@
 
 /* 256 bit cap + tag */
 type CapReg = bits(257)
+let max_otype = MAX(24) /*0xffffff*/
 
 struct CapStruct = {
   tag                     : bool    ,

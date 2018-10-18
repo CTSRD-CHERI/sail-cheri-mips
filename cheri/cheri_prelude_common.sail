@@ -121,7 +121,6 @@ let CapRegs : vector(32, dec, register(CapReg)) =
     ref DDC
   ]
 
-let max_otype = MAX(24) /*0xffffff*/
 let have_cp2 = true
 
 val capToString : (CapStruct, bool) -> string effect {escape}
