@@ -136,7 +136,7 @@ function readCapReg(n) =
     null_cap
   else
     let i = unsigned(n) in
-    capRegToCapStruct(reg_deref(CapRegs[i]))
+    reg_deref(CapRegs[i])
 
 /*!
 This is the same as readCapReg except that when the argument is zero the value of DDC is returned 
@@ -146,7 +146,7 @@ null would always generate an exception.
 val readCapRegDDC : regno -> CapStruct effect {rreg}
 function readCapRegDDC(n) =
   let i = unsigned(n) in
-  capRegToCapStruct(reg_deref(CapRegs[i])) /* NB CapRegs[0] is points to DDC */
+  reg_deref(CapRegs[i]) /* NB CapRegs[0] is points to DDC */
 
 val writeCapReg  : (regno, CapStruct) -> unit effect {wreg, escape}
 function writeCapReg(n, cap) =
@@ -161,7 +161,7 @@ function writeCapReg(n, cap) =
     } else {
       skip_escape();
     };
-    (*CapRegs[i]) = capStructToCapReg(cap);
+    (*CapRegs[i]) = cap;
   }
 
 enum CapEx = {
@@ -254,7 +254,7 @@ register CapCause : CapCauseReg
 val execute_branch_pcc : CapStruct -> unit effect {wreg}
 function execute_branch_pcc(newPCC) = {
   delayedPC = to_bits(64, getCapOffset(newPCC));
-  delayedPCC = capStructToCapReg(newPCC);
+  delayedPCC = newPCC;
   branchPending = 0b1;
   nextInBranchDelay = 0b1;
 }
@@ -272,7 +272,7 @@ function SignalException (ex) =
       EPCC = PCC
     };
     set_next_pcc(KCC);
-    let base = getCapBase(capRegToCapStruct(KCC)) in
+    let base = getCapBase(KCC) in
     SignalExceptionMIPS(ex, to_bits(64, base));
   }
 
@@ -309,7 +309,7 @@ function raise_c2_exception_noreg(capEx) =
 
 val pcc_access_system_regs : unit -> bool effect {rreg}
 function pcc_access_system_regs () = 
-      let pcc = capRegToCapStruct(PCC) in
+      let pcc = PCC in
       (pcc.access_system_regs)
 
 val MEMr_tag = "read_tag_bool"  : bits(64) -> bool effect { rmemt }
@@ -407,7 +407,7 @@ function checkDDCPerms(ddc : CapStruct, accessType: MemAccessType) =
 val addrWrapper : (bits(64), MemAccessType, WordType) -> bits(64) effect {rreg, wreg, escape}
 function addrWrapper(addr, accessType, width) =
   {
-    ddc    = capRegToCapStruct(DDC);
+    let ddc = DDC;
     checkDDCPerms(ddc, accessType);
     cursor = getCapCursor(ddc);
     vAddr  = (cursor + unsigned(addr)) % pow2(64);
@@ -425,7 +425,7 @@ function addrWrapper(addr, accessType, width) =
 val addrWrapperUnaligned : (bits(64), MemAccessType, WordTypeUnaligned) -> bits(64) effect {rreg, wreg, escape}
 function addrWrapperUnaligned(addr, accessType, width) =
   {
-    ddc    = capRegToCapStruct(DDC);
+    let ddc = DDC;
     checkDDCPerms(ddc, accessType);
     cursor = getCapCursor(ddc);
     vAddr  = (cursor + unsigned(addr)) % pow2(64);
@@ -449,7 +449,7 @@ function addrWrapperUnaligned(addr, accessType, width) =
   }
 
 function execute_branch (pc) = {
-  let pcc = capRegToCapStruct(PCC);
+  let pcc = PCC;
   let len = getCapLength(pcc);
   /* Check the branch is within PCC bounds. Note that PC is offset to
   base so branches below base will be negative / very large and
@@ -466,7 +466,7 @@ $endif
 
 function TranslatePC (vAddr) = {
   incrementCP0Count();
-  let pcc = capRegToCapStruct(PCC);
+  let pcc = PCC;
   let base  = getCapBase(pcc);
   let top   = getCapTop(pcc);
   let absPC = base + unsigned(vAddr);
@@ -499,19 +499,17 @@ function checkCP2usable ()  =
   }
 
 function init_cp2_state () = {
-  let defaultBits = capStructToCapReg(default_cap);
-  let nullBits = capStructToCapReg(null_cap);
-  PCC = defaultBits;
-  nextPCC = defaultBits;
-  delayedPCC = defaultBits;
-  DDC  = defaultBits;
-  KCC  = defaultBits;
-  EPCC = defaultBits;
-  KDC  = nullBits;
-  KR1C = nullBits;
-  KR2C = nullBits;
-  CTLSP = nullBits;
-  CTLSU = nullBits;
+  PCC = default_cap;
+  nextPCC = default_cap;
+  delayedPCC = default_cap;
+  DDC  = default_cap;
+  KCC  = default_cap;
+  EPCC = default_cap;
+  KDC  = null_cap;
+  KR1C = null_cap;
+  KR2C = null_cap;
+  CTLSP = null_cap;
+  CTLSU = null_cap;
   foreach(i from 1 to 31) {
     let idx = to_bits(5, i) in
     writeCapReg(idx, null_cap)
@@ -532,7 +530,7 @@ function readEPCC () = {
   when EPCC is read. If status.ERL is set we use CP0ErrorEPC instead of EPC
   to ensure that reading to EPCC will always fetch the value used by eret */
   let epccOffset = if (CP0Status.ERL() == bitone) then CP0ErrorEPC else CP0EPC in
-  let epcc = capRegToCapStruct(EPCC) in /* Without this let statement the offset is added twice! */
+  let epcc = EPCC in
   let (success, epcc2) = setCapOffset(epcc, epccOffset) in
   if (success) then
     epcc2
@@ -568,19 +566,19 @@ function capToString (cap, fixlen) = {
          }
 
 function dump_cp2_state () = {
-  print(concat_str("DEBUG CAP PCC", capToString(capRegToCapStruct(PCC), true)));
+  print(concat_str("DEBUG CAP PCC", capToString(PCC, true)));
   foreach(i from 0 to 31) {
     print(concat_str("DEBUG CAP REG ", concat_str(string_of_int(i), capToString(readCapReg(to_bits(5, i)), true))))
   };
-  print(concat_str("DEBUG CAP HWREG 00", capToString(capRegToCapStruct(DDC), true)));
-  print(concat_str("DEBUG CAP HWREG 01", capToString(capRegToCapStruct(CTLSU), true)));
-  print(concat_str("DEBUG CAP HWREG 08", capToString(capRegToCapStruct(CTLSP), true)));
+  print(concat_str("DEBUG CAP HWREG 00", capToString(DDC, true)));
+  print(concat_str("DEBUG CAP HWREG 01", capToString(CTLSU, true)));
+  print(concat_str("DEBUG CAP HWREG 08", capToString(CTLSP, true)));
   /* TODO: these two should not be mirrored to match the FPGA */
-  print(concat_str("DEBUG CAP HWREG 22", capToString(capRegToCapStruct(KR1C), true)));
-  print(concat_str("DEBUG CAP HWREG 23", capToString(capRegToCapStruct(KR2C), true)));
+  print(concat_str("DEBUG CAP HWREG 22", capToString(KR1C, true)));
+  print(concat_str("DEBUG CAP HWREG 23", capToString(KR2C, true)));
   /* KCC, KDC, EPCC */
-  print(concat_str("DEBUG CAP HWREG 29", capToString(capRegToCapStruct(KCC), true)));
-  print(concat_str("DEBUG CAP HWREG 30", capToString(capRegToCapStruct(KDC), true)));
+  print(concat_str("DEBUG CAP HWREG 29", capToString(KCC, true)));
+  print(concat_str("DEBUG CAP HWREG 30", capToString(KDC, true)));
   print(concat_str("DEBUG CAP HWREG 31", capToString(readEPCC(), true)));
 
 }

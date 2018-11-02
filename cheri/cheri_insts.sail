@@ -267,7 +267,7 @@ union clause ast = CGetPCC : regno
 function clause execute (CGetPCC(cd)) =
 {
   checkCP2usable();
-  let pcc = (capRegToCapStruct(PCC)) in
+  let pcc = PCC in
   let (success, pcc2) = setCapOffset(pcc, PC) in {
     assert (success, "PCC with offset PC should always be representable");
     writeCapReg(cd, pcc2);
@@ -279,7 +279,7 @@ union clause ast = CGetPCCSetOffset : (regno, regno)
 function clause execute (CGetPCCSetOffset(cd, rs)) =
 {
   checkCP2usable();
-  let pcc = (capRegToCapStruct(PCC)) in
+  let pcc = PCC in
   let rs_val = rGPR(rs) in
   let (success, newPCC) = setCapOffset(pcc, rs_val) in
   if (success) then
@@ -334,13 +334,13 @@ function clause execute (CReadHwr(cd, sel)) =
      raise_c2_exception(CapEx_AccessSystemRegsViolation, sel)
   else {
     capVal : CapStruct = match unsigned(sel) {
-      0  => capRegToCapStruct(DDC),
-      1  => capRegToCapStruct(CTLSU),
-      8  => capRegToCapStruct(CTLSP),
-      22 => capRegToCapStruct(KR1C),
-      23 => capRegToCapStruct(KR2C),
-      29 => capRegToCapStruct(KCC),
-      30 => capRegToCapStruct(KDC),
+      0  => DDC,
+      1  => CTLSU,
+      8  => CTLSP,
+      22 => KR1C,
+      23 => KR2C,
+      29 => KCC,
+      30 => KDC,
       31 => readEPCC(), /* Load EPCC with offset = CP0EPC/CP0ErrorEPC */
       _  => {assert(false, "CReadHwr: should be unreachable code"); undefined}
     };
@@ -370,15 +370,15 @@ function clause execute (CWriteHwr(cb, sel)) =
   else {
     capVal = readCapReg(cb);
     match unsigned(sel) {
-      0  => DDC   = capStructToCapReg(capVal),
-      1  => CTLSU = capStructToCapReg(capVal),
-      8  => CTLSP = capStructToCapReg(capVal),
-      22 => KR1C  = capStructToCapReg(capVal),
-      23 => KR2C  = capStructToCapReg(capVal),
-      29 => KCC   = capStructToCapReg(capVal),
-      30 => KDC   = capStructToCapReg(capVal),
+      0  => DDC   = capVal,
+      1  => CTLSU = capVal,
+      8  => CTLSP = capVal,
+      22 => KR1C  = capVal,
+      23 => KR2C  = capVal,
+      29 => KCC   = capVal,
+      30 => KDC   = capVal,
       31 => {
-            EPCC   = capStructToCapReg(capVal);
+            EPCC   = capVal;
             /* CP0EPC/CP0ErrorEPC and EPCC.offset are supposed to be one register.
             We fake this by writing CP0EPC/CP0ErrorEPC from EPCC.offset when EPCC
             is written. If status.ERL is set we use CP0ErrorEPC instead of EPC
@@ -628,7 +628,7 @@ function clause execute (ClearRegs(regset, m)) =
         GPLo  => wGPR(to_bits(5, i)) = zeros(),
         GPHi  => wGPR(to_bits(5, i+16)) = zeros(),
         CLo   => if i == 0 then
-                   DDC = capStructToCapReg(null_cap)
+                   DDC = null_cap
                  else
                    writeCapReg(to_bits(5, i)) = null_cap,
         CHi   => writeCapReg(to_bits(5, i+16)) = null_cap
@@ -937,14 +937,14 @@ function clause execute (CCall(cs, cb, 0b00000000001)) = /* selector=1 */
     raise_c2_exception(CapEx_LengthViolation, cs)
   else
     {
-      set_next_pcc(capStructToCapReg({cs_val with
-        sealed=false,
-        otype=zeros()
-      }));
-      C26 = capStructToCapReg({cb_val with
+      set_next_pcc({cs_val with
         sealed=false,
         otype=zeros()
       });
+      C26 = {cb_val with
+        sealed=false,
+        otype=zeros()
+      };
       nextPC = to_bits(64, getCapOffset(cs_val));
     }
 }
@@ -1009,7 +1009,7 @@ function clause execute(CJALR(cd, cb, link)) =
   else
     {
       if (link) then
-        let pcc = capRegToCapStruct(PCC) in
+        let pcc = PCC in
         let (success, linkCap) = setCapOffset(pcc, PC+8) in {
           assert(success, "Link cap should always be representable.");
           writeCapReg(cd, linkCap);
@@ -1230,12 +1230,12 @@ function clause execute (CLC(cd, cb, rt, offset, linked)) =
               CP0LLBit  = 0b1;
               CP0LLAddr = pAddr;
               let (tag, mem) = MEMr_tagged_reserve(pAddr) in
-              (*CapRegs[cd]) = memBitsToCapBits(tag & (cb_val.permit_load_cap) & (not (suppressTag)), mem);
+              (*CapRegs[cd]) = memBitsToCapReg(tag & (cb_val.permit_load_cap) & (not (suppressTag)), mem);
             }
           else
             {
               let (tag, mem) = MEMr_tagged(pAddr) in
-              (*CapRegs[cd]) = memBitsToCapBits(tag & (cb_val.permit_load_cap) & (not (suppressTag)), mem);
+              (*CapRegs[cd]) = memBitsToCapReg(tag & (cb_val.permit_load_cap) & (not (suppressTag)), mem);
             }
         }
     }

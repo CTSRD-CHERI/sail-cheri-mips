@@ -33,7 +33,7 @@
 /*========================================================================*/
 
 /* 128 bit cap + tag */
-type CapReg = bits(129)
+type CapBits = bits(129)
 
 struct CapStruct = {
   tag                    : bool    ,
@@ -57,6 +57,8 @@ struct CapStruct = {
   otype                  : bits(24),
   address                : bits(64)
 }
+
+type CapReg = CapStruct
 
 let null_cap : CapStruct = struct {
   tag                    = false,
@@ -106,7 +108,7 @@ let default_cap : CapStruct = struct {
 
 let 'cap_size = 16
 
-function capRegToCapStruct(c) : CapReg -> CapStruct =
+function capBitsToCapStruct(c) : CapBits -> CapStruct =
   let s : bool  = c[104] in
   let Bc : bits(20) = if s then c[103..96] @ 0x000 else c[103..84] in
   let Tc : bits(20) = if s then c[83..76] @ 0x000 else c[83..64] in
@@ -160,13 +162,6 @@ function capStructToMemBits128(cap) : CapStruct -> bits(128) =
     @ cap.address
     )
 
-function capStructToCapReg(cap) : CapStruct -> CapReg =
-    (cap.tag @ capStructToMemBits128(cap))
-
-/* Reverse of above used when reading from memory */
-function memBitsToCapBits128(tag, b) : (bool, bits(128)) -> CapReg=
-  (tag @ b)
-
 /* When saving/restoring capabilities xor them with bits of null_cap --
    this ensures that canonical null_cap is always all-zeros in memory
    even though it may have bits set logically (e.g. length or exponent */
@@ -176,8 +171,8 @@ let null_cap_bits : bits(128) = capStructToMemBits128(null_cap)
 function capStructToMemBits(cap) : CapStruct -> bits(128) =
   capStructToMemBits128(cap) ^ null_cap_bits
 
-function memBitsToCapBits(tag, b) : (bool, bits(128)) -> bits(129) =
-  memBitsToCapBits128(tag, b ^ null_cap_bits)
+function memBitsToCapReg(tag, b) : (bool, bits(128)) -> CapReg =
+  capBitsToCapStruct(tag @ (b ^ null_cap_bits))
 
 function getCapPerms(cap) : CapStruct -> bits(31) = 
     let perms : bits(15) = zero_extend(getCapHardPerms(cap)) in
