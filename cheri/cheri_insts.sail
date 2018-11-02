@@ -1010,11 +1010,10 @@ function clause execute(CJALR(cd, cb, link)) =
     {
       if (link) then
         let pcc = capRegToCapStruct(PCC) in
-        let (success, linkCap) = setCapOffset(pcc, PC+8) in
-        if (success) then
-            writeCapReg(cd, linkCap)
-        else
-            assert(false, "Link cap should always be representable.");
+        let (success, linkCap) = setCapOffset(pcc, PC+8) in {
+          assert(success, "Link cap should always be representable.");
+          writeCapReg(cd, linkCap);
+        };
       execute_branch_pcc(cb_val);
     };
   nextInBranchDelay = 0b1;
@@ -1074,8 +1073,8 @@ function clause execute (CLoadTags(rd, cb)) =
     raise_c2_exception(CapEx_PermitLoadViolation, cb)
   else
     {
-      let vAddr   = getCapCursor(cb_val) % pow2(64);
-      let vAddr64 = to_bits(64, vAddr);
+      let vAddr   = getCapCursor(cb_val);
+      let vAddr64 = to_bits(64, getCapCursor(cb_val));
       if ((vAddr + 8 * cap_size) > getCapTop(cb_val)) then
         raise_c2_exception(CapEx_LengthViolation, cb)
       else if (vAddr < getCapBase(cb_val)) then
