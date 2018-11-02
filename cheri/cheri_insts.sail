@@ -268,9 +268,10 @@ function clause execute (CGetPCC(cd)) =
 {
   checkCP2usable();
   let pcc = (capRegToCapStruct(PCC)) in
-  let (success, pcc2) = setCapOffset(pcc, PC) in
-  {assert (success, ""); /* guaranteed to be in-bounds */
-  writeCapReg(cd, pcc2)};
+  let (success, pcc2) = setCapOffset(pcc, PC) in {
+    assert (success, "PCC with offset PC should always be representable");
+    writeCapReg(cd, pcc2);
+  };
 }
 
 
@@ -341,7 +342,7 @@ function clause execute (CReadHwr(cd, sel)) =
       29 => capRegToCapStruct(KCC),
       30 => capRegToCapStruct(KDC),
       31 => readEPCC(), /* Load EPCC with offset = CP0EPC/CP0ErrorEPC */
-      _  => {assert(false, "should be unreachable code"); undefined}
+      _  => {assert(false, "CReadHwr: should be unreachable code"); undefined}
     };
     writeCapReg(cd, capVal);
   };
@@ -387,7 +388,7 @@ function clause execute (CWriteHwr(cb, sel)) =
             else
               CP0EPC = to_bits(64, getCapOffset(capVal));
             },
-      _  => assert(false, "should be unreachable code")
+      _  => assert(false, "CWriteHwr: should be unreachable code")
     };
   };
 }
@@ -684,8 +685,8 @@ function clause execute (CBuildCap(cd, cb, ct)) =
     let (representable, cd2) = setCapOffset(cd1, to_bits(64, ct_offset)) in
     let cd3 = setCapPerms(cd2, ct_perms) in
     {
-      assert(exact, "cbuildcap: setCapBounds was not exact");         /* base and top came from ct originally so will be exact */
-      assert(representable, "cbuildcap: offset was not representable"); /* similarly offset should be representable XXX except for fastRepCheck */
+      assert(exact, "CBuildCap: setCapBounds was not exact"); /* base and top came from ct originally so will be exact */
+      assert(representable, "CBuildCap: offset was not representable"); /* similarly offset should be representable XXX except for fastRepCheck */
       writeCapReg(cd, cd3);
     }
 }
@@ -709,8 +710,9 @@ function clause execute (CCopyType(cd, cb, ct)) =
     else if ct_otype >= cb_top then
       raise_c2_exception(CapEx_LengthViolation, cb)
     else
-      let (success, cap) = setCapOffset(cb_val, to_bits(64, ct_otype - cb_base)) in {
-        assert(success, ""); /* offset is in bounds so must succeed */
+      let (success, cap) = setCapOffset(cb_val, to_bits(64, ct_otype - cb_base)) in
+      {
+        assert(success, "CopyType: offset is in bounds so should be representable");
         writeCapReg(cd, cap);
       }
   } else
