@@ -8,8 +8,7 @@ mips_sims:
 	$(MAKE) -C mips mips mips_c
 cheri_sims:
 	$(MAKE) -C cheri cheri cheri_c
-	$(MAKE) -C cheri cheri128
-#cheri128_c
+	$(MAKE) -C cheri cheri128 cheri128_c
 
 install:
 	mkdir -p $(INSTALL_DIR)/bin
