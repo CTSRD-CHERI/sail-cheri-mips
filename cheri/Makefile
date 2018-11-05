@@ -134,7 +134,7 @@ COQ_LIBS = -R ../../bbv/theories bbv -R ../lib/coq Sail
 cheri.vo: cheri_types.vo mips_extras.vo
 
 clean:
-	rm -rf cheri cheri_trace cheri_coverage cheri_c cheri128 cheri128_trace cheri128_c _sbuild inst_*.sail cheri.c sail_latex sail_latexcc coverage_report
+	rm -rf cheri cheri_trace cheri_coverage cheri_c cheri128 cheri128_trace cheri128_c _sbuild inst_*.sail cheri.c cheri128.c sail_latex sail_latexcc coverage_report
 	rm -f cheriScript.sml cheri_typesScript.sml mips_extrasScript.sml
 	rm -f cheri.v cheri_types.v $(CHERI_COQ:%.v=%.vo) $(CHERI_COQ:%.v=%.glob) $(CHERI_COQ:%.v=.%.aux)
 	-Holmake cleanAll
