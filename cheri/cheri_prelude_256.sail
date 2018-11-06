@@ -33,7 +33,7 @@
 /*========================================================================*/
 
 /* 256 bit cap + tag */
-type CapReg = bits(257)
+type CapBits = bits(257)
 let max_otype = MAX(24) /*0xffffff*/
 
 struct CapStruct = {
@@ -58,6 +58,8 @@ struct CapStruct = {
   base                    : bits(64),
   length                  : bits(64),
 }
+
+type CapReg = CapStruct
 
 let null_cap : CapStruct = struct {
   tag = false,
@@ -107,28 +109,28 @@ let default_cap : CapStruct = struct {
 
 let 'cap_size = 32
 
-function capRegToCapStruct(capReg) : CapReg -> CapStruct =
+function capBitsToCapStruct(capBits) : CapBits -> CapStruct =
   struct {
-    tag                        = capReg[256],
-    padding                    = capReg[255..248],
-    otype                      = capReg[247..224],
-    uperms                     = capReg[223..208],
-    perm_reserved11_14         = capReg[207..204],
-    access_system_regs         = capReg[203],
-    permit_unseal              = capReg[202],
-    permit_ccall               = capReg[201],
-    permit_seal                = capReg[200],
-    permit_store_local_cap     = capReg[199],
-    permit_store_cap           = capReg[198],
-    permit_load_cap            = capReg[197],
-    permit_store               = capReg[196],
-    permit_load                = capReg[195],
-    permit_execute             = capReg[194],
-    global                     = capReg[193],
-    sealed                     = capReg[192],
-    address                    = capReg[191..128],
-    base                       = capReg[127..64],
-    length                     = capReg[63..0]
+    tag                        = capBits[256],
+    padding                    = capBits[255..248],
+    otype                      = capBits[247..224],
+    uperms                     = capBits[223..208],
+    perm_reserved11_14         = capBits[207..204],
+    access_system_regs         = capBits[203],
+    permit_unseal              = capBits[202],
+    permit_ccall               = capBits[201],
+    permit_seal                = capBits[200],
+    permit_store_local_cap     = capBits[199],
+    permit_store_cap           = capBits[198],
+    permit_load_cap            = capBits[197],
+    permit_store               = capBits[196],
+    permit_load                = capBits[195],
+    permit_execute             = capBits[194],
+    global                     = capBits[193],
+    sealed                     = capBits[192],
+    address                    = capBits[191..128],
+    base                       = capBits[127..64],
+    length                     = capBits[63..0]
   }
 
 function getCapPerms(cap) : CapStruct -> bits(31) = 
@@ -171,10 +173,8 @@ let null_cap_bits : bits(256) = capStructToMemBits256(null_cap)
 function capStructToMemBits(cap) : CapStruct -> bits(256)=
   capStructToMemBits256(cap) ^ null_cap_bits
 
-function memBitsToCapBits(tag, b) : (bool, bits(256)) -> bits(257)  =
-  tag @ (b ^ null_cap_bits)
-
-function capStructToCapReg(cap) : CapStruct -> CapReg = cap.tag @ capStructToMemBits256(cap)
+function memBitsToCapReg(tag, b) : (bool, bits(256)) -> CapReg =
+  capBitsToCapStruct(tag @ (b ^ null_cap_bits))
 
 function setCapPerms(cap, perms) : (CapStruct, bits(31)) -> CapStruct =
     { cap with
