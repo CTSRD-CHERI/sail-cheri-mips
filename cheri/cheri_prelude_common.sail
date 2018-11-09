@@ -308,9 +308,7 @@ function raise_c2_exception_noreg(capEx) =
   raise_c2_exception8(capEx, 0xff)
 
 val pcc_access_system_regs : unit -> bool effect {rreg}
-function pcc_access_system_regs () = 
-      let pcc = PCC in
-      (pcc.access_system_regs)
+function pcc_access_system_regs () = PCC.access_system_regs
 
 val MEMr_tag = "read_tag_bool"  : bits(64) -> bool effect { rmemt }
 val MEMw_tag = "write_tag_bool" : (bits(64) , bool) -> unit effect { wmvt }
@@ -449,8 +447,7 @@ function addrWrapperUnaligned(addr, accessType, width) =
   }
 
 function execute_branch (pc) = {
-  let pcc = PCC;
-  let len = getCapLength(pcc);
+  let len = getCapLength(PCC);
   /* Check the branch is within PCC bounds. Note that PC is offset to
   base so branches below base will be negative / very large and
   greater than top. */

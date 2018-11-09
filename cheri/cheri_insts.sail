@@ -277,9 +277,8 @@ union clause ast = CGetPCCSetOffset : (regno, regno)
 function clause execute (CGetPCCSetOffset(cd, rs)) =
 {
   checkCP2usable();
-  let pcc = PCC;
   let rs_val = rGPR(rs);
-  let (success, newPCC) = setCapOffset(pcc, rs_val);
+  let (success, newPCC) = setCapOffset(PCC, rs_val);
   if (success) then
     writeCapReg(cd, newPCC)
   else
