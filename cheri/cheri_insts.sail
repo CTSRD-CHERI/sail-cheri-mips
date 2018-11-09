@@ -902,7 +902,7 @@ function clause execute (CCall(cs, cb, 0b00000000000)) = /* selector=0 */
 {
   /* Partial implementation of CCall with checks in hardware, but raising a trap to perform trusted stack manipulation */
   checkCP2usable();
-  if inBranchDelay then
+  if InBranchDelay then
     SignalException(ResI);
   let cs_val = readCapReg(cs);
   let cb_val = readCapReg(cb);
@@ -933,7 +933,7 @@ function clause execute (CCall(cs, cb, 0b00000000001)) = /* selector=1 */
 {
   /* Jump-like implementation of CCall that unseals arguments */
   checkCP2usable();
-  if inBranchDelay then
+  if InBranchDelay then
     SignalException(ResI);
   let cs_val = readCapReg(cs);
   let cb_val = readCapReg(cb);
@@ -970,7 +970,7 @@ function clause execute (CCall(cs, cb, 0b00000000001)) = /* selector=1 */
       sealed=false,
       otype=zeros()
     };
-    nextPC = to_bits(64, getCapOffset(cs_val));
+    NextPC = to_bits(64, getCapOffset(cs_val));
   }
 }
 
@@ -985,35 +985,35 @@ union clause ast = CBX : (regno, bits(16), bool)
 function clause execute (CBX(cb, imm, notset)) =
 {
   checkCP2usable();
-  if (inBranchDelay) then
+  if (InBranchDelay) then
      SignalException(ResI);
   if (((readCapReg(cb)).tag) ^ notset) then
   {
     let offset : bits(64) = (sign_extend(imm @ 0b00) + 4) in
     execute_branch(PC + offset);
   };
-  nextInBranchDelay = 0b1;
+  NextInBranchDelay = 0b1;
 }
 
 union clause ast = CBZ : (regno, bits(16), bool)
 function clause execute (CBZ(cb, imm, notzero)) =
 {
   checkCP2usable();
-  if (inBranchDelay) then
+  if (InBranchDelay) then
      SignalException(ResI);
   if (((readCapReg(cb)) == null_cap) ^ notzero) then
   {
     let offset : bits(64) = (sign_extend(imm @ 0b00) + 4) in
     execute_branch(PC + offset);
   };
-  nextInBranchDelay = 0b1;
+  NextInBranchDelay = 0b1;
 }
 
 union clause ast = CJALR : (regno, regno, bool)
 function clause execute(CJALR(cd, cb, link)) = 
 {
   checkCP2usable();
-  if (inBranchDelay) then
+  if (InBranchDelay) then
      SignalException(ResI);
   let cb_val = readCapReg(cb);
   let cb_ptr = getCapCursor(cb_val);
@@ -1041,7 +1041,7 @@ function clause execute(CJALR(cd, cb, link)) =
     };
     execute_branch_pcc(cb_val);
   };
-  nextInBranchDelay = 0b1;
+  NextInBranchDelay = 0b1;
 }
 
 union clause ast = CLoad : (regno, regno, regno, bits(8), bool, WordType, bool)

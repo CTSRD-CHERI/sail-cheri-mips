@@ -36,7 +36,7 @@
    to mips instructions (e.g. address translation) */
 
 register PC : bits(64)
-register nextPC : bits(64)
+register NextPC : bits(64)
 
 /* CP0 Registers */
 
@@ -291,17 +291,17 @@ bitfield StatusReg : bits(32) = {
 register CP0Status : StatusReg
 
 /* Implementation registers -- not ISA defined */
-register nextInBranchDelay : bits(1)  /* Set by branch instructions to indicate that next instruction is branch delay slot (even if branch not-taken) */
-register inBranchDelay : bits(1)      /* Set by main loop when in branch delay slot */
-register branchPending : bits(1)      /* Set by branch instructions when branch taken so know to branch to delayedPC after branch delay slot */
-register delayedPC : bits(64)         /* Set by branch instructions to target of branch */
+register NextInBranchDelay : bits(1)  /* Set by branch instructions to indicate that next instruction is branch delay slot (even if branch not-taken) */
+register InBranchDelay : bits(1)      /* Set by main loop when in branch delay slot */
+register BranchPending : bits(1)      /* Set by branch instructions when branch taken so know to branch to DelayedPC after branch delay slot */
+register DelayedPC : bits(64)         /* Set by branch instructions to target of branch */
 
 val execute_branch : bits(64) -> unit effect {rreg, wreg, escape}
 val execute_branch_mips : bits(64) -> unit effect {wreg}
 function execute_branch_mips(pc) = {
-  delayedPC = pc;
-  branchPending = 0b1;
-  nextInBranchDelay = 0b1;
+  DelayedPC = pc;
+  BranchPending = 0b1;
+  NextInBranchDelay = 0b1;
 }
 
 /* General purpose registers */
@@ -443,7 +443,7 @@ function SignalExceptionMIPS (ex, kccBase) =
     /* Only update EPC and BD if not already in EXL mode */
     if (~ (CP0Status.EXL())) then 
       {
-        if (inBranchDelay[0]) then
+        if (InBranchDelay[0]) then
           {
             CP0EPC = PC - 4;
             CP0Cause->BD() = 0b1;
@@ -455,7 +455,7 @@ function SignalExceptionMIPS (ex, kccBase) =
           }
       };
       /* Fill in BadInstr + BadInstrP. */
-      if (inBranchDelay[0]) then
+      if (InBranchDelay[0]) then
         {
             CP0BadInstrP = LastInstrBits; /* PC - 4 */
         };
@@ -478,7 +478,7 @@ function SignalExceptionMIPS (ex, kccBase) =
                    0xFFFFFFFF80000000;
       /* On CHERI we have to subtract KCC.base so that we end up at the 
          right absolute vector address after indirecting via new PCC */
-      nextPC = vectorBase + sign_extend(vectorOffset) - kccBase;
+      NextPC = vectorBase + sign_extend(vectorOffset) - kccBase;
       CP0Cause->ExcCode() = ExceptionCode(ex);
       CP0Status->EXL()    = 0b1;
       throw (ISAException());

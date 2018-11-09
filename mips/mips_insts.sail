@@ -884,7 +884,7 @@ function clause decode (0b000010 @ offset : bits(26)) =
   Some(J(offset))
 function clause execute (J(offset)) =
   {
-    if (inBranchDelay) then
+    if (InBranchDelay) then
        SignalException(ResI);
     execute_branch((PC + 4)[63..28] @ offset @ 0b00);
   }
@@ -895,7 +895,7 @@ function clause decode (0b000011 @ offset : bits(26)) =
   Some(JAL(offset))
 function clause execute (JAL(offset)) =
   {
-    if (inBranchDelay) then
+    if (InBranchDelay) then
        SignalException(ResI);
     execute_branch((PC + 4)[63..28] @ offset @ 0b00);
     wGPR(0b11111) = PC + 8;
@@ -907,7 +907,7 @@ function clause decode (0b000000 @ rs : regno @ 0b00000 @ 0b00000 @ hint : regno
   Some(JR(rs)) /* hint is ignored */
 function clause execute (JR(rs)) =
   {
-    if (inBranchDelay) then
+    if (InBranchDelay) then
        SignalException(ResI);
     execute_branch(rGPR(rs));
   }
@@ -918,7 +918,7 @@ function clause decode (0b000000 @ rs : regno @ 0b00000 @ rd : regno @ hint : re
   Some(JALR(rs, rd)) /* hint is ignored */
 function clause execute (JALR(rs, rd)) =
   {
-    if (inBranchDelay) then
+    if (InBranchDelay) then
        SignalException(ResI);
     execute_branch(rGPR(rs));
     wGPR(rd)      = PC + 8;
@@ -940,7 +940,7 @@ function clause decode (0b010101 @ rs : regno @ rt : regno @ imm : imm16) =
   Some(BEQ(rs, rt, imm, true , true))   /* BNEL */
 function clause execute (BEQ(rs, rd, imm, ne, likely)) =
   {
-    if (inBranchDelay) then
+    if (InBranchDelay) then
        SignalException(ResI);
     if ((rGPR(rs) == rGPR(rd)) ^ ne) then
       {
@@ -950,9 +950,9 @@ function clause execute (BEQ(rs, rd, imm, ne, likely)) =
     else
       {
         if (likely) then
-          nextPC = PC + 8 /* skip branch delay */
+          NextPC = PC + 8 /* skip branch delay */
         else
-          nextInBranchDelay = 0b1;
+          NextInBranchDelay = 0b1;
       }
   }
 
@@ -997,7 +997,7 @@ function clause decode (0b010110 @ rs : regno @ 0b00000 @ imm : imm16) =
 
 function clause execute (BCMPZ(rs, imm, cmp, link, likely)) =
   {
-    if (inBranchDelay) then
+    if (InBranchDelay) then
        SignalException(ResI);
     linkVal = PC + 8;
     regVal = rGPR(rs);
@@ -1009,11 +1009,11 @@ function clause execute (BCMPZ(rs, imm, cmp, link, likely)) =
       }
     else if (likely) then
       {
-        nextPC = PC + 8  /* skip branch delay */
+        NextPC = PC + 8  /* skip branch delay */
       }
     else
       {
-        nextInBranchDelay = 0b1;
+        NextInBranchDelay = 0b1;
       };
     if (link) then
       wGPR(0b11111) = linkVal
@@ -1047,9 +1047,9 @@ union clause ast = WAIT : unit
 function clause decode (0b010000 @ 0x80000 @ 0b100000) =
   Some(WAIT()) /* we only accept code == 0 */
 function clause execute (WAIT()) = {
-  if (inBranchDelay) then
+  if (InBranchDelay) then
     SignalException(ResI);
-  nextPC = PC;
+  NextPC = PC;
 }
 
 /* Trap instructions with two register operands */
@@ -1693,12 +1693,12 @@ function clause execute (ERET()) =
         CP0LLBit = 0b0;
         if (CP0Status.ERL() == bitone) then
           {
-            nextPC = CP0ErrorEPC;
+            NextPC = CP0ErrorEPC;
             CP0Status->ERL() = 0b0;
           }
         else
           {
-            nextPC = CP0EPC;
+            NextPC = CP0EPC;
             CP0Status->EXL() = 0b0;
           }
       }

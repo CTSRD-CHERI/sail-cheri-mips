@@ -42,8 +42,8 @@ val decode : bits(32) -> option(ast) effect pure
 scattered function decode
 
 register PCC        : CapReg
-register nextPCC    : CapReg
-register delayedPCC : CapReg
+register NextPCC    : CapReg
+register DelayedPCC : CapReg
 register DDC : CapReg
 register C01 : CapReg
 register C02 : CapReg
@@ -253,16 +253,16 @@ register CapCause : CapCauseReg
 
 val execute_branch_pcc : CapStruct -> unit effect {wreg}
 function execute_branch_pcc(newPCC) = {
-  delayedPC = to_bits(64, getCapOffset(newPCC));
-  delayedPCC = newPCC;
-  branchPending = 0b1;
-  nextInBranchDelay = 0b1;
+  DelayedPC = to_bits(64, getCapOffset(newPCC));
+  DelayedPCC = newPCC;
+  BranchPending = 0b1;
+  NextInBranchDelay = 0b1;
 }
 
 val set_next_pcc : CapReg -> unit effect {wreg} 
 function set_next_pcc(newPCC) = {
-  nextPCC    = newPCC;
-  delayedPCC = newPCC; /* always write delayedPCC together with nextPCC so 
+  NextPCC    = newPCC;
+  DelayedPCC = newPCC; /* always write DelayedPCC together with NextPCC so 
                           that non-capability branches don't override PCC */
 }
 
@@ -500,8 +500,8 @@ function checkCP2usable ()  =
 
 function init_cp2_state () = {
   PCC = default_cap;
-  nextPCC = default_cap;
-  delayedPCC = default_cap;
+  NextPCC = default_cap;
+  DelayedPCC = default_cap;
   DDC  = default_cap;
   KCC  = default_cap;
   EPCC = default_cap;
@@ -517,9 +517,9 @@ function init_cp2_state () = {
 }
 
 function cp2_next_pc () = {
-  PCC = nextPCC;
-  if inBranchDelay then {
-    nextPCC = delayedPCC;
+  PCC = NextPCC;
+  if InBranchDelay then {
+    NextPCC = DelayedPCC;
   };
 }
 
