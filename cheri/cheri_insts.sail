@@ -987,7 +987,7 @@ function clause execute (CBX(cb, imm, notset)) =
   let cb_val = readCapReg(cb);
   if cb_val.tag ^ notset then
   {
-    let offset : bits(64) = sign_extend(imm @ 0b00) + 4 in
+    let offset : bits(64) = sign_extend(imm @ 0b00) + 4;
     execute_branch(PC + offset);
   };
   NextInBranchDelay = 0b1;
@@ -1002,7 +1002,7 @@ function clause execute (CBZ(cb, imm, notzero)) =
   let cb_val = readCapReg(cb);
   if (cb_val == null_cap) ^ notzero then
   {
-    let offset : bits(64) = sign_extend(imm @ 0b00) + 4 in
+    let offset : bits(64) = sign_extend(imm @ 0b00) + 4;
     execute_branch(PC + offset);
   };
   NextInBranchDelay = 0b1;
