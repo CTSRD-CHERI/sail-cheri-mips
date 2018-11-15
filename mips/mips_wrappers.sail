@@ -1,4 +1,4 @@
-/*========================================================================*/
+s/*========================================================================*/
 /*                                                                        */
 /*  Copyright (c) 2015-2017 Robert M. Norton                              */
 /*  Copyright (c) 2015-2017 Kathyrn Gray                                  */
@@ -35,6 +35,9 @@
 /* mips_wrappers.sail: wrappers functions and hooks for CHERI extensibility 
    (mostly identity functions here) */
 
+/*!
+THIS`(addr, size, value)` writes `size` bytes of `value` to physical address `addr`.
+ */
 val MEMw_wrapper : forall 'n, 1 <= 'n <= 8. (bits(64), atom('n), bits(8 * 'n)) -> unit effect {eamem, wmv, wreg}
 
 function MEMw_wrapper(addr, size, data) =
@@ -48,6 +51,9 @@ function MEMw_wrapper(addr, size, data) =
         MEMval(addr, size, ledata);
       }
 
+/*!
+THIS`(addr, size, value)` attempts to write `size` bytes of `value` to physical address `addr` and returns a boolean indicating store conditional success or failure.
+ */
 val MEMw_conditional_wrapper : forall 'n,  1 <= 'n <= 8. (bits(64), atom('n), bits(8 * 'n)) -> bool effect {eamem, wmv}
 
 function MEMw_conditional_wrapper(addr, size, data) =

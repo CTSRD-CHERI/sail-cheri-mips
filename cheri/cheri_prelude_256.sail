@@ -132,7 +132,11 @@ function capBitsToCapStruct(capBits) : CapBits -> CapStruct =
     length                     = capBits[63..0]
   }
 
-function getCapPerms(cap) : CapStruct -> bits(31) = 
+/*!
+gets the permissions of the capabilty as a 31-bit vector. The architecturally defined permissions are in bits 0-10 and user defined permissions are in bits 15 and above. Bits 11-14 are reserved: if they are present (CHERI 256) they act as extra user permissions but when using compressed capabilities they will be zero.
+ */
+val getCapPerms : CapStruct -> bits(31) 
+function getCapPerms(cap) = 
   (
     cap.uperms
       @ cap.perm_reserved11_14
@@ -169,13 +173,26 @@ function capStructToMemBits256(cap) : CapStruct -> bits(256) =
 
 let null_cap_bits : bits(256) = capStructToMemBits256(null_cap)
 
-function capStructToMemBits(cap) : CapStruct -> bits(256)=
+
+/*!
+THIS is the reverse of [memBitsToCapReg].
+ */
+val capStructToMemBits : CapStruct -> bits(256)
+function capStructToMemBits(cap) =
   capStructToMemBits256(cap) ^ null_cap_bits
 
-function memBitsToCapReg(tag, b) : (bool, bits(256)) -> CapReg =
+/*!
+THIS converts from the in-memory capability format to a convenient structure for ease of field access. Note that the bit representation is xored with the bit representation of the null capability to ensure that null is always stored as all-zeros in memory.
+ */
+val memBitsToCapReg : (bool, bits(256)) -> CapReg
+function memBitsToCapReg(tag, b) =
   capBitsToCapStruct(tag @ (b ^ null_cap_bits))
 
-function setCapPerms(cap, perms) : (CapStruct, bits(31)) -> CapStruct =
+/*!
+sets the permission of the capabiltiy as a 31-bit vector. Writes to reserved permissions are ignored when using compressed capabilities, although this behaviour is subject to change in future revisions.
+ */
+val setCapPerms : (CapStruct, bits(31)) -> CapStruct
+function setCapPerms(cap, perms) =
     { cap with
       uperms                 = perms[30..15],
       /* perm_reserved11_14     = perms[14..11], XXX should allow to set? only affects cbuildcap. */
@@ -192,25 +209,52 @@ function setCapPerms(cap, perms) : (CapStruct, bits(31)) -> CapStruct =
       global                 = perms[0]
    }
 
-function sealCap(cap, otype) : (CapStruct, bits(24)) -> (bool, CapStruct) =
+/*!
+THIS(cap, otype) returns a new capability derived from `cap` but with the sealed bit set and otype set to `otype`. The returned boolean indicates whether the sealed capability is exactly representable (there may be additional restrictions on sealed capabilities depending on the compression used).
+ */
+val sealCap : (CapStruct, bits(24)) -> (bool, CapStruct)
+function sealCap(cap, otype) =
     (true, {cap with sealed=true, otype=otype})
 
-function getCapBase(c)   : CapStruct -> uint64 = unsigned(c.base)
-function getCapTop(c)    : CapStruct -> CapLen = unsigned(c.base) + unsigned(c.length) /* XXX bug here? -- should be mod 2^64 */
-function getCapOffset(c) : CapStruct -> uint64 = (unsigned(c.address) - unsigned(c.base)) % (pow2(64))
-function getCapLength(c) : CapStruct -> CapLen = unsigned(c.length)
-
-function getCapCursor(c) : CapStruct -> uint64 = unsigned(c.address)
+/*!
+returns the base of the given capability as an integer in the range $0$ to $2^{64} - 1$.
+ */
+val getCapBase : CapStruct -> uint64
+function getCapBase(c) = unsigned(c.base)
 
 /*!
-Set the offset capability of the a capability to given value and return the result, along with a boolean indicating true if the operation preserved the existing bounds of the capability.  When using compressed capabilities, setting the offset far outside the capability bounds can cause the result to become unrepresentable (XXX mention guarantees). Additionally in some implementations a fast representablity check may be used that could cause the operation to return failure even though the capability would be representable (XXX provide details). 
+returns the top of the given capability as an integer in the range $0$ to $2^{65}$.
+ */
+val getCapTop : CapStruct -> CapLen
+function getCapTop(c) = unsigned(c.base) + unsigned(c.length) /* XXX bug here? -- should be mod 2^64 */
+
+/*!
+returns the offset of the capability (i.e. address relative to base) as an integer in the range $0$ to $2^{64} - 1$ 
+ */
+val getCapOffset : CapStruct -> uint64
+function getCapOffset(c) = (unsigned(c.address) - unsigned(c.base)) % (pow2(64))
+
+/*!
+returns the length of the given capability as an integer in the range $0$ to $2^{65}$.
+ */
+val getCapLength : CapStruct -> CapLen
+function getCapLength(c) = unsigned(c.length)
+
+/*!
+returns the address of the capability as an integer in the range $0$ to $2^{64} - 1$.
+ */
+val getCapCursor : CapStruct -> uint64
+function getCapCursor(c) = unsigned(c.address)
+
+/*!
+THIS(cap, off) returns a new capability derived from `cap` with the offset set to `off` (i.e. with $\mathit{address} = \mathit{cap.base} + \mathit{off}$). If the operation fails due to representability checks then the result will have the expected address but the bounds may be incorrect. Note that, for performance reasons, an approximate representability check may be used that means the operation could fail even though the result would be representable.
  */
 val setCapOffset : (CapStruct, bits(64)) -> (bool, CapStruct)
 function setCapOffset(c, offset) =
     (true, {c with address=c.base + offset})
 
 /*!
-\function{incCapOffset} is the same as \function{setCapOffset} except that the 64-bit value is added to the current capability offset modulo $2^{64}$ (i.e. signed twos-complement arithemtic).
+THIS is the same as [setCapOffset] except that the 64-bit value is added to the current capability offset modulo $2^{64}$ (i.e. signed twos-complement arithemtic).
  */
 val incCapOffset : (CapStruct, bits(64)) -> (bool, CapStruct)
 function incCapOffset(c, delta) =
@@ -218,12 +262,26 @@ function incCapOffset(c, delta) =
     (true, {c with address = newAddr})
 
 /*!
-Returns a capability derived from the given capability by setting the base and top to values provided.  The offset of the resulting capability is zero.  In case the requested bounds are not exactly representable the returned boolean is false and the returned capability has bounds at least including the region bounded by base and top but rounded to representable values.
+THIS`(cap, base, top)` returns a new capabiltiy value derived from cap
+with given base and top and the address set to `base`. The returned
+boolean value indicates whether the requested bounds were exactly
+representable. When capability compression is in use the base and top
+of the returned capabiltiy may cover a larger region than requested in
+order to comply with alignment requirements, however the bounds will
+never exceed the bounds of the original capabiltiy and the address
+will still point to the requested base.
  */
 val setCapBounds : (CapStruct, bits(64), bits(65)) -> (bool, CapStruct)
 function setCapBounds(cap, base, top) =
     let length : bits(65) = top - (0b0 @ base) in
     (true, {cap with base = base, length = length[63..0], address = base})
 
-function int_to_cap (address) : bits(64) -> CapStruct = 
+
+
+
+/*!
+creates a capability with the given 64-bit vector in its offset field. The resulting capability is untagged and has base zero but the other fields are undefined and may vary, depending on the capabilty compression format, to ensure that any offset can be represented.
+*/
+val int_to_cap : bits(64) -> CapStruct 
+function int_to_cap (address) = 
     {null_cap with address = address}
