@@ -38,5 +38,7 @@
 union clause ast = RI : unit
 function clause decode _ = Some(RI())
 function clause execute (RI()) =
-      SignalException (ResI)
-
+{
+  skip_barr(); /* so we can build CHERI without MIPS for latex  */
+  SignalException (ResI)
+}
