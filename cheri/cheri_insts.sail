@@ -330,7 +330,7 @@ function clause execute (CReadHwr(cd, sel)) =
   else if needSup & not(grantsAccess(getAccessLevel(), Supervisor)) then
      raise_c2_exception(CapEx_AccessSystemRegsViolation, sel)
   else {
-    let capVal : CapStruct = match unsigned(sel) {
+    let capVal : Capability = match unsigned(sel) {
       0  => DDC,
       1  => CTLSU,
       8  => CTLSP,
@@ -1211,13 +1211,13 @@ function clause execute (CSC(cs, cb, rt, rd, offset, conditional)) =
       else if conditional then
       {
         let success = if (CP0LLBit[0]) then
-            MEMw_tagged_conditional(pAddr, cs_val.tag, capStructToMemBits(cs_val))
+            MEMw_tagged_conditional(pAddr, cs_val.tag, capToMemBits(cs_val))
           else
             false;
         wGPR(rd) = zero_extend(success);
       }
       else
-        MEMw_tagged(pAddr, cs_val.tag, capStructToMemBits(cs_val));
+        MEMw_tagged(pAddr, cs_val.tag, capToMemBits(cs_val));
     }
   }
 }
@@ -1253,12 +1253,12 @@ function clause execute (CLC(cd, cb, rt, offset, linked)) =
         CP0LLBit  = 0b1;
         CP0LLAddr = pAddr;
         let (tag, mem) = MEMr_tagged_reserve(pAddr);
-        (*CapRegs[cd]) = memBitsToCapReg(tag & cb_val.permit_load_cap & not (suppressTag), mem);
+        (*CapRegs[cd]) = memBitsToCapability(tag & cb_val.permit_load_cap & not (suppressTag), mem);
       }
       else
       {
         let (tag, mem) = MEMr_tagged(pAddr);
-        (*CapRegs[cd]) = memBitsToCapReg(tag & cb_val.permit_load_cap & not (suppressTag), mem);
+        (*CapRegs[cd]) = memBitsToCapability(tag & cb_val.permit_load_cap & not (suppressTag), mem);
       }
     }
   }
