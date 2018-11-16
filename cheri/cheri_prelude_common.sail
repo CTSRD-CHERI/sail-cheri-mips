@@ -42,8 +42,8 @@ val decode : bits(32) -> option(ast) effect pure
 scattered function decode
 
 register PCC        : CapReg
-register nextPCC    : CapReg
-register delayedPCC : CapReg
+register NextPCC    : CapReg
+register DelayedPCC : CapReg
 register DDC : CapReg
 register C01 : CapReg
 register C02 : CapReg
@@ -126,8 +126,8 @@ let have_cp2 = true
 val capToString : (CapStruct, bool) -> string effect {escape}
 
 /*!
-This function reads a given capability register and returns its contents converted to a CapStruct.
-If the argument is zero then the null capability is returned.
+THIS reads a given capability register or,
+the null capabiility if the argument is zero.
 */
 val readCapReg : regno -> CapStruct effect {rreg}
 function readCapReg(n) =
@@ -138,7 +138,7 @@ function readCapReg(n) =
     reg_deref(CapRegs[i])
 
 /*!
-This is the same as readCapReg except that when the argument is zero the value of DDC is returned 
+THIS is the same as [readCapReg] except that when the argument is zero the value of DDC is returned 
 instead of the null capability. This is used for instructions that expect an address, where using
 null would always generate an exception.
 */
@@ -147,7 +147,10 @@ function readCapRegDDC(n) =
   let i = unsigned(n) in
   reg_deref(CapRegs[i]) /* NB CapRegs[0] is points to DDC */
 
-val writeCapReg  : (regno, CapStruct) -> unit effect {wreg, escape}
+/*!
+THIS`(cd, cap_val)` writes capability, `cap_val` capability register `cd`. Writes to register zero are ignored.
+ */
+val writeCapReg : (regno, CapStruct) -> unit effect {wreg, escape}
 function writeCapReg(n, cap) =
   if (n == 0b00000) then
     ()
@@ -250,18 +253,24 @@ bitfield CapCauseReg : bits(16) = {
 
 register CapCause : CapCauseReg
 
+/*!
+THIS executes a branch to the given capability, replacing PCC and taking the new PC from the offset field. Note that on MIPS the new PCC does not take effect until after the branch delay slot.
+ */
 val execute_branch_pcc : CapStruct -> unit effect {wreg}
 function execute_branch_pcc(newPCC) = {
-  delayedPC = to_bits(64, getCapOffset(newPCC));
-  delayedPCC = newPCC;
-  branchPending = 0b1;
-  nextInBranchDelay = 0b1;
+  DelayedPC = to_bits(64, getCapOffset(newPCC));
+  DelayedPCC = newPCC;
+  BranchPending = 0b1;
+  NextInBranchDelay = 0b1;
 }
 
+/*!
+THIS sets PCC to the given capability before executing the next instruction. It is used for CCall, which has no branch delay.
+ */
 val set_next_pcc : CapReg -> unit effect {wreg} 
 function set_next_pcc(newPCC) = {
-  nextPCC    = newPCC;
-  delayedPCC = newPCC; /* always write delayedPCC together with nextPCC so 
+  NextPCC    = newPCC;
+  DelayedPCC = newPCC; /* always write DelayedPCC together with NextPCC so 
                           that non-capability branches don't override PCC */
 }
 
@@ -297,23 +306,31 @@ function raise_c2_exception8(capEx, regnum) =
     SignalException(mipsEx);
   }
 
+/*!
+causes the processor to raise a capability exception by writing the given capability exception cause and register number to the CapCause register then signalling an exception using [SignalException] (on CHERI-MIPS this is a C2E exception in most cases, or a special C2Trap for CCall and CReturn). */
 val raise_c2_exception : forall ('o : Type) . (CapEx, regno) -> 'o effect {escape, rreg, wreg}
 function raise_c2_exception(capEx, regnum) =
   let reg8 = 0b000 @ regnum in
   raise_c2_exception8(capEx, reg8)
-
+/*!
+is as [raise_c2_exception] except that CapCause.RegNum  is written with the special value 0xff indicating PCC or no register.
+ */
 val raise_c2_exception_noreg : forall ('o : Type) . (CapEx) -> 'o effect {escape, rreg, wreg}
 function raise_c2_exception_noreg(capEx) =
   raise_c2_exception8(capEx, 0xff)
 
 val pcc_access_system_regs : unit -> bool effect {rreg}
-function pcc_access_system_regs () = 
-      let pcc = PCC in
-      (pcc.access_system_regs)
+function pcc_access_system_regs () = PCC.access_system_regs
 
+/*!
+reads the tag associated with the given physical address.
+ */
 val MEMr_tag = "read_tag_bool"  : bits(64) -> bool effect { rmemt }
 val MEMw_tag = "write_tag_bool" : (bits(64) , bool) -> unit effect { wmvt }
 
+/*!
+reads `cap_size` bytes from the given physical address in memory and the associated tag value. The address should be capability-aligned.
+ */
 val MEMr_tagged : bits(64) -> (bool, bits('cap_size * 8)) effect { escape, rmem, rmemt }
 function MEMr_tagged (addr) =
 {
@@ -324,6 +341,9 @@ function MEMr_tagged (addr) =
   (tag, reverse_endianness(data))
 }
 
+/*!
+is as [MEMr_tagged] except that the load is marked as part of a load linked / store conditional.
+ */
 val MEMr_tagged_reserve : bits(64) -> (bool, bits('cap_size * 8)) effect { escape, rmem, rmemt }
 function MEMr_tagged_reserve (addr) =
 {
@@ -334,6 +354,9 @@ function MEMr_tagged_reserve (addr) =
   (tag, reverse_endianness(data))
 }
 
+/*!
+THIS`(addr, t, value)` writes `cap_size` bytes, `value`, to physical address, `addr`, with associated tag value, `t`.
+ */
 val MEMw_tagged : (bits(64), bool, bits('cap_size * 8)) -> unit effect { escape, eamem, wmv, wmvt }
 function MEMw_tagged(addr, tag, data) =
 {
@@ -344,6 +367,9 @@ function MEMw_tagged(addr, tag, data) =
   MEMw_tag(addr, tag);
 }
 
+/*!
+THIS`(addr, t, value)` writes `cap_size` bytes, `value`, to physical address, `addr`, with associated tag value, `t` and returns store conditional success or failure.
+ */
 val MEMw_tagged_conditional : (bits(64), bool, bits('cap_size * 8)) -> bool effect { escape, eamem, wmv, wmvt }
 function MEMw_tagged_conditional(addr, tag, data) =
 {
@@ -358,6 +384,9 @@ function MEMw_tagged_conditional(addr, tag, data) =
 
 let cap_addr_mask = to_bits(64, pow2(64) - cap_size)
 
+/*!
+THIS`(addr, size, value)` writes `size` bytes of `value` to physical address `addr`.
+ */
 val MEMw_wrapper : forall 'n, 'n >= 1. (bits(64), atom('n), bits(8 * 'n)) -> unit effect {escape, wmv, wmvt, wreg, eamem}
 function MEMw_wrapper(addr, size, data) =
   let ledata = reverse_endianness(data) in
@@ -376,6 +405,9 @@ function MEMw_wrapper(addr, size, data) =
     MEMw_tag(addr & cap_addr_mask, false);
   }
 
+/*!
+THIS`(addr, size, value)` attempts to write `size` bytes of `value` to physical address `addr` and returns a boolean indicating store conditional success or failure.
+ */
 val MEMw_conditional_wrapper : forall 'n, 'n >= 1. (bits(64), atom('n), bits(8 * 'n)) -> bool effect {escape, wmv, wmvt, eamem}
 function MEMw_conditional_wrapper(addr, size, data) =
   {
@@ -448,8 +480,7 @@ function addrWrapperUnaligned(addr, accessType, width) =
   }
 
 function execute_branch (pc) = {
-  let pcc = PCC;
-  let len = getCapLength(pcc);
+  let len = getCapLength(PCC);
   /* Check the branch is within PCC bounds. Note that PC is offset to
   base so branches below base will be negative / very large and
   greater than top. */
@@ -484,11 +515,11 @@ function TranslatePC (vAddr) = {
 }
 
 /*!  
-All capability instrucitons must first check that the capability
-co-processor is enabled using the following function that raises a
-co-processor unusable exception if a CP0Status.CU2 is not set. This
-allows the operating system to only save and restore the full
-capability context for processes that use capabilities.
+THIS raises a co-processor unusable exception if `CP0Status.CU[2]`
+is not set. All capability instructions must first check that the
+capability co-processor is enabled. This allows the operating system
+to only save and restore the full capability context for processes
+that use capabilities.
 */
 val checkCP2usable : unit -> unit effect {rreg, wreg, escape}
 function checkCP2usable ()  =
@@ -499,8 +530,8 @@ function checkCP2usable ()  =
 
 function init_cp2_state () = {
   PCC = default_cap;
-  nextPCC = default_cap;
-  delayedPCC = default_cap;
+  NextPCC = default_cap;
+  DelayedPCC = default_cap;
   DDC  = default_cap;
   KCC  = default_cap;
   EPCC = default_cap;
@@ -516,9 +547,9 @@ function init_cp2_state () = {
 }
 
 function cp2_next_pc () = {
-  PCC = nextPCC;
-  if inBranchDelay then {
-    nextPCC = delayedPCC;
+  PCC = NextPCC;
+  if InBranchDelay then {
+    NextPCC = DelayedPCC;
   };
 }
 

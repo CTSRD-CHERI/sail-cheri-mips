@@ -116,9 +116,9 @@ val max_nat = {lem: "max", coq: "Z.max", _: "max_int"} : (nat, nat) -> nat
 
 val max_int = {lem: "max", coq: "Z.max", _: "max_int"} : (int, int) -> int
 
-val min_atom = {ocaml: "min_int", lem: "min", coq: "min_atom", c:"min_int"} : forall 'a 'b . (atom('a), atom('b)) -> {'c, ('c = 'a | 'c = 'b) & 'c <= 'a & 'c <= 'b . atom('c)}
+val min_atom = {ocaml: "min_int", lem: "min", coq: "min_atom", c:"min_int"} : forall 'a 'b . (atom('a), atom('b)) -> {'c, ('c == 'a | 'c == 'b) & 'c <= 'a & 'c <= 'b . atom('c)}
 
-val max_atom = {ocaml: "max_int", lem: "max", coq: "max_atom", c:"max_int"} : forall 'a 'b . (atom('a), atom('b)) -> {'c, ('c = 'a | 'c = 'b) & 'c >= 'a & 'c >= 'b . atom('c)}
+val max_atom = {ocaml: "max_int", lem: "max", coq: "max_atom", c:"max_int"} : forall 'a 'b . (atom('a), atom('b)) -> {'c, ('c == 'a | 'c == 'b) & 'c >= 'a & 'c >= 'b . atom('c)}
 
 overload min = {min_atom, min_nat, min_int}
 
@@ -140,7 +140,10 @@ infix 8 ^^
 val operator ^^ = {lem: "replicate_bits"} : forall 'n 'm, 'm >= 0 . (bits('n), atom('m)) -> bits('n * 'm)
 function operator ^^ (bs, n) = replicate_bits (bs, n)
 
-val pow2 = "pow2" : forall 'n. atom('n) -> atom(2 ^ 'n)
+/*!
+THIS(n) returns 2 raised to the power _n_.
+ */
+val pow2 = "pow2" : forall 'n , 'n >= 0 . atom('n) -> atom(2 ^ 'n)
 
 union exception = {
   ISAException : unit,
@@ -150,12 +153,26 @@ union exception = {
   Error_internal_error : unit
 }
 
+/* These functions make the first parameter to builtin extension
+functions implicit from length of returned vector.  */
+
 val mips_sign_extend : forall 'n 'm , 'm >= 'n . bits('n) -> bits('m)
 val mips_zero_extend : forall 'n 'm , 'm >= 'n . bits('n) -> bits('m)
 
 function mips_sign_extend v = sail_sign_extend(v, sizeof('m))
 function mips_zero_extend v = sail_zero_extend(v, sizeof('m))
 
+/*!
+THIS extends a bit vector by copying the most significant bit (thereby preserving the represented value in twos-complement).
+ */
+val sign_extend : forall 'n 'm , 'm >= 'n . bits('n) -> bits('m)
+
+/*!
+THIS extends a bit vector by adding zeros in the most significant bits. The length of the returned vector is implied from the context.
+*/
+val zero_extend : forall 'n 'm , 'm >= 'n . bits('n) -> bits('m)
+
+/* Because sail already has builtins with these names we use overload to rename above. */
 overload sign_extend = {mips_sign_extend}
 overload zero_extend = {mips_zero_extend}
 
@@ -212,7 +229,7 @@ infix 7 *_u
 val operator *_u = "mult_vec" : forall 'n . (bits('n), bits('n)) -> bits(2 * 'n)
 
 /*!
-\function{to\_bits} converts an integer to a bit vector of given length. If the integer is negative a twos-complement representation is used. If the integer is too large (or too negative) to fit in the requested length then it is truncated to the least significant bits.
+THIS`(l, v)` converts an integer, `v`,  to a bit vector of length `l`. If `v` is negative a twos-complement representation is used. If `v` is too large (or too negative) to fit in the requested length then it is truncated to the least significant bits.
 */
 val to_bits : forall 'l, 'l >= 0 .(atom('l), int) -> bits('l)
 function to_bits (l, n) = get_slice_int(l, n, 0)

@@ -36,7 +36,7 @@
    to mips instructions (e.g. address translation) */
 
 register PC : bits(64)
-register nextPC : bits(64)
+register NextPC : bits(64)
 
 /* CP0 Registers */
 
@@ -86,7 +86,7 @@ let TLBNumEntries = 64
 type TLBIndexT = (bits(6))
 let TLBIndexMax : TLBIndexT = 0b111111
 
-val MAX : forall 'n. atom('n) -> atom(2 ^ 'n - 1) effect pure
+val MAX : forall 'n, 'n >= 0 . atom('n) -> atom(2 ^ 'n - 1) effect pure
 function MAX(n) = pow2(n) - 1
 
 let MAX_U64 = MAX(64) /*unsigned(0xffffffffffffffff)*/
@@ -291,17 +291,20 @@ bitfield StatusReg : bits(32) = {
 register CP0Status : StatusReg
 
 /* Implementation registers -- not ISA defined */
-register nextInBranchDelay : bits(1)  /* Set by branch instructions to indicate that next instruction is branch delay slot (even if branch not-taken) */
-register inBranchDelay : bits(1)      /* Set by main loop when in branch delay slot */
-register branchPending : bits(1)      /* Set by branch instructions when branch taken so know to branch to delayedPC after branch delay slot */
-register delayedPC : bits(64)         /* Set by branch instructions to target of branch */
+register NextInBranchDelay : bits(1)  /* Set by branch instructions to indicate that next instruction is branch delay slot (even if branch not-taken) */
+register InBranchDelay : bits(1)      /* Set by main loop when in branch delay slot */
+register BranchPending : bits(1)      /* Set by branch instructions when branch taken so know to branch to DelayedPC after branch delay slot */
+register DelayedPC : bits(64)         /* Set by branch instructions to target of branch */
 
+/*!
+THIS checks the given offset against the bounds of PCC and raises a capability length exception if it is out of bounds, otherwise a branch occurs in the normal manner for the architecture (on MIPS this implies a branch delay slot, so `NextInBranchDelay` is set to true).
+ */
 val execute_branch : bits(64) -> unit effect {rreg, wreg, escape}
 val execute_branch_mips : bits(64) -> unit effect {wreg}
 function execute_branch_mips(pc) = {
-  delayedPC = pc;
-  branchPending = 0b1;
-  nextInBranchDelay = 0b1;
+  DelayedPC = pc;
+  BranchPending = 0b1;
+  NextInBranchDelay = 0b1;
 }
 
 /* General purpose registers */
@@ -325,14 +328,18 @@ val NotWordVal : bits(64) -> bool effect pure
 function NotWordVal (word) =
     (word[31] ^^ 32) != word[63..32]
 
-/* Read numbered GP reg. (r0 is always zero) */
+/*!
+Reads the value of the given general purpose register as a 64-bit vector. Register zero is always zero.
+*/
 val rGPR : bits(5) -> bits(64) effect {rreg}
 function rGPR idx = {
          let i as atom(_) = unsigned(idx) in
          if i == 0 then 0x0000000000000000 else GPR[i]
 }
 
-/* Write numbered GP reg. (writes to r0 ignored) */
+/*!
+THIS(rd, v) writes the 64-bit value, _v_, to the general purpose register _rd_. Writes to register zero are ignored.
+*/
 val wGPR : (bits(5), bits(64)) -> unit effect {wreg}
 function wGPR (idx, v) = {
   let i as atom(_) = unsigned(idx) in
@@ -443,7 +450,7 @@ function SignalExceptionMIPS (ex, kccBase) =
     /* Only update EPC and BD if not already in EXL mode */
     if (~ (CP0Status.EXL())) then 
       {
-        if (inBranchDelay[0]) then
+        if (InBranchDelay[0]) then
           {
             CP0EPC = PC - 4;
             CP0Cause->BD() = 0b1;
@@ -455,7 +462,7 @@ function SignalExceptionMIPS (ex, kccBase) =
           }
       };
       /* Fill in BadInstr + BadInstrP. */
-      if (inBranchDelay[0]) then
+      if (InBranchDelay[0]) then
         {
             CP0BadInstrP = LastInstrBits; /* PC - 4 */
         };
@@ -478,15 +485,22 @@ function SignalExceptionMIPS (ex, kccBase) =
                    0xFFFFFFFF80000000;
       /* On CHERI we have to subtract KCC.base so that we end up at the 
          right absolute vector address after indirecting via new PCC */
-      nextPC = vectorBase + sign_extend(vectorOffset) - kccBase;
+      NextPC = vectorBase + sign_extend(vectorOffset) - kccBase;
       CP0Cause->ExcCode() = ExceptionCode(ex);
       CP0Status->EXL()    = 0b1;
       throw (ISAException());
   }
 
-/* Defined either in mips_wrappers (directly calling SignalExceptionMIPS) or in cheri_prelude_common (cheri things plus above) */
+/*
+ Defined either in mips_wrappers (directly calling SignalExceptionMIPS) or in cheri_prelude_common (cheri things plus above) 
+*/
+/*!
+Causes the processor to raise the given exception in the usual manner defined by the processor architecture (as modified for CHERI).
+*/
 val SignalException : forall ('o : Type) . Exception -> 'o effect {escape, rreg, wreg}
-
+/*!
+causes the processor to raise the given exception as per [SignalException], but with an associated bad address (on MIPS this is written to the BadVAddr register to aid with exception handling).
+ */
 val SignalExceptionBadAddr : forall ('o : Type) . (Exception, bits(64)) -> 'o effect {escape, rreg, wreg}
 function  SignalExceptionBadAddr(ex, badAddr) =
   {
@@ -662,6 +676,9 @@ function rec forall Nat 'W, 'W >= 1. bits(8 * 'W) reverse_endianness ((bits(8 * 
     reverse_endianness'(sizeof 'W, value)
 }*/
 
+/*!
+THIS`(addr, size)` reads a vector of `size` bytes of memory from physical address `addr` (big-endian byte order on CHERI-MIPS).
+ */
 val MEMr_wrapper : forall 'n, 1 <= 'n <= 8 . (bits(64), atom('n)) -> bits(8*'n) effect {rmem, rreg, wreg}
 function MEMr_wrapper (addr, size) =
     if (addr == 0x000000007f000000) then
@@ -677,6 +694,9 @@ function MEMr_wrapper (addr, size) =
     else
       reverse_endianness(MEMr(addr, size)) /* MEMr assumes little endian */
 
+/*!
+is the same as [MEMr_wrapper] except that the read is marked as part of a load linked / store conditional pair.
+ */
 val MEMr_reserve_wrapper : forall 'n, 1 <= 'n <= 8 . ( bits(64) , atom('n) ) -> (bits(8 * 'n)) effect { rmem }
 function MEMr_reserve_wrapper (addr , size) =
     reverse_endianness(MEMr_reserve(addr, size))

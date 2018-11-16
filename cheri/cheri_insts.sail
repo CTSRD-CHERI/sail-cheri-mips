@@ -207,59 +207,59 @@ union clause ast = CGetAddr   : (regno, regno)
 function clause execute (CGetPerm(rd, cb)) =
 {
   checkCP2usable();
-  let capVal = readCapReg(cb) in
+  let capVal = readCapReg(cb);
   wGPR(rd) = zero_extend(getCapPerms(capVal));
 }
 
 function clause execute (CGetType(rd, cb)) =
 {
   checkCP2usable();
-  let capVal = readCapReg(cb) in
-  wGPR(rd) = if (capVal.sealed)
+  let capVal = readCapReg(cb);
+  wGPR(rd) = if capVal.sealed
     then zero_extend(capVal.otype)
-    else (bitone ^^ 64)
+    else 0xffffffffffffffff
 }
 
 function clause execute (CGetBase(rd, cb)) =
 {
   checkCP2usable();
-  let capVal = readCapReg(cb) in
+  let capVal = readCapReg(cb);
   wGPR(rd) = to_bits(64, getCapBase(capVal));
 }
 
 function clause execute (CGetOffset(rd, cb)) =
 {
   checkCP2usable();
-  let capVal = readCapReg(cb) in
+  let capVal = readCapReg(cb);
   wGPR(rd) = to_bits(64, getCapOffset(capVal));
 }
 
 function clause execute (CGetLen(rd, cb)) =
 {
   checkCP2usable();
-  let capVal = readCapReg(cb) in
-  let len65  = getCapLength(capVal) in
+  let capVal = readCapReg(cb);
+  let len65  = getCapLength(capVal);
   wGPR(rd) = to_bits(64, if len65 > MAX_U64 then MAX_U64 else len65);
 }
 
 function clause execute (CGetTag(rd, cb)) =
 {
   checkCP2usable();
-  let capVal = readCapReg(cb) in
+  let capVal = readCapReg(cb);
   wGPR(rd) = zero_extend(capVal.tag);
 }
 
 function clause execute (CGetSealed(rd, cb)) =
 {
   checkCP2usable();
-  let capVal = readCapReg(cb) in
+  let capVal = readCapReg(cb);
   wGPR(rd) = zero_extend(capVal.sealed);
 }
 
 function clause execute (CGetAddr(rd, cb)) =
 {
   checkCP2usable();
-  let capVal = readCapReg(cb) in
+  let capVal = readCapReg(cb);
   wGPR(rd) = to_bits(64, getCapCursor(capVal));
 }
 
@@ -267,11 +267,9 @@ union clause ast = CGetPCC : regno
 function clause execute (CGetPCC(cd)) =
 {
   checkCP2usable();
-  let pcc = PCC in
-  let (success, pcc2) = setCapOffset(pcc, PC) in {
-    assert (success, "PCC with offset PC should always be representable");
-    writeCapReg(cd, pcc2);
-  };
+  let (success, pcc) = setCapOffset(PCC, PC);
+  assert (success, "PCC with offset PC should always be representable");
+  writeCapReg(cd, pcc);
 }
 
 
@@ -279,9 +277,8 @@ union clause ast = CGetPCCSetOffset : (regno, regno)
 function clause execute (CGetPCCSetOffset(cd, rs)) =
 {
   checkCP2usable();
-  let pcc = PCC in
-  let rs_val = rGPR(rs) in
-  let (success, newPCC) = setCapOffset(pcc, rs_val) in
+  let rs_val = rGPR(rs);
+  let (success, newPCC) = setCapOffset(PCC, rs_val);
   if (success) then
     writeCapReg(cd, newPCC)
   else
@@ -333,7 +330,7 @@ function clause execute (CReadHwr(cd, sel)) =
   else if needSup & not(grantsAccess(getAccessLevel(), Supervisor)) then
      raise_c2_exception(CapEx_AccessSystemRegsViolation, sel)
   else {
-    capVal : CapStruct = match unsigned(sel) {
+    let capVal : CapStruct = match unsigned(sel) {
       0  => DDC,
       1  => CTLSU,
       8  => CTLSP,
@@ -368,7 +365,7 @@ function clause execute (CWriteHwr(cb, sel)) =
   else if needSup & not(grantsAccess(getAccessLevel(), Supervisor)) then
      raise_c2_exception(CapEx_AccessSystemRegsViolation, sel)
   else {
-    capVal = readCapReg(cb);
+    let capVal = readCapReg(cb);
     match unsigned(sel) {
       0  => DDC   = capVal,
       1  => CTLSU = capVal,
@@ -377,17 +374,18 @@ function clause execute (CWriteHwr(cb, sel)) =
       23 => KR2C  = capVal,
       29 => KCC   = capVal,
       30 => KDC   = capVal,
-      31 => {
-            EPCC   = capVal;
+      31 =>
+          {
+            EPCC  = capVal;
             /* CP0EPC/CP0ErrorEPC and EPCC.offset are supposed to be one register.
             We fake this by writing CP0EPC/CP0ErrorEPC from EPCC.offset when EPCC
             is written. If status.ERL is set we use CP0ErrorEPC instead of EPC
             to ensure that reading setting EPCC will set the value used by eret */
-            if (CP0Status.ERL() == bitone) then
+            if CP0Status.ERL() then
               CP0ErrorEPC = to_bits(64, getCapOffset(capVal))
             else
               CP0EPC = to_bits(64, getCapOffset(capVal));
-            },
+          },
       _  => assert(false, "CWriteHwr: should be unreachable code")
     };
   };
@@ -401,12 +399,14 @@ function clause execute(CAndPerm(cd, cb, rt)) =
   let rt_val = rGPR(rt);
   if not (cb_val.tag) then
     raise_c2_exception(CapEx_TagViolation, cb)
-  else if (cb_val.sealed) then
+  else if cb_val.sealed then
     raise_c2_exception(CapEx_SealViolation, cb)
   else
-    let perms   = getCapPerms(cb_val) in
-    let newCap  = setCapPerms(cb_val, (perms & rt_val[30..0])) in
+  {
+    let perms   = getCapPerms(cb_val);
+    let newCap  = setCapPerms(cb_val, (perms & rt_val[30..0]));
     writeCapReg(cd, newCap);
+  }
 }
 
 
@@ -419,17 +419,17 @@ function clause execute(CToPtr(rd, cb, ct)) =
   let cb_val = readCapReg(cb);
   if not (ct_val.tag) then
     raise_c2_exception(CapEx_TagViolation, ct)
-  else if (cb_val.tag) & (cb_val.sealed) then
+  else if cb_val.tag & cb_val.sealed then
     raise_c2_exception(CapEx_SealViolation, cb)
   else 
-    {
-      let ctBase = getCapBase(ct_val) in
-      /* Note: returning zero for untagged values breaks magic constants such as SIG_IGN */
-      wGPR(rd) = if (not (cb_val.tag)) then
-          zeros()
-        else
-          to_bits(64, getCapCursor(cb_val) - ctBase)
-    }
+  {
+    let ctBase = getCapBase(ct_val);
+    /* Note: returning zero for untagged values breaks magic constants such as SIG_IGN */
+    wGPR(rd) = if not (cb_val.tag) then
+        zeros()
+      else
+        to_bits(64, getCapCursor(cb_val) - ctBase)
+  }
 }
 
 
@@ -452,7 +452,7 @@ function clause execute(CPtrCmp(rd, cb, ct, op)) =
   equal  = false;
   ltu    = false;
   lts    = false;
-  if (cb_val.tag != ct_val.tag) then
+  if cb_val.tag != ct_val.tag then
     {
       if not (cb_val.tag) then
         {
@@ -485,16 +485,18 @@ union clause ast = CIncOffset : (regno, regno, regno)
 function clause execute (CIncOffset(cd, cb, rt)) =
 {
   checkCP2usable();
-  cb_val = readCapReg(cb);
-  rt_val = rGPR(rt);
-  if ((cb_val.tag) & (cb_val.sealed) & (rt_val != 0x0000000000000000)) then
+  let cb_val = readCapReg(cb);
+  let rt_val = rGPR(rt);
+  if cb_val.tag & cb_val.sealed & (rt_val != 0x0000000000000000) then
     raise_c2_exception(CapEx_SealViolation, cb)
   else
-    let (success, newCap) = incCapOffset(cb_val, rt_val) in
-    if (success) then
+  {
+    let (success, newCap) = incCapOffset(cb_val, rt_val);
+    if success then
         writeCapReg(cd, newCap)
     else
         writeCapReg(cd, int_to_cap(to_bits(64, getCapBase(cb_val)) + rt_val))
+  }
 }
 
 union clause ast = CIncOffsetImmediate : (regno, regno, bits(11))
@@ -502,15 +504,17 @@ function clause execute (CIncOffsetImmediate(cd, cb, imm)) =
 {
   checkCP2usable();
   let cb_val = readCapReg(cb);
-  let imm64 : bits(64) = sign_extend(imm) in
-  if ((cb_val.tag) & (cb_val.sealed)) then
+  let imm64 : bits(64) = sign_extend(imm);
+  if cb_val.tag & cb_val.sealed then
     raise_c2_exception(CapEx_SealViolation, cb)
   else
-    let (success, newCap) = incCapOffset(cb_val, imm64) in
-    if (success) then
+  {
+    let (success, newCap) = incCapOffset(cb_val, imm64);
+    if success then
         writeCapReg(cd, newCap)
     else
         writeCapReg(cd, int_to_cap(to_bits(64, getCapBase(cb_val)) + imm64))
+  }
 }
 
 union clause ast = CSetOffset : (regno, regno, regno)
@@ -519,14 +523,16 @@ function clause execute (CSetOffset(cd, cb, rt)) =
   checkCP2usable();
   let cb_val = readCapReg(cb);
   let rt_val = rGPR(rt);
-  if ((cb_val.tag) & (cb_val.sealed)) then
+  if cb_val.tag & cb_val.sealed then
     raise_c2_exception(CapEx_SealViolation, cb)
   else
-    let (success, newCap) = setCapOffset(cb_val, rt_val) in
-    if (success) then
+  {
+    let (success, newCap) = setCapOffset(cb_val, rt_val);
+    if success then
         writeCapReg(cd, newCap)
     else
         writeCapReg(cd, int_to_cap(to_bits(64, getCapBase(cb_val)) + rt_val))
+  }
 }
 
 union clause ast = CSetBounds : (regno, regno, regno)
@@ -535,77 +541,83 @@ function clause execute (CSetBounds(cd, cb, rt)) =
   checkCP2usable();
   let cb_val = readCapReg(cb);
   let rt_val = unsigned(rGPR(rt));
-  cursor = getCapCursor(cb_val);
-  base   = getCapBase(cb_val);
-  top    = getCapTop(cb_val);
-  newTop = cursor + rt_val;
+  let cursor = getCapCursor(cb_val);
+  let base   = getCapBase(cb_val);
+  let top    = getCapTop(cb_val);
+  let newTop = cursor + rt_val;
   if not (cb_val.tag) then
     raise_c2_exception(CapEx_TagViolation, cb)
-  else if (cb_val.sealed) then
+  else if cb_val.sealed then
     raise_c2_exception(CapEx_SealViolation, cb)
-  else if (cursor < base) then
+  else if cursor < base then
     raise_c2_exception(CapEx_LengthViolation, cb)
-  else if (newTop > top) then
+  else if newTop > top then
     raise_c2_exception(CapEx_LengthViolation, cb)
   else
-    let (_, newCap) = setCapBounds(cb_val, to_bits(64, cursor), to_bits(65, newTop)) in
+  {
+    let (_, newCap) = setCapBounds(cb_val, to_bits(64, cursor), to_bits(65, newTop));
     writeCapReg(cd, newCap) /* ignore exact */
+  }
 }
 
 union clause ast = CSetBoundsImmediate : (regno, regno, bits(11))
 function clause execute (CSetBoundsImmediate(cd, cb, imm)) =
 {
   checkCP2usable();
-  cb_val = readCapReg(cb);
-  immU   = unsigned(imm);
-  cursor = getCapCursor(cb_val);
-  base   = getCapBase(cb_val);
-  top    = getCapTop(cb_val);
-  newTop = cursor + immU;
+  let cb_val = readCapReg(cb);
+  let immU   = unsigned(imm);
+  let cursor = getCapCursor(cb_val);
+  let base   = getCapBase(cb_val);
+  let top    = getCapTop(cb_val);
+  let newTop = cursor + immU;
   if not (cb_val.tag) then
     raise_c2_exception(CapEx_TagViolation, cb)
-  else if (cb_val.sealed) then
+  else if cb_val.sealed then
     raise_c2_exception(CapEx_SealViolation, cb)
-  else if (cursor < base) then
+  else if cursor < base then
     raise_c2_exception(CapEx_LengthViolation, cb)
-  else if (newTop > top) then
+  else if newTop > top then
     raise_c2_exception(CapEx_LengthViolation, cb)
   else
-    let (_, newCap) = setCapBounds(cb_val, to_bits(64, cursor), to_bits(65, newTop)) in
+  {
+    let (_, newCap) = setCapBounds(cb_val, to_bits(64, cursor), to_bits(65, newTop));
     writeCapReg(cd, newCap) /* ignore exact */
+  }
 }
 
 union clause ast = CSetBoundsExact : (regno, regno, regno)
 function clause execute (CSetBoundsExact(cd, cb, rt)) =
 {
   checkCP2usable();
-  cb_val = readCapReg(cb);
-  rt_val = unsigned(rGPR(rt));
-  cursor = getCapCursor(cb_val);
-  base   = getCapBase(cb_val);
-  top    = getCapTop(cb_val);
-  newTop = cursor + rt_val;
+  let cb_val = readCapReg(cb);
+  let rt_val = unsigned(rGPR(rt));
+  let cursor = getCapCursor(cb_val);
+  let base   = getCapBase(cb_val);
+  let top    = getCapTop(cb_val);
+  let newTop = cursor + rt_val;
   if not (cb_val.tag) then
     raise_c2_exception(CapEx_TagViolation, cb)
-  else if (cb_val.sealed) then
+  else if cb_val.sealed then
     raise_c2_exception(CapEx_SealViolation, cb)
-  else if (cursor < base) then
+  else if cursor < base then
     raise_c2_exception(CapEx_LengthViolation, cb)
-  else if (newTop > top) then
+  else if newTop > top then
     raise_c2_exception(CapEx_LengthViolation, cb)
   else
-    let (exact, newCap) = setCapBounds(cb_val, to_bits(64, cursor), to_bits(65, newTop)) in
+  {
+    let (exact, newCap) = setCapBounds(cb_val, to_bits(64, cursor), to_bits(65, newTop));
     if not (exact) then
         raise_c2_exception(CapEx_InexactBounds, cb)
     else
         writeCapReg(cd, newCap)
+  }
 }
 
 union clause ast = CClearTag : (regno, regno)
 function clause execute (CClearTag(cd, cb)) =
 {
   checkCP2usable();
-  cb_val = readCapReg(cb);
+  let cb_val = readCapReg(cb);
   writeCapReg(cd, {cb_val with tag=false});
 }
 
@@ -613,7 +625,7 @@ union clause ast = CMOVX : (regno,regno,regno,bool)
 function clause execute (CMOVX(cd, cb, rt, ismovn)) =
 {
   checkCP2usable();
-  if ((rGPR(rt) == zeros()) ^ ismovn) then
+  if (rGPR(rt) == zeros()) ^ ismovn then
     writeCapReg(cd) = readCapReg(cb);
 }
 
@@ -639,38 +651,40 @@ union clause ast = CFromPtr : (regno, regno, regno)
 function clause execute (CFromPtr(cd, cb, rt)) =
 {
   checkCP2usable();
-  cb_val = readCapRegDDC(cb);
-  rt_val = rGPR(rt);
-  if (rt_val == 0x0000000000000000) then
+  let cb_val = readCapRegDDC(cb);
+  let rt_val = rGPR(rt);
+  if rt_val == 0x0000000000000000 then
     writeCapReg(cd, null_cap)
   else if not (cb_val.tag) then
     raise_c2_exception(CapEx_TagViolation, cb)
-  else if (cb_val.sealed) then
+  else if cb_val.sealed then
     raise_c2_exception(CapEx_SealViolation, cb)
   else
-    let (success, newCap) = setCapOffset(cb_val, rt_val) in
-    if (success) then
+  {
+    let (success, newCap) = setCapOffset(cb_val, rt_val);
+    if success then
         writeCapReg(cd, newCap)
     else
         writeCapReg(cd, int_to_cap(to_bits(64, getCapBase(cb_val)) + rt_val))
+  }
 }
 
 union clause ast = CBuildCap : (regno, regno, regno)
 function clause execute (CBuildCap(cd, cb, ct)) =
 {
   checkCP2usable();
-  cb_val = readCapRegDDC(cb);
-  ct_val = readCapReg(ct);
-  cb_base = getCapBase(cb_val);
-  ct_base = getCapBase(ct_val);
-  cb_top = getCapTop(cb_val);
-  ct_top = getCapTop(ct_val);
-  cb_perms = getCapPerms(cb_val);
-  ct_perms = getCapPerms(ct_val);
-  ct_offset = getCapOffset(ct_val);
+  let cb_val = readCapRegDDC(cb);
+  let ct_val = readCapReg(ct);
+  let cb_base = getCapBase(cb_val);
+  let ct_base = getCapBase(ct_val);
+  let cb_top = getCapTop(cb_val);
+  let ct_top = getCapTop(ct_val);
+  let cb_perms = getCapPerms(cb_val);
+  let ct_perms = getCapPerms(ct_val);
+  let ct_offset = getCapOffset(ct_val);
   if not (cb_val.tag) then
     raise_c2_exception(CapEx_TagViolation, cb)
-  else if (cb_val.sealed) then
+  else if cb_val.sealed then
     raise_c2_exception(CapEx_SealViolation, cb)
   else if ct_base < cb_base then
     raise_c2_exception(CapEx_LengthViolation, cb)
@@ -681,54 +695,58 @@ function clause execute (CBuildCap(cd, cb, ct)) =
    else if (ct_perms & cb_perms) != ct_perms then
     raise_c2_exception(CapEx_UserDefViolation, cb)
   else
-    let (exact, cd1) = setCapBounds(cb_val, to_bits(64, ct_base), to_bits(65, ct_top)) in 
-    let (representable, cd2) = setCapOffset(cd1, to_bits(64, ct_offset)) in
-    let cd3 = setCapPerms(cd2, ct_perms) in
+  {
+    let (exact, cd1) = setCapBounds(cb_val, to_bits(64, ct_base), to_bits(65, ct_top));
+    let (representable, cd2) = setCapOffset(cd1, to_bits(64, ct_offset));
+    let cd3 = setCapPerms(cd2, ct_perms);
     {
       assert(exact, "CBuildCap: setCapBounds was not exact"); /* base and top came from ct originally so will be exact */
       assert(representable, "CBuildCap: offset was not representable"); /* similarly offset should be representable XXX except for fastRepCheck */
       writeCapReg(cd, cd3);
     }
+  }
 }
 
 union clause ast = CCopyType : (regno, regno, regno)
 function clause execute (CCopyType(cd, cb, ct)) =
 {
   checkCP2usable();
-  cb_val = readCapReg(cb);
-  ct_val = readCapReg(ct);
-  cb_base = getCapBase(cb_val);
-  cb_top  = getCapTop(cb_val);
-  ct_otype = unsigned(ct_val.otype);
+  let cb_val = readCapReg(cb);
+  let ct_val = readCapReg(ct);
+  let cb_base = getCapBase(cb_val);
+  let cb_top  = getCapTop(cb_val);
+  let ct_otype = unsigned(ct_val.otype);
   if not (cb_val.tag) then
     raise_c2_exception(CapEx_TagViolation, cb)
-  else if (cb_val.sealed) then
+  else if cb_val.sealed then
     raise_c2_exception(CapEx_SealViolation, cb)
-  else if (ct_val.sealed) then {
+  else if ct_val.sealed then
+  {
     if ct_otype < cb_base then
       raise_c2_exception(CapEx_LengthViolation, cb)
     else if ct_otype >= cb_top then
       raise_c2_exception(CapEx_LengthViolation, cb)
     else
-      let (success, cap) = setCapOffset(cb_val, to_bits(64, ct_otype - cb_base)) in
-      {
-        assert(success, "CopyType: offset is in bounds so should be representable");
-        writeCapReg(cd, cap);
-      }
-  } else
-    writeCapReg(cd, int_to_cap(bitone ^^ 64))
+    {
+      let (success, cap) = setCapOffset(cb_val, to_bits(64, ct_otype - cb_base));
+      assert(success, "CopyType: offset is in bounds so should be representable");
+      writeCapReg(cd, cap);
+    }
+  }
+  else
+    writeCapReg(cd, int_to_cap(0xffffffffffffffff))
 }
 
 union clause ast = CCheckPerm : (regno, regno)
 function clause execute (CCheckPerm(cs, rt)) =
 {
   checkCP2usable();
-  cs_val = readCapReg(cs);
-  cs_perms : bits(64) = zero_extend(getCapPerms(cs_val));
-  rt_perms = rGPR(rt);
+  let cs_val = readCapReg(cs);
+  let cs_perms : bits(64) = zero_extend(getCapPerms(cs_val));
+  let rt_perms = rGPR(rt);
   if not (cs_val.tag) then
     raise_c2_exception(CapEx_TagViolation, cs)
-  else if ((cs_perms & rt_perms) != rt_perms) then
+  else if (cs_perms & rt_perms) != rt_perms then
     raise_c2_exception(CapEx_UserDefViolation, cs)
 }
 
@@ -736,8 +754,8 @@ union clause ast = CCheckType : (regno, regno)
 function clause execute (CCheckType(cs, cb)) =
 {
   checkCP2usable();
-  cs_val = readCapReg(cs);
-  cb_val = readCapReg(cb);
+  let cs_val = readCapReg(cs);
+  let cb_val = readCapReg(cb);
   if not (cs_val.tag) then
     raise_c2_exception(CapEx_TagViolation, cs)
   else if not (cb_val.tag) then
@@ -746,7 +764,7 @@ function clause execute (CCheckType(cs, cb)) =
     raise_c2_exception(CapEx_SealViolation, cs)
   else if not (cb_val.sealed) then
     raise_c2_exception(CapEx_SealViolation, cb)
-  else if ((cs_val.otype) != (cb_val.otype)) then
+  else if cs_val.otype != cb_val.otype then
     raise_c2_exception(CapEx_TypeViolation, cs)
 }
 
@@ -754,24 +772,24 @@ union clause ast = CTestSubset : (regno, regno, regno)
 function clause execute (CTestSubset(rd, cb, ct)) =
 {
   checkCP2usable();
-  cb_val = readCapRegDDC(cb);
-  ct_val = readCapReg(ct);
-  ct_top    = getCapTop(ct_val);
-  ct_base   = getCapBase(ct_val);
-  ct_perms  = getCapPerms(ct_val);
-  cb_top    = getCapTop(cb_val);
-  cb_base   = getCapBase(cb_val);
-  cb_perms  = getCapPerms(cb_val);
-  result : bits(1) = if (cb_val.tag != ct_val.tag) then
-                          0b0
-                     else if (ct_base < cb_base) then
-                          0b0
-                     else if (ct_top > cb_top) then
-                          0b0
-                     else if ((ct_perms & cb_perms) != ct_perms) then
-                          0b0
-                     else
-                          0b1;
+  let cb_val = readCapRegDDC(cb);
+  let ct_val = readCapReg(ct);
+  let ct_top   = getCapTop(ct_val);
+  let ct_base  = getCapBase(ct_val);
+  let ct_perms = getCapPerms(ct_val);
+  let cb_top   = getCapTop(cb_val);
+  let cb_base  = getCapBase(cb_val);
+  let cb_perms = getCapPerms(cb_val);
+  let result = if cb_val.tag != ct_val.tag then
+                0b0
+           else if ct_base < cb_base then
+                0b0
+           else if ct_top > cb_top then
+                0b0
+           else if (ct_perms & cb_perms) != ct_perms then
+                0b0
+           else
+                0b1;
   wGPR(rd) = zero_extend(result);
 }
 
@@ -779,90 +797,94 @@ union clause ast = CSeal : (regno, regno, regno)
 function clause execute (CSeal(cd, cs, ct)) =
 {
   checkCP2usable();
-  cs_val = readCapReg(cs);
-  ct_val = readCapReg(ct);
-  ct_cursor = getCapCursor(ct_val);
-  ct_top    = getCapTop(ct_val);
-  ct_base   = getCapBase(ct_val);
+  let cs_val = readCapReg(cs);
+  let ct_val = readCapReg(ct);
+  let ct_cursor = getCapCursor(ct_val);
+  let ct_top    = getCapTop(ct_val);
+  let ct_base   = getCapBase(ct_val);
   if not (cs_val.tag) then
     raise_c2_exception(CapEx_TagViolation, cs)
   else if not (ct_val.tag) then
     raise_c2_exception(CapEx_TagViolation, ct)
-  else if (cs_val.sealed) then
+  else if cs_val.sealed then
     raise_c2_exception(CapEx_SealViolation, cs)
-  else if (ct_val.sealed) then
+  else if ct_val.sealed then
     raise_c2_exception(CapEx_SealViolation, ct)
   else if not (ct_val.permit_seal) then
     raise_c2_exception(CapEx_PermitSealViolation, ct)
-  else if (ct_cursor < ct_base) then
+  else if ct_cursor < ct_base then
     raise_c2_exception(CapEx_LengthViolation, ct)
-  else if (ct_cursor >= ct_top) then
+  else if ct_cursor >= ct_top then
     raise_c2_exception(CapEx_LengthViolation, ct)
-  else if (ct_cursor > max_otype) then
+  else if ct_cursor > max_otype then
     raise_c2_exception(CapEx_LengthViolation, ct)
   else
-    let (success, newCap) = sealCap(cs_val, to_bits(24, ct_cursor)) in
+  {
+    let (success, newCap) = sealCap(cs_val, to_bits(24, ct_cursor));
     if not (success) then
         raise_c2_exception(CapEx_InexactBounds, cs)
     else
         writeCapReg(cd, newCap)
+  }
 }
 
 union clause ast = CCSeal : (regno, regno, regno)
 function clause execute (CCSeal(cd, cs, ct)) =
 {
   checkCP2usable();
-  cs_val = readCapReg(cs);
-  ct_val = readCapReg(ct);
-  ct_cursor = getCapCursor(ct_val);
-  ct_top    = getCapTop(ct_val);
-  ct_base   = getCapBase(ct_val);
+  let cs_val = readCapReg(cs);
+  let ct_val = readCapReg(ct);
+  let ct_cursor = getCapCursor(ct_val);
+  let ct_top    = getCapTop(ct_val);
+  let ct_base   = getCapBase(ct_val);
   if not (cs_val.tag) then
     raise_c2_exception(CapEx_TagViolation, cs)
-  else if (not (ct_val.tag)) | (getCapCursor(ct_val) == unsigned(bitone ^^ 64)) then
+  else if not (ct_val.tag) | (getCapCursor(ct_val) == MAX_U64) then
     writeCapReg(cd, cs_val)
-  else if (cs_val.sealed) then
+  else if cs_val.sealed then
     raise_c2_exception(CapEx_SealViolation, cs)
-  else if (ct_val.sealed) then
+  else if ct_val.sealed then
     raise_c2_exception(CapEx_SealViolation, ct)
   else if not (ct_val.permit_seal) then
     raise_c2_exception(CapEx_PermitSealViolation, ct)
-  else if (ct_cursor < ct_base) then
+  else if ct_cursor < ct_base then
     raise_c2_exception(CapEx_LengthViolation, ct)
-  else if (ct_cursor >= ct_top) then
+  else if ct_cursor >= ct_top then
     raise_c2_exception(CapEx_LengthViolation, ct)
-  else if (ct_cursor > max_otype) then
+  else if ct_cursor > max_otype then
     raise_c2_exception(CapEx_LengthViolation, ct)
   else
-    let (success, newCap) = sealCap(cs_val, to_bits(24, ct_cursor)) in
+  {
+    let (success, newCap) = sealCap(cs_val, to_bits(24, ct_cursor));
     if not (success) then
         raise_c2_exception(CapEx_InexactBounds, cs)
     else
         writeCapReg(cd, newCap)
+  }
 }
 
 union clause ast = CUnseal : (regno, regno, regno)
 function clause execute (CUnseal(cd, cs, ct)) =
 {
   checkCP2usable();
-  cs_val = readCapReg(cs);
-  ct_val = readCapReg(ct);
-  ct_cursor = getCapCursor(ct_val);
+  let cs_val = readCapReg(cs);
+  let ct_val = readCapReg(ct);
+  let ct_cursor = getCapCursor(ct_val);
   if not (cs_val.tag) then
     raise_c2_exception(CapEx_TagViolation, cs)
   else if not (ct_val.tag) then
     raise_c2_exception(CapEx_TagViolation, ct)
   else if not (cs_val.sealed) then
     raise_c2_exception(CapEx_SealViolation, cs)
-  else if (ct_val.sealed) then
+  else if ct_val.sealed then
     raise_c2_exception(CapEx_SealViolation, ct)
-  else if (ct_cursor != unsigned(cs_val.otype)) then
+  else if ct_cursor != unsigned(cs_val.otype) then
     raise_c2_exception(CapEx_TypeViolation, ct)
   else if not (ct_val.permit_unseal) then
     raise_c2_exception(CapEx_PermitUnsealViolation, ct)
-  else if (ct_cursor <  getCapBase(ct_val)) then
+  else if ct_cursor <  getCapBase(ct_val) then
     raise_c2_exception(CapEx_LengthViolation, ct)
-  else if (ct_cursor >= getCapTop(ct_val)) then
+  else if ct_cursor >= getCapTop(ct_val) then
     raise_c2_exception(CapEx_LengthViolation, ct)
   else
     writeCapReg(cd, {cs_val with 
@@ -877,11 +899,11 @@ function clause execute (CCall(cs, cb, 0b00000000000)) = /* selector=0 */
 {
   /* Partial implementation of CCall with checks in hardware, but raising a trap to perform trusted stack manipulation */
   checkCP2usable();
-  if inBranchDelay then
+  if InBranchDelay then
     SignalException(ResI);
-  cs_val = readCapReg(cs);
-  cb_val = readCapReg(cb);
-  cs_cursor = getCapCursor(cs_val);
+  let cs_val = readCapReg(cs);
+  let cb_val = readCapReg(cb);
+  let cs_cursor = getCapCursor(cs_val);
   if not (cs_val.tag) then
     raise_c2_exception(CapEx_TagViolation, cs)
   else if not (cb_val.tag) then
@@ -890,15 +912,15 @@ function clause execute (CCall(cs, cb, 0b00000000000)) = /* selector=0 */
     raise_c2_exception(CapEx_SealViolation, cs)
   else if not (cb_val.sealed) then
     raise_c2_exception(CapEx_SealViolation, cb)
-  else if ((cs_val.otype) != (cb_val.otype)) then
+  else if cs_val.otype != cb_val.otype then
     raise_c2_exception(CapEx_TypeViolation, cs)
   else if not (cs_val.permit_execute) then
     raise_c2_exception(CapEx_PermitExecuteViolation, cs)
-  else if (cb_val.permit_execute) then
+  else if cb_val.permit_execute then
     raise_c2_exception(CapEx_PermitExecuteViolation, cb)
-  else if (cs_cursor < getCapBase(cs_val)) then
+  else if cs_cursor < getCapBase(cs_val) then
     raise_c2_exception(CapEx_LengthViolation, cs)
-  else if (cs_cursor >= getCapTop(cs_val)) then
+  else if cs_cursor >= getCapTop(cs_val) then
     raise_c2_exception(CapEx_LengthViolation, cs)
   else
     raise_c2_exception(CapEx_CallTrap, cs);
@@ -908,11 +930,11 @@ function clause execute (CCall(cs, cb, 0b00000000001)) = /* selector=1 */
 {
   /* Jump-like implementation of CCall that unseals arguments */
   checkCP2usable();
-  if inBranchDelay then
+  if InBranchDelay then
     SignalException(ResI);
-  cs_val = readCapReg(cs);
-  cb_val = readCapReg(cb);
-  cs_cursor = getCapCursor(cs_val);
+  let cs_val = readCapReg(cs);
+  let cb_val = readCapReg(cb);
+  let cs_cursor = getCapCursor(cs_val);
   if not (cs_val.tag) then
     raise_c2_exception(CapEx_TagViolation, cs)
   else if not (cb_val.tag) then
@@ -921,7 +943,7 @@ function clause execute (CCall(cs, cb, 0b00000000001)) = /* selector=1 */
     raise_c2_exception(CapEx_SealViolation, cs)
   else if not (cb_val.sealed) then
     raise_c2_exception(CapEx_SealViolation, cb)
-  else if ((cs_val.otype) != (cb_val.otype)) then
+  else if cs_val.otype != cb_val.otype then
     raise_c2_exception(CapEx_TypeViolation, cs)
   else if not (cs_val.permit_ccall) then
     raise_c2_exception(CapEx_PermitCCallViolation, cs)
@@ -929,24 +951,24 @@ function clause execute (CCall(cs, cb, 0b00000000001)) = /* selector=1 */
     raise_c2_exception(CapEx_PermitCCallViolation, cb)
   else if not (cs_val.permit_execute) then
     raise_c2_exception(CapEx_PermitExecuteViolation, cs)
-  else if (cb_val.permit_execute) then
+  else if cb_val.permit_execute then
     raise_c2_exception(CapEx_PermitExecuteViolation, cb)
-  else if (cs_cursor < getCapBase(cs_val)) then
+  else if cs_cursor < getCapBase(cs_val) then
     raise_c2_exception(CapEx_LengthViolation, cs)
-  else if (cs_cursor >= getCapTop(cs_val)) then
+  else if cs_cursor >= getCapTop(cs_val) then
     raise_c2_exception(CapEx_LengthViolation, cs)
   else
-    {
-      set_next_pcc({cs_val with
-        sealed=false,
-        otype=zeros()
-      });
-      C26 = {cb_val with
-        sealed=false,
-        otype=zeros()
-      };
-      nextPC = to_bits(64, getCapOffset(cs_val));
-    }
+  {
+    set_next_pcc({cs_val with
+      sealed=false,
+      otype=zeros()
+    });
+    C26 = {cb_val with
+      sealed=false,
+      otype=zeros()
+    };
+    NextPC = to_bits(64, getCapOffset(cs_val));
+  }
 }
 
 union clause ast = CReturn : unit
@@ -960,143 +982,144 @@ union clause ast = CBX : (regno, bits(16), bool)
 function clause execute (CBX(cb, imm, notset)) =
 {
   checkCP2usable();
-  if (inBranchDelay) then
+  if InBranchDelay then
      SignalException(ResI);
-  if (((readCapReg(cb)).tag) ^ notset) then
+  let cb_val = readCapReg(cb);
+  if cb_val.tag ^ notset then
   {
-    let offset : bits(64) = (sign_extend(imm @ 0b00) + 4) in
+    let offset : bits(64) = sign_extend(imm @ 0b00) + 4;
     execute_branch(PC + offset);
   };
-  nextInBranchDelay = 0b1;
+  NextInBranchDelay = 0b1;
 }
 
 union clause ast = CBZ : (regno, bits(16), bool)
 function clause execute (CBZ(cb, imm, notzero)) =
 {
   checkCP2usable();
-  if (inBranchDelay) then
+  if InBranchDelay then
      SignalException(ResI);
-  if (((readCapReg(cb)) == null_cap) ^ notzero) then
+  let cb_val = readCapReg(cb);
+  if (cb_val == null_cap) ^ notzero then
   {
-    let offset : bits(64) = (sign_extend(imm @ 0b00) + 4) in
+    let offset : bits(64) = sign_extend(imm @ 0b00) + 4;
     execute_branch(PC + offset);
   };
-  nextInBranchDelay = 0b1;
+  NextInBranchDelay = 0b1;
 }
 
 union clause ast = CJALR : (regno, regno, bool)
 function clause execute(CJALR(cd, cb, link)) = 
 {
   checkCP2usable();
-  if (inBranchDelay) then
+  if InBranchDelay then
      SignalException(ResI);
-  cb_val = readCapReg(cb);
-  cb_ptr = getCapCursor(cb_val);
-  cb_top = getCapTop(cb_val);
-  cb_base= getCapBase(cb_val);
+  let cb_val = readCapReg(cb);
+  let cb_ptr = getCapCursor(cb_val);
+  let cb_top = getCapTop(cb_val);
+  let cb_base= getCapBase(cb_val);
   if not (cb_val.tag) then
     raise_c2_exception(CapEx_TagViolation, cb)
   else if (cb_val.sealed) then
     raise_c2_exception(CapEx_SealViolation, cb)
   else if not (cb_val.permit_execute) then
     raise_c2_exception(CapEx_PermitExecuteViolation, cb)
-  else if (cb_ptr < cb_base) then
+  else if cb_ptr < cb_base then
     raise_c2_exception(CapEx_LengthViolation, cb)
-  else if ((cb_ptr + 4) > cb_top) then
+  else if (cb_ptr + 4) > cb_top then
     raise_c2_exception(CapEx_LengthViolation, cb)
-  else if ((cb_ptr % 4) != 0) then
+  else if (cb_ptr % 4) != 0 then
     SignalException(AdEL)
   else
+  {
+    if link then
     {
-      if (link) then
-        let pcc = PCC in
-        let (success, linkCap) = setCapOffset(pcc, PC+8) in {
-          assert(success, "Link cap should always be representable.");
-          writeCapReg(cd, linkCap);
-        };
-      execute_branch_pcc(cb_val);
+      let (success, linkCap) = setCapOffset(PCC, PC+8);
+      assert(success, "Link cap should always be representable.");
+      writeCapReg(cd, linkCap);
     };
-  nextInBranchDelay = 0b1;
+    execute_branch_pcc(cb_val);
+  };
+  NextInBranchDelay = 0b1;
 }
 
 union clause ast = CLoad : (regno, regno, regno, bits(8), bool, WordType, bool)
 function clause execute (CLoad(rd, cb, rt, offset, signext, width, linked)) =
 {
   checkCP2usable();
-  cb_val = readCapRegDDC(cb);
+  let cb_val = readCapRegDDC(cb);
   if not (cb_val.tag) then
     raise_c2_exception(CapEx_TagViolation, cb)
-  else if (cb_val.sealed) then
+  else if cb_val.sealed then
     raise_c2_exception(CapEx_SealViolation, cb)
   else if not (cb_val.permit_load) then
     raise_c2_exception(CapEx_PermitLoadViolation, cb)
   else
+  {
+    let 'size   = wordWidthBytes(width);
+    let cursor  = getCapCursor(cb_val);
+    let vAddr   = (cursor + unsigned(rGPR(rt)) + size*signed(offset)) % pow2(64);
+    let vAddr64 = to_bits(64, vAddr);
+    if (vAddr + size) > getCapTop(cb_val) then
+      raise_c2_exception(CapEx_LengthViolation, cb)
+    else if vAddr < getCapBase(cb_val) then
+      raise_c2_exception(CapEx_LengthViolation, cb)
+    else if not (isAddressAligned(vAddr64, width)) then
+      SignalExceptionBadAddr(AdEL, vAddr64)
+    else
     {
-      let 'size   = wordWidthBytes(width);
-      let cursor  = getCapCursor(cb_val);
-      let vAddr   = (cursor + unsigned(rGPR(rt)) + size*signed(offset)) % pow2(64);
-      let vAddr64 = to_bits(64, vAddr);
-      if ((vAddr + size) > getCapTop(cb_val)) then
-        raise_c2_exception(CapEx_LengthViolation, cb)
-      else if (vAddr < getCapBase(cb_val)) then
-        raise_c2_exception(CapEx_LengthViolation, cb)
-      else if not (isAddressAligned(vAddr64, width)) then
-        SignalExceptionBadAddr(AdEL, vAddr64)
-      else
-        {
-          pAddr      = (TLBTranslate(vAddr64, LoadData));
-          memResult : bits(64) = if (linked) then
-              {
-                CP0LLBit  = 0b1;
-                CP0LLAddr = pAddr;
-                extendLoad(MEMr_reserve_wrapper(pAddr, size), signext)
-              }
-            else
-              extendLoad(MEMr_wrapper(pAddr, size), signext);
-          wGPR(rd) = memResult;
-        }
+      let pAddr = TLBTranslate(vAddr64, LoadData);
+      memResult : bits(64) = if (linked) then
+          {
+            CP0LLBit  = 0b1;
+            CP0LLAddr = pAddr;
+            extendLoad(MEMr_reserve_wrapper(pAddr, size), signext)
+          }
+        else
+          extendLoad(MEMr_wrapper(pAddr, size), signext);
+      wGPR(rd) = memResult;
     }
+  }
 }
 
 union clause ast = CLoadTags : (regno, regno)
 function clause execute (CLoadTags(rd, cb)) =
 {
   checkCP2usable();
-  cb_val = readCapRegDDC(cb);
+  let cb_val = readCapRegDDC(cb);
   if not (cb_val.tag) then
     raise_c2_exception(CapEx_TagViolation, cb)
-  else if (cb_val.sealed) then
+  else if cb_val.sealed then
     raise_c2_exception(CapEx_SealViolation, cb)
   else if not (cb_val.permit_load) then
     raise_c2_exception(CapEx_PermitLoadViolation, cb)
   else if not (cb_val.permit_load_cap) then
     raise_c2_exception(CapEx_PermitLoadViolation, cb)
   else
-    {
-      let vAddr   = getCapCursor(cb_val);
-      let vAddr64 = to_bits(64, getCapCursor(cb_val));
-      if ((vAddr + 8 * cap_size) > getCapTop(cb_val)) then
-        raise_c2_exception(CapEx_LengthViolation, cb)
-      else if (vAddr < getCapBase(cb_val)) then
-        raise_c2_exception(CapEx_LengthViolation, cb)
-      else if not (vAddr64[5..0] == 0b000000) then /* XXX Cache line width? */
-        SignalExceptionBadAddr(AdEL, vAddr64)
-      else
-        {
-          pAddr      = (TLBTranslate(vAddr64, LoadData));
-
-          let tag0   = MEMr_tag(pAddr + 0*cap_size);
-          let tag1   = MEMr_tag(pAddr + 1*cap_size);
-          let tag2   = MEMr_tag(pAddr + 2*cap_size);
-          let tag3   = MEMr_tag(pAddr + 3*cap_size);
-          let tag4   = MEMr_tag(pAddr + 4*cap_size);
-          let tag5   = MEMr_tag(pAddr + 5*cap_size);
-          let tag6   = MEMr_tag(pAddr + 6*cap_size);
-          let tag7   = MEMr_tag(pAddr + 7*cap_size);
-          wGPR(rd)   = zero_extend (tag7 @ tag6 @ tag5 @ tag4
-                                  @ tag3 @ tag2 @ tag1 @ tag0);
-        }
-    }
+  {
+    let vAddr   = getCapCursor(cb_val);
+    let vAddr64 = to_bits(64, getCapCursor(cb_val));
+    if (vAddr + 8 * cap_size) > getCapTop(cb_val) then
+      raise_c2_exception(CapEx_LengthViolation, cb)
+    else if vAddr < getCapBase(cb_val) then
+      raise_c2_exception(CapEx_LengthViolation, cb)
+    else if not (vAddr64[5..0] == 0b000000) then /* XXX Cache line width? */
+      SignalExceptionBadAddr(AdEL, vAddr64)
+    else
+      {
+        let pAddr  = TLBTranslate(vAddr64, LoadData);
+        let tag0   = MEMr_tag(pAddr + 0*cap_size);
+        let tag1   = MEMr_tag(pAddr + 1*cap_size);
+        let tag2   = MEMr_tag(pAddr + 2*cap_size);
+        let tag3   = MEMr_tag(pAddr + 3*cap_size);
+        let tag4   = MEMr_tag(pAddr + 4*cap_size);
+        let tag5   = MEMr_tag(pAddr + 5*cap_size);
+        let tag6   = MEMr_tag(pAddr + 6*cap_size);
+        let tag7   = MEMr_tag(pAddr + 7*cap_size);
+        wGPR(rd)   = zero_extend (tag7 @ tag6 @ tag5 @ tag4
+                                @ tag3 @ tag2 @ tag1 @ tag0);
+      }
+  }
 }
 
 union clause ast = CStore : (regno, regno, regno, regno, bits(8), WordType, bool)
@@ -1104,64 +1127,64 @@ union clause ast = CStore : (regno, regno, regno, regno, bits(8), WordType, bool
 function clause execute (CStore(rs, cb, rt, rd, offset, width, conditional)) =
 {
   checkCP2usable();
-  cb_val = readCapRegDDC(cb);
+  let cb_val = readCapRegDDC(cb);
   if not (cb_val.tag) then
     raise_c2_exception(CapEx_TagViolation, cb)
-  else if (cb_val.sealed) then
+  else if cb_val.sealed then
     raise_c2_exception(CapEx_SealViolation, cb)
   else if not (cb_val.permit_store) then
     raise_c2_exception(CapEx_PermitStoreViolation, cb)
   else
+  {
+    let size   = wordWidthBytes(width);
+    let cursor = getCapCursor(cb_val);
+    let vAddr  = (cursor + unsigned(rGPR(rt)) + size * signed(offset)) % pow2(64);
+    let vAddr64= to_bits(64, vAddr);
+    if (vAddr + size) > getCapTop(cb_val) then
+      raise_c2_exception(CapEx_LengthViolation, cb)
+    else if vAddr < getCapBase(cb_val) then
+      raise_c2_exception(CapEx_LengthViolation, cb)
+    else if not (isAddressAligned(vAddr64, width)) then
+      SignalExceptionBadAddr(AdES, vAddr64)
+    else
     {
-      size   = wordWidthBytes(width);
-      cursor = getCapCursor(cb_val);
-      vAddr  = (cursor + unsigned(rGPR(rt)) + size * signed(offset)) % pow2(64);
-      vAddr64= to_bits(64, vAddr);
-      if ((vAddr + size) > getCapTop(cb_val)) then
-        raise_c2_exception(CapEx_LengthViolation, cb)
-      else if (vAddr < getCapBase(cb_val)) then
-        raise_c2_exception(CapEx_LengthViolation, cb)
-      else if not (isAddressAligned(vAddr64, width)) then
-        SignalExceptionBadAddr(AdES, vAddr64)
+      let pAddr  = TLBTranslate(vAddr64, StoreData);
+      let rs_val = rGPR(rs);
+      if conditional then
+      {
+        let success : bool = if (CP0LLBit[0]) then
+            match width
+            {
+              B  => MEMw_conditional_wrapper(pAddr, 1, rs_val[7..0]),
+              H  => MEMw_conditional_wrapper(pAddr, 2, rs_val[15..0]),
+              W  => MEMw_conditional_wrapper(pAddr, 4, rs_val[31..0]),
+              D  => MEMw_conditional_wrapper(pAddr, 8, rs_val)
+            }
+          else
+            false;
+        wGPR(rd) = zero_extend(success);
+      }
       else
+        match width
         {
-          pAddr  = (TLBTranslate(vAddr64, StoreData));
-          rs_val = rGPR(rs);
-          if (conditional) then
-            {
-              success : bool = if (CP0LLBit[0]) then
-                  match width
-                    {
-                      B  => MEMw_conditional_wrapper(pAddr, 1, rs_val[7..0]),
-                      H  => MEMw_conditional_wrapper(pAddr, 2, rs_val[15..0]),
-                      W  => MEMw_conditional_wrapper(pAddr, 4, rs_val[31..0]),
-                      D  => MEMw_conditional_wrapper(pAddr, 8, rs_val)
-                    }
-                else
-                  false;
-              wGPR(rd) = zero_extend(success);
-            }
-            else
-          match width
-            {
-              B  => MEMw_wrapper(pAddr, 1) = rs_val[7..0],
-              H  => MEMw_wrapper(pAddr, 2) = rs_val[15..0],
-              W  => MEMw_wrapper(pAddr, 4) = rs_val[31..0],
-              D  => MEMw_wrapper(pAddr, 8) = rs_val
-            }
+          B  => MEMw_wrapper(pAddr, 1) = rs_val[7..0],
+          H  => MEMw_wrapper(pAddr, 2) = rs_val[15..0],
+          W  => MEMw_wrapper(pAddr, 4) = rs_val[31..0],
+          D  => MEMw_wrapper(pAddr, 8) = rs_val
         }
     }
+  }
 }
 
 union clause ast = CSC : (regno, regno, regno, regno, bits(11), bool)
 function clause execute (CSC(cs, cb, rt, rd, offset, conditional)) =
 {
   checkCP2usable();
-  cs_val = readCapReg(cs);
-  cb_val = readCapRegDDC(cb);
+  let cs_val = readCapReg(cs);
+  let cb_val = readCapRegDDC(cb);
   if not (cb_val.tag) then
     raise_c2_exception(CapEx_TagViolation, cb)
-  else if (cb_val.sealed) then
+  else if cb_val.sealed then
     raise_c2_exception(CapEx_SealViolation, cb)
   else if not (cb_val.permit_store) then
     raise_c2_exception(CapEx_PermitStoreViolation, cb)
@@ -1170,75 +1193,75 @@ function clause execute (CSC(cs, cb, rt, rd, offset, conditional)) =
   else if not (cb_val.permit_store_local_cap) & (cs_val.tag) & not (cs_val.global) then
     raise_c2_exception(CapEx_PermitStoreLocalCapViolation, cb)
   else
+  {
+    let cursor = getCapCursor(cb_val);
+    let vAddr  = (cursor + unsigned(rGPR(rt)) + 16 * signed(offset)) % pow2(64);
+    let vAddr64= to_bits(64, vAddr);
+    if (vAddr + cap_size) > getCapTop(cb_val) then
+      raise_c2_exception(CapEx_LengthViolation, cb)
+    else if vAddr < getCapBase(cb_val) then
+      raise_c2_exception(CapEx_LengthViolation, cb)
+    else if (vAddr % cap_size) != 0 then
+      SignalExceptionBadAddr(AdES, vAddr64)
+    else
     {
-      cursor = getCapCursor(cb_val);
-      vAddr  = (cursor + unsigned(rGPR(rt)) + 16 * signed(offset)) % pow2(64);
-      vAddr64= to_bits(64, vAddr);
-      if ((vAddr + cap_size) > getCapTop(cb_val)) then
-        raise_c2_exception(CapEx_LengthViolation, cb)
-      else if (vAddr < getCapBase(cb_val)) then
-        raise_c2_exception(CapEx_LengthViolation, cb)
-      else if ((vAddr % cap_size) != 0) then
-        SignalExceptionBadAddr(AdES, vAddr64)
-      else
-        {
-          let (pAddr, noStoreCap) = TLBTranslateC(vAddr64, StoreData) in
-          if (cs_val.tag & noStoreCap) then
-            raise_c2_exception(CapEx_TLBNoStoreCap, cs)
-          else if (conditional) then
-            {
-              success = if (CP0LLBit[0]) then
-                  MEMw_tagged_conditional(pAddr, cs_val.tag, capStructToMemBits(cs_val))
-                else
-                  false;
-              wGPR(rd) = zero_extend(success);
-            }
+      let (pAddr, noStoreCap) = TLBTranslateC(vAddr64, StoreData);
+      if cs_val.tag & noStoreCap then
+        raise_c2_exception(CapEx_TLBNoStoreCap, cs)
+      else if conditional then
+      {
+        let success = if (CP0LLBit[0]) then
+            MEMw_tagged_conditional(pAddr, cs_val.tag, capStructToMemBits(cs_val))
           else
-            MEMw_tagged(pAddr, cs_val.tag, capStructToMemBits(cs_val));
-        }
+            false;
+        wGPR(rd) = zero_extend(success);
+      }
+      else
+        MEMw_tagged(pAddr, cs_val.tag, capStructToMemBits(cs_val));
     }
+  }
 }
 
 union clause ast = CLC : (regno, regno, regno, bits(16), bool)
 function clause execute (CLC(cd, cb, rt, offset, linked)) =  
 {
   checkCP2usable();
-  cb_val = readCapRegDDC(cb);
+  let cb_val = readCapRegDDC(cb);
   if not (cb_val.tag) then
     raise_c2_exception(CapEx_TagViolation, cb)
-  else if (cb_val.sealed) then
+  else if cb_val.sealed then
     raise_c2_exception(CapEx_SealViolation, cb)
   else if not (cb_val.permit_load) then
     raise_c2_exception(CapEx_PermitLoadViolation, cb)
   else
+  {
+    let cursor = getCapCursor(cb_val);
+    let vAddr  = (cursor + unsigned(rGPR(rt)) + 16 * signed(offset)) % pow2(64);
+    let vAddr64= to_bits(64, vAddr);
+    if (vAddr + cap_size) > getCapTop(cb_val) then
+      raise_c2_exception(CapEx_LengthViolation, cb)
+    else if vAddr < getCapBase(cb_val) then
+      raise_c2_exception(CapEx_LengthViolation, cb)
+    else if (vAddr % cap_size) != 0 then
+      SignalExceptionBadAddr(AdEL, vAddr64)
+    else
     {
-      cursor = getCapCursor(cb_val);
-      vAddr  = (cursor + unsigned(rGPR(rt)) + 16 * signed(offset)) % pow2(64);
-      vAddr64= to_bits(64, vAddr);
-      if ((vAddr + cap_size) > getCapTop(cb_val)) then
-        raise_c2_exception(CapEx_LengthViolation, cb)
-      else if (vAddr < getCapBase(cb_val)) then
-        raise_c2_exception(CapEx_LengthViolation, cb)
-      else if ((vAddr % cap_size) != 0) then
-        SignalExceptionBadAddr(AdEL, vAddr64)
+      let (pAddr, suppressTag) = TLBTranslateC(vAddr64, LoadData);
+      let 'cd = unsigned(cd);
+      if (linked) then
+      {
+        CP0LLBit  = 0b1;
+        CP0LLAddr = pAddr;
+        let (tag, mem) = MEMr_tagged_reserve(pAddr);
+        (*CapRegs[cd]) = memBitsToCapReg(tag & cb_val.permit_load_cap & not (suppressTag), mem);
+      }
       else
-        {
-          let (pAddr, suppressTag) = TLBTranslateC(vAddr64, LoadData) in
-          let 'cd = unsigned(cd) in
-          if (linked) then
-            {
-              CP0LLBit  = 0b1;
-              CP0LLAddr = pAddr;
-              let (tag, mem) = MEMr_tagged_reserve(pAddr) in
-              (*CapRegs[cd]) = memBitsToCapReg(tag & (cb_val.permit_load_cap) & (not (suppressTag)), mem);
-            }
-          else
-            {
-              let (tag, mem) = MEMr_tagged(pAddr) in
-              (*CapRegs[cd]) = memBitsToCapReg(tag & (cb_val.permit_load_cap) & (not (suppressTag)), mem);
-            }
-        }
+      {
+        let (tag, mem) = MEMr_tagged(pAddr);
+        (*CapRegs[cd]) = memBitsToCapReg(tag & cb_val.permit_load_cap & not (suppressTag), mem);
+      }
     }
+  }
 }
 
 union clause ast = C2Dump : regno

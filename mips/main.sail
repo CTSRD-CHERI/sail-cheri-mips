@@ -3,17 +3,17 @@ val cycle_limit_reached = { c: "cycle_limit_reached" } : unit -> bool
 
 function cycle_limit_reached() = false
 
-register instCount : int
+register InstCount : int
 
 val fetch_and_execute : unit -> bool effect {barr, eamem, escape, rmem, rreg, wmv, wreg, undef, wmvt, rmemt}
 function fetch_and_execute () = {
-  PC = nextPC;
-  inBranchDelay = nextInBranchDelay;
-  nextPC = if branchPending then delayedPC else PC + 4;
-  nextInBranchDelay = 0b0;
-  branchPending = 0b0;
+  PC = NextPC;
+  InBranchDelay = NextInBranchDelay;
+  NextPC = if BranchPending then DelayedPC else PC + 4;
+  NextInBranchDelay = 0b0;
+  BranchPending = 0b0;
   cp2_next_pc();
-  instCount = instCount + 1;
+  InstCount = InstCount + 1;
   if UART_WRITTEN then {
     putchar(unsigned(UART_WDATA));
     UART_WRITTEN = 0b0;
@@ -46,8 +46,8 @@ function fetch_and_execute () = {
   } catch {
     ISAException() => ()
     /* ISA-level exception occurrred either during TranslatePC or execute --
-       just continue from nextPC, which should have been set to the appropriate
-       exception vector (along with clearing branchPending etc.) . */
+       just continue from NextPC, which should have been set to the appropriate
+       exception vector (along with clearing BranchPending etc.) . */
   };
   loop_again & not (cycle_limit_reached());
 }
@@ -63,7 +63,7 @@ val init_registers : bits(64) -> unit effect {wreg, escape}
 function init_registers (initialPC) = {
   init_cp0_state();
   init_cp2_state();
-  nextPC = initialPC;
+  NextPC = initialPC;
 }
 
 function dump_mips_state () : unit -> unit = {
@@ -80,25 +80,25 @@ function main () = {
   startTime = get_time_ns();
   while (fetch_and_execute()) do {
     /* uncomment to print IPS every 10M instructions (~10s)
-    if (instCount == 10000000) then {
+    if (InstCount == 10000000) then {
       endTime = get_time_ns();
       elapsed = endTime - startTime;
-      inst_1e9 = instCount * 1000000000;
+      inst_1e9 = InstCount * 1000000000;
       ips = inst_1e9 / elapsed;
       print_int("*IPS*: ", ips);
       startTime = get_time_ns();
-      instCount = 0; 
+      InstCount = 0; 
     };*/
     ();
   };
 
   endTime = get_time_ns();
   elapsed = endTime - startTime;
-  inst_1e9 = instCount * 1000000000;
+  inst_1e9 = InstCount * 1000000000;
   ips = inst_1e9 / elapsed;
   dump_mips_state ();
   dump_cp2_state ();
-  print_int("Executed instructions: ", instCount);
+  print_int("Executed instructions: ", InstCount);
   print_int("Nanoseconds elapsed: ", elapsed);
   print_int("Instructions per second: ", ips);
 }
