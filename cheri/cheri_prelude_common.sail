@@ -385,6 +385,9 @@ function MEMw_tagged_conditional(addr, tag, data) =
 
 let cap_addr_mask = to_bits(64, pow2(64) - cap_size)
 
+/*!
+THIS`(addr, size, value)` writes `size` bytes of `value` to physical address `addr`.
+ */
 val MEMw_wrapper : forall 'n, 'n >= 1. (bits(64), atom('n), bits(8 * 'n)) -> unit effect {escape, wmv, wmvt, wreg, eamem}
 function MEMw_wrapper(addr, size, data) =
   let ledata = reverse_endianness(data) in
@@ -403,6 +406,9 @@ function MEMw_wrapper(addr, size, data) =
     MEMw_tag(addr & cap_addr_mask, false);
   }
 
+/*!
+THIS`(addr, size, value)` attempts to write `size` bytes of `value` to physical address `addr` and returns a boolean indicating store conditional success or failure.
+ */
 val MEMw_conditional_wrapper : forall 'n, 'n >= 1. (bits(64), atom('n), bits(8 * 'n)) -> bool effect {escape, wmv, wmvt, eamem}
 function MEMw_conditional_wrapper(addr, size, data) =
   {
