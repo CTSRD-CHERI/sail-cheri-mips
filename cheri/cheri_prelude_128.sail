@@ -111,7 +111,7 @@ function capBitsToCapability(t, c) : (bool, CapBits) -> Capability =
   let Tc : bits(20) = if s then c[83..76] @ 0x000 else c[83..64] in
   let otype : bits(24) = if s then c[95..84] @ c[75..64] else zeros() in
   struct {
-    tag                    = c[128],
+    tag                    = t,
     uperms                 = c[127..124],
     access_system_regs     = c[123],
     permit_unseal          = c[122],

@@ -107,7 +107,7 @@ let 'cap_size = 32
 
 function capBitsToCapability(tag, capBits) : (bool, CapBits) -> Capability =
   struct {
-    tag                        = capBits[256],
+    tag                        = tag,
     padding                    = capBits[255..248],
     otype                      = capBits[247..224],
     uperms                     = capBits[223..208],
