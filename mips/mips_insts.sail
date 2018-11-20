@@ -1123,14 +1123,6 @@ function clause decode (0b110000 @ base : regno @ rt : regno @ offset : imm16) =
 function clause decode (0b110100 @ base : regno @ rt : regno @ offset : imm16) =
   Some(Load(D, false, true, base, rt, offset))  /* LLD */
 
-val extendLoad : forall 'sz, 'sz <= 64 .  (bits('sz), bool) -> bits(64) effect pure
-function extendLoad(memResult, sign) = {
-  if (sign) then
-    sign_extend(memResult)
-  else
-    zero_extend(memResult)
-}
-
 function clause execute (Load(width, sign, linked, base, rt, offset)) =
   {
     vAddr : bits(64) = addrWrapper(sign_extend(offset) + rGPR(base), LoadData, width);

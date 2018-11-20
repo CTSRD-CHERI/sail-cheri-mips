@@ -41,51 +41,51 @@ scattered function execute
 val decode : bits(32) -> option(ast) effect pure
 scattered function decode
 
-register PCC        : CapReg
-register NextPCC    : CapReg
-register DelayedPCC : CapReg
-register DDC : CapReg
-register C01 : CapReg
-register C02 : CapReg
-register C03 : CapReg
-register C04 : CapReg
-register C05 : CapReg
-register C06 : CapReg
-register C07 : CapReg
-register C08 : CapReg
-register C09 : CapReg
-register C10 : CapReg
-register C11 : CapReg
-register C12 : CapReg
-register C13 : CapReg
-register C14 : CapReg
-register C15 : CapReg
-register C16 : CapReg
-register C17 : CapReg
-register C18 : CapReg
-register C19 : CapReg
-register C20 : CapReg
-register C21 : CapReg
-register C22 : CapReg
-register C23 : CapReg
-register C24 : CapReg /* aka return code capability, RCC */
-register C25 : CapReg
-register C26 : CapReg /* aka invoked data capability, IDC */
-register C27 : CapReg
-register C28 : CapReg
-register C29 : CapReg
-register C30 : CapReg
-register C31 : CapReg
+register PCC        : Capability
+register NextPCC    : Capability
+register DelayedPCC : Capability
+register DDC : Capability
+register C01 : Capability
+register C02 : Capability
+register C03 : Capability
+register C04 : Capability
+register C05 : Capability
+register C06 : Capability
+register C07 : Capability
+register C08 : Capability
+register C09 : Capability
+register C10 : Capability
+register C11 : Capability
+register C12 : Capability
+register C13 : Capability
+register C14 : Capability
+register C15 : Capability
+register C16 : Capability
+register C17 : Capability
+register C18 : Capability
+register C19 : Capability
+register C20 : Capability
+register C21 : Capability
+register C22 : Capability
+register C23 : Capability
+register C24 : Capability /* aka return code capability, RCC */
+register C25 : Capability
+register C26 : Capability /* aka invoked data capability, IDC */
+register C27 : Capability
+register C28 : Capability
+register C29 : Capability
+register C30 : Capability
+register C31 : Capability
 
-register CTLSU : CapReg /* User thread local storage capabiltiy */
-register CTLSP : CapReg /* Privileged thread local storage capabiltiy */
-register KR1C  : CapReg /* kernel reserved capability 1 */
-register KR2C  : CapReg /* kernel reserved capability 2 */
-register KCC   : CapReg /* kernel code capability */
-register KDC   : CapReg /* kernel data capability */
-register EPCC  : CapReg /* exception program counter capability */
+register CTLSU : Capability /* User thread local storage capabiltiy */
+register CTLSP : Capability /* Privileged thread local storage capabiltiy */
+register KR1C  : Capability /* kernel reserved capability 1 */
+register KR2C  : Capability /* kernel reserved capability 2 */
+register KCC   : Capability /* kernel code capability */
+register KDC   : Capability /* kernel data capability */
+register EPCC  : Capability /* exception program counter capability */
 
-let CapRegs : vector(32, dec, register(CapReg)) =
+let CapRegs : vector(32, dec, register(Capability)) =
   [
     ref C31,
     ref C30,
@@ -123,13 +123,13 @@ let CapRegs : vector(32, dec, register(CapReg)) =
 
 let have_cp2 = true
 
-val capToString : (CapStruct, bool) -> string effect {escape}
+val capToString : (Capability, bool) -> string effect {escape}
 
 /*!
 THIS reads a given capability register or,
 the null capabiility if the argument is zero.
 */
-val readCapReg : regno -> CapStruct effect {rreg}
+val readCapReg : regno -> Capability effect {rreg}
 function readCapReg(n) =
   if (n == 0b00000) then
     null_cap
@@ -142,7 +142,7 @@ THIS is the same as [readCapReg] except that when the argument is zero the value
 instead of the null capability. This is used for instructions that expect an address, where using
 null would always generate an exception.
 */
-val readCapRegDDC : regno -> CapStruct effect {rreg}
+val readCapRegDDC : regno -> Capability effect {rreg}
 function readCapRegDDC(n) =
   let i = unsigned(n) in
   reg_deref(CapRegs[i]) /* NB CapRegs[0] is points to DDC */
@@ -150,7 +150,7 @@ function readCapRegDDC(n) =
 /*!
 THIS`(cd, cap_val)` writes capability, `cap_val` capability register `cd`. Writes to register zero are ignored.
  */
-val writeCapReg : (regno, CapStruct) -> unit effect {wreg, escape}
+val writeCapReg : (regno, Capability) -> unit effect {wreg, escape}
 function writeCapReg(n, cap) =
   if (n == 0b00000) then
     ()
@@ -256,7 +256,7 @@ register CapCause : CapCauseReg
 /*!
 THIS executes a branch to the given capability, replacing PCC and taking the new PC from the offset field. Note that on MIPS the new PCC does not take effect until after the branch delay slot.
  */
-val execute_branch_pcc : CapStruct -> unit effect {wreg}
+val execute_branch_pcc : Capability -> unit effect {wreg}
 function execute_branch_pcc(newPCC) = {
   DelayedPC = to_bits(64, getCapOffset(newPCC));
   DelayedPCC = newPCC;
@@ -267,7 +267,7 @@ function execute_branch_pcc(newPCC) = {
 /*!
 THIS sets PCC to the given capability before executing the next instruction. It is used for CCall, which has no branch delay.
  */
-val set_next_pcc : CapReg -> unit effect {wreg} 
+val set_next_pcc : Capability -> unit effect {wreg} 
 function set_next_pcc(newPCC) = {
   NextPCC    = newPCC;
   DelayedPCC = newPCC; /* always write DelayedPCC together with NextPCC so 
@@ -421,8 +421,8 @@ function MEMw_conditional_wrapper(addr, size, data) =
     success;
   }
 
-val checkDDCPerms : (CapStruct, MemAccessType) -> unit effect {escape, rreg, wreg}
-function checkDDCPerms(ddc : CapStruct, accessType: MemAccessType) = 
+val checkDDCPerms : (Capability, MemAccessType) -> unit effect {escape, rreg, wreg}
+function checkDDCPerms(ddc : Capability, accessType: MemAccessType) = 
   {
     if (not (ddc.tag)) then
       raise_c2_exception(CapEx_TagViolation, 0b00000)
@@ -553,7 +553,7 @@ function cp2_next_pc () = {
   };
 }
 
-val readEPCC : unit -> CapStruct effect {rreg}
+val readEPCC : unit -> Capability effect {rreg}
 function readEPCC () = {
   /* CP0EPC/CP0ErrorEPC and EPCC.offset are supposed to be one register.
   We fake this by reading CP0EPC/CP0ErrorEPC and setting EPCC.offset

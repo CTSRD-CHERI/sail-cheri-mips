@@ -660,6 +660,14 @@ function isAddressAligned (addr, wordType) =
 
 val reverse_endianness = "reverse_endianness" : forall 'W, 'W >= 1. bits(8 * 'W) -> bits(8 * 'W) effect pure
 
+val extendLoad : forall 'sz, 'sz <= 64 .  (bits('sz), bool) -> bits(64) effect pure
+function extendLoad(memResult, sign) = {
+  if (sign) then
+    sign_extend(memResult)
+  else
+    zero_extend(memResult)
+}
+
 /*
 function rec forall Nat 'W, 'W >= 1. bits(8 * 'W) reverse_endianness' (w, value) =
 {
