@@ -443,8 +443,7 @@ function addrWrapper(addr, accessType, width) =
     cursor = getCapCursor(ddc);
     vAddr  = (cursor + unsigned(addr)) % pow2(64);
     size   = wordWidthBytes(width);
-    base   = getCapBase(ddc);
-    top    = getCapTop(ddc);
+    let (base, top) = getCapBounds(ddc);
     if ((vAddr + size) > top) then
       (raise_c2_exception(CapEx_LengthViolation, 0b00000))
     else if (vAddr < base) then
@@ -469,8 +468,7 @@ function addrWrapperUnaligned(addr, accessType, width) =
       DL => (vAddr, 8 - doffset),
       DR => (vAddr - doffset, doffset + 1)
     };
-    base   = getCapBase(ddc);
-    top    = getCapTop(ddc);
+    let (base, top) = getCapBounds(ddc);
     if ((waddr + size) > top) then
       (raise_c2_exception(CapEx_LengthViolation, 0b00000))
     else if (waddr < base) then
@@ -497,8 +495,7 @@ $endif
 function TranslatePC (vAddr) = {
   incrementCP0Count();
   let pcc = PCC;
-  let base  = getCapBase(pcc);
-  let top   = getCapTop(pcc);
+  let (base, top) = getCapBounds(pcc);
   let absPC = base + unsigned(vAddr);
   if ((absPC % 4)  != 0) then /* bad PC alignment */
     (SignalExceptionBadAddr(AdEL, to_bits(64, absPC))) /* XXX absPC may be truncated */

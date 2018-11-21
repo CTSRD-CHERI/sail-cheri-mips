@@ -284,39 +284,38 @@ function a_top_correction(a_mid, R, bound) : (bits(3), bits(3), bits(3)) -> bits
       (true, true)    => zeros()
     }
 
-function getCapBase(c) : Capability -> uint64 =
-    let E = unsigned(c.E) in
-    let B3 : bits(3) = c.B[22..20] in
-    let a : bits(66) = zero_extend(c.address) in
-    let R : bits(3) = B3 - 0b001 in /* wraps */
-    let a_mid : bits(23) = mask(a >> E) in
-    let correction = a_top_correction(a_mid[22..20], R, B3) in
-    let a_top = (a >> E+23) in
-    let base : bits(64) = mask((a_top + correction) @ c.B @ replicate_bits(0b0, E)) in
-    unsigned(base)
+function getCapBounds(c) : Capability -> (uint64, CapLen) = {
+  let E = unsigned(c.E) in
+  let B3 : bits(3) = c.B[22..20] in
+  let T3 : bits(3) = c.T[22..20] in
+  let a : bits(66) = zero_extend(c.address) in
+  let R : bits(3) = B3 - 0b001 in /* wraps */
+  let a_mid : bits(23) = mask(a >> E) in
+  let correction_base = a_top_correction(a_mid[22..20], R, B3) in
+  let correction_top  = a_top_correction(a_mid[22..20], R, T3) in
+  let a_top = (a >> E+23) in
+  let base : bits(64) = mask((a_top + correction_base) @ c.B @ replicate_bits(0b0, E)) in
+  let top  : bits(65) = mask((a_top + correction_top)  @ c.T @ replicate_bits(0b0, E)) in
+  (unsigned(base), unsigned(top))
+}
 
-function getCapTop (c) : Capability -> CapLen = 
-    let E = unsigned(c.E) in
-    let B3 : bits(3) = c.B[22..20] in
-    let T3 : bits(3) = c.T[22..20] in
-    let a : bits(66) = zero_extend(c.address)  in
-    let R : bits(3) = B3 - 0b001 in /* wraps */
-    let a_mid : bits(23) = mask(a >> E) in
-    let correction = a_top_correction(a_mid[22..20], R, T3) in
-    let a_top = a >> E+23 in
-    let top : bits(65) = mask((a_top + correction) @ c.T @ replicate_bits(0b0, E)) in
-    unsigned(top)
+function getCapBase(c) : Capability -> uint64 =
+    let (base, _) = getCapBounds(c) in
+    base
+
+function getCapTop (c) : Capability -> CapLen =
+    let (_, top) = getCapBounds(c) in
+    top
 
 function getCapOffset(c) : Capability -> uint64 = 
     let base = getCapBase(c) in
     (unsigned(c.address) - base) % pow2(64)
 
 function getCapLength(c) : Capability -> CapLen =
-         let 'top = getCapTop(c) in
-         let 'base = getCapBase(c) in {
-             assert (top >= base);
-             top - base
-         }
+    let ('base, 'top) = getCapBounds(c) in {
+        assert (top >= base);
+        top - base
+    }
 
 function getCapCursor(cap) : Capability -> uint64 = unsigned(cap.address)
 
@@ -346,11 +345,9 @@ function fastRepCheck(c, i) : (Capability, bits(64)) -> bool=
           false
 */
 
-function capBoundsEqual (c1, c2) : (Capability, Capability) -> bool = 
-    let base1 = getCapBase(c1) in
-    let base2 = getCapBase(c2) in
-    let top1 = getCapTop(c1) in
-    let top2 = getCapTop(c2) in
+function capBoundsEqual (c1, c2) : (Capability, Capability) -> bool =
+    let (base1, top1) = getCapBounds(c1) in
+    let (base2, top2) = getCapBounds(c2) in
     (base1 == base2) & (top1 == top2)
 
 function setCapOffset(c, offset) : (Capability, bits(64)) -> (bool, Capability) =
@@ -416,8 +413,7 @@ function setCapBounds(cap, base, top) : (Capability, bits(64), bits(65)) -> (boo
     T = newTopBits[22..0];
   };
   let newCap  = {cap with address=base, E=to_bits(6, if incE then e + 1 else e ), B=Bs, T=T, lenMSB=lenMSB, internal_e=not(e0)};
-  let newBase = getCapBase(newCap);
-  let newTop  = getCapTop(newCap);
+  let (newBase, newTop) = getCapBounds(newCap);
   let exact   = (unsigned(base) == newBase) & (unsigned(top) == newTop);
   (exact, newCap)
 }

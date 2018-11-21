@@ -226,6 +226,9 @@ returns the top of the given capability as an integer in the range $0$ to $2^{65
 val getCapTop : Capability -> CapLen
 function getCapTop(c) = unsigned(c.base) + unsigned(c.length) /* XXX bug here? -- should be mod 2^64 */
 
+function getCapBounds(c) : Capability -> (uint64, CapLen) =
+  (getCapBase(c), getCapTop(c))
+
 /*!
 returns the offset of the capability (i.e. address relative to base) as an integer in the range $0$ to $2^{64} - 1$ 
  */
