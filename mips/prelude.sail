@@ -108,7 +108,7 @@ val modulus = {ocaml: "modulus", lem: "hardware_mod", coq: "euclid_modulo", _ : 
 
 overload operator % = {modulus}
 
-val min_nat = {lem: "min", coq: "Z.min", _: "min_int"} : (nat, nat) -> nat
+val min_nat = {lem: "min", coq: "min_nat", _: "min_int"} : (nat, nat) -> nat
 
 val min_int = {lem: "min", coq: "Z.min", _: "min_int"} : (int, int) -> int
 
