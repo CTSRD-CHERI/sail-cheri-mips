@@ -39,8 +39,11 @@ z3_problems
 /cheri/cheri128
 /cheri/cheri128.c
 /cheri/cheri128_c
+/cheri/cheri.v
+/cheri/cheri_types.v
 
 /mips/mips
 /mips/mips.c
 /mips/mips_c
-
+/mips/mips.v
+/mips/mips_types.v
