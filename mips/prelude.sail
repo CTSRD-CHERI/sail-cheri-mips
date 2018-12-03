@@ -200,6 +200,9 @@ function operator >=_u (x, y) = unsigned(x) >= unsigned(y)
 val cast bool_to_bits : bool -> bits(1)
 function bool_to_bits x = if x then 0b1 else 0b0
 
+val cast bool_to_bit : bool -> bit
+function bool_to_bit x = if x then bitone else bitzero
+
 val cast bit_to_bool : bit -> bool
 function bit_to_bool b = match b {
   bitone => true,

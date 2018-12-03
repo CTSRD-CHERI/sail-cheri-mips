@@ -131,7 +131,8 @@ function capBitsToCapability(t, c) : (bool, CapBits) -> Capability = {
   T : bits(21) = zeros();
   lenMSBs : bits(2) = zeros();
   otype : bits(24) = zeros();
-  sealed : bool = c[108];
+  sealed : bool = c[108] & internal_exponent;
+  lenMSB : bit = c[108] & (~(internal_exponent));
   if internal_exponent then {
     /* Exponent stored instead of T[2..0] and B[2..0] */
     E = c[89..87] @ c [66..64];
@@ -178,7 +179,7 @@ function capBitsToCapability(t, c) : (bool, CapBits) -> Capability = {
     reserved               = c[112..110],
     internal_e             = internal_exponent,
     E                      = E,
-    lenMSB                 = c[108],
+    lenMSB                 = lenMSB,
     sealed                 = sealed,
     B                      = Bs,
     T                      = Ttop2 @ T,
