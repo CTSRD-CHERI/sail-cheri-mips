@@ -177,7 +177,7 @@ overload sign_extend = {mips_sign_extend}
 overload zero_extend = {mips_zero_extend}
 
 val zeros : forall 'n, 'n >= 0 . unit -> bits('n)
-function zeros() = replicate_bits (0b0,'n)
+function zeros() = sail_zeros('n)
 
 val ones : forall 'n, 'n >= 0 . unit -> bits('n)
 function ones() = replicate_bits (0b1,'n)
