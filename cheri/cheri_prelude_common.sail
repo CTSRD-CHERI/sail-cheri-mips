@@ -160,6 +160,21 @@ function writeCapReg(n, cap) =
       prerr(string_of_int(i));
       prerr(" <- ");
       prerr_endline(capToString(cap, false));
+      /* Additionally check that the cap we are storing is in normal
+         form i.e. it is unchanged by round-tripping through bits.
+         This is quite a strong check because caps might differ from
+         normal form in ways that don't really matter (e.g. otype
+         non-zero for unsealed capability) but it is probably a good
+         idea to maintain this invariant. It's disabled if not tracing
+         because it is slow. We might be able to eliminate the
+         non-normal values with a better type... */
+      let cap2 = capBitsToCapability(cap.tag, capToBits(cap));
+      if (cap != cap2) then {
+        prerr_endline("Wrote non-normal cap:");
+        prerr_endline(capToString(cap, false));
+        prerr_endline(capToString(cap2, false));
+        assert(false, "wrote non-normal capability");
+      };
     } else {
       skip_escape();
     };
