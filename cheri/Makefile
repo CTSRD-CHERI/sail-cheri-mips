@@ -134,6 +134,19 @@ COQ_LIBS = -R ../../bbv/theories bbv -R ../lib/coq Sail
 	coqc $(COQ_LIBS) $<
 cheri.vo: cheri_types.vo mips_extras.vo
 
+CHERI_CC_QTEST_BUILD=cheri_cc_qtest_build
+
+$(CHERI_CC_QTEST_BUILD): ../mips/prelude.sail ../mips/notrace.sail ../mips/mips_prelude.sail ../mips/mips_tlb_stub.sail ../mips/mips_wrappers.sail cheri_types.sail cheri_prelude_128.sail
+	$(SAIL) -ocaml -ocaml-nobuild -ocaml_build_dir $@ -o cheri_cc $^
+
+cheri_cc_qtest: $(CHERI_CC_QTEST_BUILD)
+	cp cheri_cc_qtest.ml $(CHERI_CC_QTEST_BUILD)/main.ml
+	cd $(CHERI_CC_QTEST_BUILD) && \
+	ocamlbuild -use-ocamlfind -tag 'package(qcheck)' main.native
+
+qtest: cheri_cc_qtest
+	./cheri_cc_qtest_build/main.native --verbose
+
 clean:
 	rm -rf cheri cheri_trace cheri_coverage cheri_c cheri128 cheri128_trace cheri128_c _sbuild inst_*.sail cheri.c cheri128.c sail_latex sail_latexcc coverage_report
 	rm -f cheriScript.sml cheri_typesScript.sml mips_extrasScript.sml
