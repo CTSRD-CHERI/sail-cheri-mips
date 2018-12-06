@@ -179,8 +179,13 @@ overload zero_extend = {mips_zero_extend}
 val zeros : forall 'n, 'n >= 0 . unit -> bits('n)
 function zeros() = sail_zeros('n)
 
-val ones : forall 'n, 'n >= 0 . unit -> bits('n)
-function ones() = replicate_bits (0b1,'n)
+val ones_n : forall 'n, 'n >= 0 . int('n) -> bits('n)
+function ones_n n = replicate_bits (0b1, n)
+
+val ones_implicit : forall 'n, 'n >= 0 . unit -> bits('n)
+function ones_implicit () = ones_n ('n)
+
+overload ones = {ones_implicit, ones_n}
 
 infix 4 <_s
 infix 4 >=_s

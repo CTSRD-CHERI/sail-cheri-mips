@@ -277,7 +277,7 @@ function sealCap(cap, otype) : (Capability, bits(24)) -> (bool, Capability) =
     else
         (false, cap /* XXX should be undefined? */ )
 
-function a_top_correction(a_mid, R, bound) : (bits(3), bits(3), bits(3)) -> bits(66) =
+function a_top_correction(a_mid, R, bound) : (bits(3), bits(3), bits(3)) -> bits(65) =
     match (a_mid <_u R, bound <_u R) {
       (false, false)  => zeros(),
       (false, true)   => zero_extend(0b1),
@@ -287,16 +287,17 @@ function a_top_correction(a_mid, R, bound) : (bits(3), bits(3), bits(3)) -> bits
 
 function getCapBounds(c) : Capability -> (uint64, CapLen) = {
   let E = unsigned(c.E) in
-  let B3 : bits(3) = c.B[22..20] in
-  let T3 : bits(3) = c.T[22..20] in
-  let a : bits(66) = zero_extend(c.address) in
-  let R : bits(3) = B3 - 0b001 in /* wraps */
-  let a_mid : bits(23) = mask(a >> E) in
-  let correction_base = a_top_correction(a_mid[22..20], R, B3) in
-  let correction_top  = a_top_correction(a_mid[22..20], R, T3) in
+  let a : bits(65) = zero_extend(c.address) in
+  /* Extract bits we need to make the top correction and calculate representable limit */
+  let a3 = truncate(a >> (E + 20), 3) in
+  let B3 = truncateLSB(c.B, 3) in
+  let T3 = truncateLSB(c.T, 3) in
+  let R3 = B3 - 0b001 in /* wraps */
+  let correction_base = a_top_correction(a3, R3, B3) in
+  let correction_top  = a_top_correction(a3, R3, T3) in
   let a_top = (a >> E+23) in
-  let base : bits(64) = mask((a_top + correction_base) @ c.B @ replicate_bits(0b0, E)) in
-  let top  : bits(65) = mask((a_top + correction_top)  @ c.T @ replicate_bits(0b0, E)) in
+  let base : bits(64) = truncate((a_top + correction_base) @ c.B @ replicate_bits(0b0, E), 64) in
+  let top  : bits(65) = truncate((a_top + correction_top)  @ c.T @ replicate_bits(0b0, E), 65) in
   (unsigned(base), unsigned(top))
 }
 
@@ -373,7 +374,77 @@ function CountLeadingZeros x = {
   return 'N;
 }
 
+/* 
+An 'ideal' version of setCapBounds as described in paper.
+ */
 function setCapBounds(cap, base, top) : (Capability, bits(64), bits(65)) -> (bool, Capability) = {
+  /* {cap with base=base; length=(bits(64)) length; offset=0} */
+  base65 = 0b0 @ base;
+  let length : bits(65) = top - base65;
+  /* Find an exponent that will put the most significant bit of length 
+     second from the top as assumed during decoding. We ignore the bottom
+     MW - 1 bits because those are handled by the e = 0 format. */
+  let e = 43 - CountLeadingZeros(length[64..22]);
+  let e0 = e == 0; // de-normal case?
+  let lenMSB = if e0 then length[21] else bitzero; // sample len MW-2 for e0 case
+  Bs : bits(23) = zeros();
+  T : bits(23) = zeros();
+  incE = false;
+  lostSignificantTop = false;
+  lostSignificantBase = false;
+
+  if (e0) then {
+    /* e0 case is easy -- always exact so just extract relevant bits */
+    Bs = truncate(base, 23);
+    T  = truncate(top, 23);
+  } else {
+    /* embedded exp case is trickier */
+
+    /* Extract B and T bits (note we lose 3 bits of each to store the exponent */
+    B20 = truncate(base >> (e + 3), 20);
+    T20 = truncate(top >> (e + 3), 20);
+    
+    /* Find out whether we have lost significant bits of base and top using a
+       mask of bits of that we will lose (including 3 for exp). */
+    maskLo : bits(65) = zero_extend(replicate_bits(0b1, e + 3));
+    z65    : bits(65) = zeros();
+    lostSignificantBase = (base65 & maskLo) != z65;
+    lostSignificantTop = (top & maskLo) != z65;
+
+    if lostSignificantTop then {
+      /* we must increment T to make sure it is still above top even with lost bits
+         it might overflow but if that makes B<T we will spot it on decode and compensate */
+      T20 = T20 + 1;
+    };
+
+    /* Has the length overflowed? We chose e so that the top two bits of len would be 0b01,
+       but either because of incrementing T or losing bits of base it might have grown. */
+    len20 = T20 - B20;
+    if len20[19] then {
+      /* length overflow -- increment E by one and then recalculate 
+         T, B etc accordingly */
+      incE = true;
+
+      lostSignificantBase = lostSignificantBase | B20[0];
+      lostSignificantTop  = lostSignificantTop | T20[0];
+      
+      B20 = truncate(base >> (e + 4), 20);
+      let incT : range(0,1) = if lostSignificantTop then 1 else 0;
+      T20 = truncate(top >> (e + 4), 20) + incT;
+    };
+
+    Bs = B20 @ 0b000;
+    T  = T20 @ 0b000;
+  };
+  let newCap = {cap with address=base, E=to_bits(6, if incE then e + 1 else e ), B=Bs, T=T, lenMSB=lenMSB, internal_e=not(e0)};
+  let exact = not(lostSignificantBase | lostSignificantTop);
+  (exact, newCap)
+}
+
+/*
+This version of setCapBounds was transcribed from Bluespec. It uses some approximations to help pass timing that can result in wider bounds than returned by above version.
+ */
+function setCapBounds_hw(cap, base, top) : (Capability, bits(64), bits(65)) -> (bool, Capability) = {
   /* {cap with base=base; length=(bits(64)) length; offset=0} */
   base66 = 0b00 @ base;
   top66  = 0b0  @ top;
@@ -399,7 +470,7 @@ function setCapBounds(cap, base, top) : (Capability, bits(64), bits(65)) -> (boo
     // NB this differs from smearMSBRight used in bsv when e == 0 but don't think this matters
     let lmask    : bits(66) = zero_extend(replicate_bits(0b1, e + 22));
     // mask which when combined with lmask will give just 18 bits of length (note ~)
-    // XXX strangely this ignores 2 bits of length mantissa. why?
+    // strangely this ignores 2 bits of length mantissa. why?
     let lmaskLo2 : bits(66) = ~(zero_extend(replicate_bits(0b1, e + 5)));
     let lengthMax = (length & lmaskLo2) == (lmask & lmaskLo2);
     if not (lengthMax) then {
@@ -407,7 +478,7 @@ function setCapBounds(cap, base, top) : (Capability, bits(64), bits(65)) -> (boo
       // If top has significant bits we are going to lose then we must round up T by one
       // Mask of bits of base / top that we will lose for e != 0 (including 3 for exp).
       lmaskLo : bits(66) = zero_extend(replicate_bits(0b1, e + 3));
-      lostSignificantTop = ((top66 & lmaskLo) != zeros()) & not(e0);
+      lostSignificantTop = ((top66 & lmaskLo) != zeros());
       // We don't actually use this because we do exact bounds check at end
       // lostSignificantBase = ((base66 & lmaskLo) != zeros()) & not(e0);
       if (lostSignificantTop) then {
