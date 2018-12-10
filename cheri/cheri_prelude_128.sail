@@ -296,8 +296,9 @@ function getCapBounds(c) : Capability -> (uint64, CapLen) = {
   let correction_base = a_top_correction(a3, R3, B3) in
   let correction_top  = a_top_correction(a3, R3, T3) in
   let a_top = (a >> E+23) in
-  let base : bits(64) = truncate((a_top + correction_base) @ c.B @ replicate_bits(0b0, E), 64) in
-  let top  : bits(65) = truncate((a_top + correction_top)  @ c.T @ replicate_bits(0b0, E), 65) in
+  let e_zeros = zeros(E) in
+  let base : bits(64) = truncate((a_top + correction_base) @ c.B @ e_zeros, 64) in
+  let top  : bits(65) = truncate((a_top + correction_top)  @ c.T @ e_zeros, 65) in
   (unsigned(base), unsigned(top))
 }
 
@@ -405,7 +406,7 @@ function setCapBounds(cap, base, top) : (Capability, bits(64), bits(65)) -> (boo
     T20 = truncate(top >> (e + 3), 20);
     
     /* Find out whether we have lost significant bits of base and top using a
-       mask of bits of that we will lose (including 3 for exp). */
+       mask of bits that we will lose (including 3 for exp). */
     maskLo : bits(65) = zero_extend(replicate_bits(0b1, e + 3));
     z65    : bits(65) = zeros();
     lostSignificantBase = (base65 & maskLo) != z65;
