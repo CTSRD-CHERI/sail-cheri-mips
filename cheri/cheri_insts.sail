@@ -607,6 +607,15 @@ function clause execute (CCheckType(cs, cb)) =
     raise_c2_exception(CapEx_TypeViolation, cs)
 }
 
+union clause ast = CCheckTag : (regno)
+function clause execute (CCheckTag (cs)) =
+{
+  checkCP2usable();
+  let cs_val = readCapReg(cs);
+  if not(cs_val.tag) then
+    raise_c2_exception(CapEx_TypeViolation, cs);
+}
+
 union clause ast = CTestSubset : (regno, regno, regno)
 function clause execute (CTestSubset(rd, cb, ct)) =
 {
