@@ -1095,19 +1095,18 @@ function clause execute (CLC(cd, cb, rt, offset, linked)) =
     else
     {
       let (pAddr, suppressTag) = TLBTranslateC(vAddr64, LoadData);
-      let 'cd = unsigned(cd);
-      if (linked) then
+      let (tag, mem) : (bool, CapBits) = if (linked) then
       {
         CP0LLBit  = 0b1;
         CP0LLAddr = pAddr;
-        let (tag, mem) = MEMr_tagged_reserve(pAddr);
-        (*CapRegs[cd]) = memBitsToCapability(tag & cb_val.permit_load_cap & not (suppressTag), mem);
+        MEMr_tagged_reserve(pAddr)
       }
       else
       {
-        let (tag, mem) = MEMr_tagged(pAddr);
-        (*CapRegs[cd]) = memBitsToCapability(tag & cb_val.permit_load_cap & not (suppressTag), mem);
-      }
+        MEMr_tagged(pAddr)
+      };
+      let cap = memBitsToCapability(tag & cb_val.permit_load_cap & not (suppressTag), mem);
+      writeCapReg(cd, cap);
     }
   }
 }
