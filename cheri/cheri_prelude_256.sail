@@ -62,7 +62,7 @@ struct Capability = {
 let null_cap : Capability = struct {
   tag = false,
   padding = zeros(),
-  otype = zeros(),
+  otype = ones(),
   uperms = zeros(),
   perm_reserved12_14 = zeros(),
   permit_set_CID = false,
@@ -86,7 +86,7 @@ let null_cap : Capability = struct {
 let default_cap : Capability = struct {
   tag = true,
   padding = zeros(),
-  otype = zeros(),
+  otype = ones(),
   uperms = ones(),
   perm_reserved12_14 = zeros(),
   permit_set_CID = true,
@@ -225,7 +225,7 @@ THIS(cap) returns a new unsealed capability derived from `cap`. The value of oty
  */
 val unsealCap : Capability -> Capability
 function unsealCap(cap) =
-  {cap with sealed=false, otype=zeros()}
+  {cap with sealed=false, otype=ones()}
 
 /*!
 returns the base of the given capability as an integer in the range $0$ to $2^{64} - 1$.
