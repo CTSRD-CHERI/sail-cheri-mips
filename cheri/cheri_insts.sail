@@ -891,8 +891,8 @@ function clause execute(CJALR(cd, cb, link)) =
   NextInBranchDelay = 0b1;
 }
 
-union clause ast = CLoad : (regno, regno, regno, bits(8), bool, WordType, bool)
-function clause execute (CLoad(rd, cb, rt, offset, signext, width, linked)) =
+union clause ast = CLoad : (regno, regno, regno, bits(8), bool, WordType)
+function clause execute (CLoad(rd, cb, rt, offset, signext, width)) =
 {
   checkCP2usable();
   let cb_val = readCapRegDDC(cb);
@@ -917,14 +917,40 @@ function clause execute (CLoad(rd, cb, rt, offset, signext, width, linked)) =
     else
     {
       let pAddr = TLBTranslate(vAddr64, LoadData);
-      memResult : bits(64) = if (linked) then
-          {
-            CP0LLBit  = 0b1;
-            CP0LLAddr = pAddr;
-            extendLoad(MEMr_reserve_wrapper(pAddr, size), signext)
-          }
-        else
-          extendLoad(MEMr_wrapper(pAddr, size), signext);
+      memResult : bits(64) = extendLoad(MEMr_wrapper(pAddr, size), signext);
+      wGPR(rd) = memResult;
+    }
+  }
+}
+
+union clause ast = CLoadLinked : (regno, regno, bool, WordType)
+function clause execute (CLoadLinked(rd, cb, signext, width)) =
+{
+  checkCP2usable();
+  let cb_val = readCapRegDDC(cb);
+  if not (cb_val.tag) then
+    raise_c2_exception(CapEx_TagViolation, cb)
+  else if cb_val.sealed then
+    raise_c2_exception(CapEx_SealViolation, cb)
+  else if not (cb_val.permit_load) then
+    raise_c2_exception(CapEx_PermitLoadViolation, cb)
+  else
+  {
+    let 'size   = wordWidthBytes(width);
+    let vAddr   = getCapCursor(cb_val);
+    let vAddr64 = to_bits(64, vAddr);
+    if (vAddr + size) > getCapTop(cb_val) then
+      raise_c2_exception(CapEx_LengthViolation, cb)
+    else if vAddr < getCapBase(cb_val) then
+      raise_c2_exception(CapEx_LengthViolation, cb)
+    else if not (isAddressAligned(vAddr64, width)) then
+      SignalExceptionBadAddr(AdEL, vAddr64)
+    else
+    {
+      let pAddr = TLBTranslate(vAddr64, LoadData);
+      let memResult : bits(64) = extendLoad(MEMr_reserve_wrapper(pAddr, size), signext);
+      CP0LLBit  = 0b1;
+      CP0LLAddr = pAddr;
       wGPR(rd) = memResult;
     }
   }
@@ -970,9 +996,8 @@ function clause execute (CLoadTags(rd, cb)) =
   }
 }
 
-union clause ast = CStore : (regno, regno, regno, regno, bits(8), WordType, bool)
-
-function clause execute (CStore(rs, cb, rt, rd, offset, width, conditional)) =
+union clause ast = CStore : (regno, regno, regno, bits(8), WordType)
+function clause execute (CStore(rs, cb, rt, offset, width)) =
 {
   checkCP2usable();
   let cb_val = readCapRegDDC(cb);
@@ -998,34 +1023,60 @@ function clause execute (CStore(rs, cb, rt, rd, offset, width, conditional)) =
     {
       let pAddr  = TLBTranslate(vAddr64, StoreData);
       let rs_val = rGPR(rs);
-      if conditional then
+      match width
       {
-        let success : bool = if (CP0LLBit[0]) then
-            match width
-            {
-              B  => MEMw_conditional_wrapper(pAddr, 1, rs_val[7..0]),
-              H  => MEMw_conditional_wrapper(pAddr, 2, rs_val[15..0]),
-              W  => MEMw_conditional_wrapper(pAddr, 4, rs_val[31..0]),
-              D  => MEMw_conditional_wrapper(pAddr, 8, rs_val)
-            }
-          else
-            false;
-        wGPR(rd) = zero_extend(success);
+        B  => MEMw_wrapper(pAddr, 1) = rs_val[7..0],
+        H  => MEMw_wrapper(pAddr, 2) = rs_val[15..0],
+        W  => MEMw_wrapper(pAddr, 4) = rs_val[31..0],
+        D  => MEMw_wrapper(pAddr, 8) = rs_val
       }
-      else
-        match width
-        {
-          B  => MEMw_wrapper(pAddr, 1) = rs_val[7..0],
-          H  => MEMw_wrapper(pAddr, 2) = rs_val[15..0],
-          W  => MEMw_wrapper(pAddr, 4) = rs_val[31..0],
-          D  => MEMw_wrapper(pAddr, 8) = rs_val
-        }
     }
   }
 }
 
-union clause ast = CSC : (regno, regno, regno, regno, bits(11), bool)
-function clause execute (CSC(cs, cb, rt, rd, offset, conditional)) =
+union clause ast = CStoreConditional : (regno, regno, regno, WordType)
+function clause execute (CStoreConditional(rs, cb, rd, width)) =
+{
+  checkCP2usable();
+  let cb_val = readCapRegDDC(cb);
+  if not (cb_val.tag) then
+    raise_c2_exception(CapEx_TagViolation, cb)
+  else if cb_val.sealed then
+    raise_c2_exception(CapEx_SealViolation, cb)
+  else if not (cb_val.permit_store) then
+    raise_c2_exception(CapEx_PermitStoreViolation, cb)
+  else
+  {
+    let size    = wordWidthBytes(width);
+    let vAddr   = getCapCursor(cb_val);
+    let vAddr64 = to_bits(64, vAddr);
+    if (vAddr + size) > getCapTop(cb_val) then
+      raise_c2_exception(CapEx_LengthViolation, cb)
+    else if vAddr < getCapBase(cb_val) then
+      raise_c2_exception(CapEx_LengthViolation, cb)
+    else if not (isAddressAligned(vAddr64, width)) then
+      SignalExceptionBadAddr(AdES, vAddr64)
+    else
+    {
+      let pAddr  = TLBTranslate(vAddr64, StoreData);
+      let rs_val = rGPR(rs);
+      let success : bool = if (CP0LLBit[0]) then
+          match width
+          {
+            B  => MEMw_conditional_wrapper(pAddr, 1, rs_val[7..0]),
+            H  => MEMw_conditional_wrapper(pAddr, 2, rs_val[15..0]),
+            W  => MEMw_conditional_wrapper(pAddr, 4, rs_val[31..0]),
+            D  => MEMw_conditional_wrapper(pAddr, 8, rs_val)
+          }
+        else
+          false;
+      wGPR(rd) = zero_extend(success);
+    }
+  }
+}
+
+union clause ast = CSC : (regno, regno, regno, bits(11))
+function clause execute (CSC(cs, cb, rt, offset)) =
 {
   checkCP2usable();
   let cs_val = readCapReg(cs);
@@ -1042,9 +1093,9 @@ function clause execute (CSC(cs, cb, rt, rd, offset, conditional)) =
     raise_c2_exception(CapEx_PermitStoreLocalCapViolation, cb)
   else
   {
-    let cursor = getCapCursor(cb_val);
-    let vAddr  = (cursor + unsigned(rGPR(rt)) + 16 * signed(offset)) % pow2(64);
-    let vAddr64= to_bits(64, vAddr);
+    let cursor  = getCapCursor(cb_val);
+    let vAddr   = (cursor + unsigned(rGPR(rt)) + 16 * signed(offset)) % pow2(64);
+    let vAddr64 = to_bits(64, vAddr);
     if (vAddr + cap_size) > getCapTop(cb_val) then
       raise_c2_exception(CapEx_LengthViolation, cb)
     else if vAddr < getCapBase(cb_val) then
@@ -1056,7 +1107,44 @@ function clause execute (CSC(cs, cb, rt, rd, offset, conditional)) =
       let (pAddr, noStoreCap) = TLBTranslateC(vAddr64, StoreData);
       if cs_val.tag & noStoreCap then
         raise_c2_exception(CapEx_TLBNoStoreCap, cs)
-      else if conditional then
+      else 
+        MEMw_tagged(pAddr, cs_val.tag, capToMemBits(cs_val));
+    }
+  }
+}
+
+union clause ast = CSCC : (regno, regno, regno)
+function clause execute (CSCC(cs, cb, rd)) =
+{
+  checkCP2usable();
+  let cs_val = readCapReg(cs);
+  let cb_val = readCapRegDDC(cb);
+  if not (cb_val.tag) then
+    raise_c2_exception(CapEx_TagViolation, cb)
+  else if cb_val.sealed then
+    raise_c2_exception(CapEx_SealViolation, cb)
+  else if not (cb_val.permit_store) then
+    raise_c2_exception(CapEx_PermitStoreViolation, cb)
+  else if not (cb_val.permit_store_cap) then
+    raise_c2_exception(CapEx_PermitStoreCapViolation, cb)
+  else if not (cb_val.permit_store_local_cap) & (cs_val.tag) & not (cs_val.global) then
+    raise_c2_exception(CapEx_PermitStoreLocalCapViolation, cb)
+  else
+  {
+    let vAddr   = getCapCursor(cb_val);
+    let vAddr64 = to_bits(64, vAddr);
+    if (vAddr + cap_size) > getCapTop(cb_val) then
+      raise_c2_exception(CapEx_LengthViolation, cb)
+    else if vAddr < getCapBase(cb_val) then
+      raise_c2_exception(CapEx_LengthViolation, cb)
+    else if (vAddr % cap_size) != 0 then
+      SignalExceptionBadAddr(AdES, vAddr64)
+    else
+    {
+      let (pAddr, noStoreCap) = TLBTranslateC(vAddr64, StoreData);
+      if cs_val.tag & noStoreCap then
+        raise_c2_exception(CapEx_TLBNoStoreCap, cs)
+      else
       {
         let success = if (CP0LLBit[0]) then
             MEMw_tagged_conditional(pAddr, cs_val.tag, capToMemBits(cs_val))
@@ -1064,14 +1152,12 @@ function clause execute (CSC(cs, cb, rt, rd, offset, conditional)) =
             false;
         wGPR(rd) = zero_extend(success);
       }
-      else
-        MEMw_tagged(pAddr, cs_val.tag, capToMemBits(cs_val));
     }
   }
 }
 
-union clause ast = CLC : (regno, regno, regno, bits(16), bool)
-function clause execute (CLC(cd, cb, rt, offset, linked)) =  
+union clause ast = CLC : (regno, regno, regno, bits(11))
+function clause execute (CLC(cd, cb, rt, offset)) =  
 {
   checkCP2usable();
   let cb_val = readCapRegDDC(cb);
@@ -1083,9 +1169,9 @@ function clause execute (CLC(cd, cb, rt, offset, linked)) =
     raise_c2_exception(CapEx_PermitLoadViolation, cb)
   else
   {
-    let cursor = getCapCursor(cb_val);
-    let vAddr  = (cursor + unsigned(rGPR(rt)) + 16 * signed(offset)) % pow2(64);
-    let vAddr64= to_bits(64, vAddr);
+    let cursor  = getCapCursor(cb_val);
+    let vAddr   = (cursor + unsigned(rGPR(rt)) + 16 * signed(offset)) % pow2(64);
+    let vAddr64 = to_bits(64, vAddr);
     if (vAddr + cap_size) > getCapTop(cb_val) then
       raise_c2_exception(CapEx_LengthViolation, cb)
     else if vAddr < getCapBase(cb_val) then
@@ -1095,18 +1181,74 @@ function clause execute (CLC(cd, cb, rt, offset, linked)) =
     else
     {
       let (pAddr, suppressTag) = TLBTranslateC(vAddr64, LoadData);
-      let (tag, mem) : (bool, CapBits) = if (linked) then
-      {
-        CP0LLBit  = 0b1;
-        CP0LLAddr = pAddr;
-        MEMr_tagged_reserve(pAddr)
-      }
-      else
-      {
-        MEMr_tagged(pAddr)
-      };
+      let (tag, mem) = MEMr_tagged(pAddr);
       let cap = memBitsToCapability(tag & cb_val.permit_load_cap & not (suppressTag), mem);
       writeCapReg(cd, cap);
+    }
+  }
+}
+
+union clause ast = CLCBI : (regno, regno, bits(16))
+function clause execute (CLCBI(cd, cb, offset)) =  
+{
+  checkCP2usable();
+  let cb_val = readCapRegDDC(cb);
+  if not (cb_val.tag) then
+    raise_c2_exception(CapEx_TagViolation, cb)
+  else if cb_val.sealed then
+    raise_c2_exception(CapEx_SealViolation, cb)
+  else if not (cb_val.permit_load) then
+    raise_c2_exception(CapEx_PermitLoadViolation, cb)
+  else
+  {
+    let cursor  = getCapCursor(cb_val);
+    let vAddr   = (cursor + 16 * signed(offset)) % pow2(64);
+    let vAddr64 = to_bits(64, vAddr);
+    if (vAddr + cap_size) > getCapTop(cb_val) then
+      raise_c2_exception(CapEx_LengthViolation, cb)
+    else if vAddr < getCapBase(cb_val) then
+      raise_c2_exception(CapEx_LengthViolation, cb)
+    else if (vAddr % cap_size) != 0 then
+      SignalExceptionBadAddr(AdEL, vAddr64)
+    else
+    {
+      let (pAddr, suppressTag) = TLBTranslateC(vAddr64, LoadData);
+      let (tag, mem) = MEMr_tagged(pAddr);
+      let cap = memBitsToCapability(tag & cb_val.permit_load_cap & not (suppressTag), mem);
+      writeCapReg(cd, cap);
+    }
+  }
+}
+
+union clause ast = CLLC : (regno, regno)
+function clause execute (CLLC(cd, cb)) =  
+{
+  checkCP2usable();
+  let cb_val = readCapRegDDC(cb);
+  if not (cb_val.tag) then
+    raise_c2_exception(CapEx_TagViolation, cb)
+  else if cb_val.sealed then
+    raise_c2_exception(CapEx_SealViolation, cb)
+  else if not (cb_val.permit_load) then
+    raise_c2_exception(CapEx_PermitLoadViolation, cb)
+  else
+  {
+    let vAddr   = getCapCursor(cb_val);
+    let vAddr64 = to_bits(64, vAddr);
+    if (vAddr + cap_size) > getCapTop(cb_val) then
+      raise_c2_exception(CapEx_LengthViolation, cb)
+    else if vAddr < getCapBase(cb_val) then
+      raise_c2_exception(CapEx_LengthViolation, cb)
+    else if (vAddr % cap_size) != 0 then
+      SignalExceptionBadAddr(AdEL, vAddr64)
+    else
+    {
+      let (pAddr, suppressTag) = TLBTranslateC(vAddr64, LoadData);
+      let (tag, mem) : (bool, CapBits) = MEMr_tagged_reserve(pAddr);
+      let cap = memBitsToCapability(tag & cb_val.permit_load_cap & not (suppressTag), mem);
+      writeCapReg(cd, cap);
+      CP0LLBit  = 0b1;
+      CP0LLAddr = pAddr;
     }
   }
 }
@@ -1241,37 +1383,37 @@ function clause decode (0b010010 @ 0b01111 @ 0b00011 @ imm : bits(16)) = Some(Cl
 function clause decode (0b010010 @ 0b10011 @ cd : regno @ cb : regno @ imm : bits(11)) = Some(CIncOffsetImmediate(cd, cb, imm))
 function clause decode (0b010010 @ 0b10100 @ cd : regno @ cb : regno @ imm : bits(11)) = Some(CSetBoundsImmediate(cd, cb, imm))
 
-function clause decode (0b110010 @ rd : regno @ cb : regno@ rt : regno @ offset : bits(8) @ 0b0 @ 0b00) = Some(CLoad(rd, cb, rt, offset, false, B, false)) /* CLBU */
-function clause decode (0b110010 @ rd : regno @ cb : regno@ rt : regno @ offset : bits(8) @ 0b1 @ 0b00) = Some(CLoad(rd, cb, rt, offset, true,  B, false)) /* CLB */
-function clause decode (0b110010 @ rd : regno @ cb : regno@ rt : regno @ offset : bits(8) @ 0b0 @ 0b01) = Some(CLoad(rd, cb, rt, offset, false, H, false)) /* CLHU */
-function clause decode (0b110010 @ rd : regno @ cb : regno@ rt : regno @ offset : bits(8) @ 0b1 @ 0b01) = Some(CLoad(rd, cb, rt, offset, true,  H, false)) /* CLH */
-function clause decode (0b110010 @ rd : regno @ cb : regno@ rt : regno @ offset : bits(8) @ 0b0 @ 0b10) = Some(CLoad(rd, cb, rt, offset, false, W, false)) /* CLWU */
-function clause decode (0b110010 @ rd : regno @ cb : regno@ rt : regno @ offset : bits(8) @ 0b1 @ 0b10) = Some(CLoad(rd, cb, rt, offset, true,  W, false)) /* CLW */
-function clause decode (0b110010 @ rd : regno @ cb : regno@ rt : regno @ offset : bits(8) @ 0b0 @ 0b11) = Some(CLoad(rd, cb, rt, offset, false, D, false)) /* CLD */
+function clause decode (0b110010 @ rd : regno @ cb : regno@ rt : regno @ offset : bits(8) @ 0b0 @ 0b00) = Some(CLoad(rd, cb, rt, offset, false, B)) /* CLBU */
+function clause decode (0b110010 @ rd : regno @ cb : regno@ rt : regno @ offset : bits(8) @ 0b1 @ 0b00) = Some(CLoad(rd, cb, rt, offset, true,  B)) /* CLB */
+function clause decode (0b110010 @ rd : regno @ cb : regno@ rt : regno @ offset : bits(8) @ 0b0 @ 0b01) = Some(CLoad(rd, cb, rt, offset, false, H)) /* CLHU */
+function clause decode (0b110010 @ rd : regno @ cb : regno@ rt : regno @ offset : bits(8) @ 0b1 @ 0b01) = Some(CLoad(rd, cb, rt, offset, true,  H)) /* CLH */
+function clause decode (0b110010 @ rd : regno @ cb : regno@ rt : regno @ offset : bits(8) @ 0b0 @ 0b10) = Some(CLoad(rd, cb, rt, offset, false, W)) /* CLWU */
+function clause decode (0b110010 @ rd : regno @ cb : regno@ rt : regno @ offset : bits(8) @ 0b1 @ 0b10) = Some(CLoad(rd, cb, rt, offset, true,  W)) /* CLW */
+function clause decode (0b110010 @ rd : regno @ cb : regno@ rt : regno @ offset : bits(8) @ 0b0 @ 0b11) = Some(CLoad(rd, cb, rt, offset, false, D)) /* CLD */
 
-function clause decode (0b010010 @ 0b10000 @ rd : regno @ cb : regno @ 0b00000001 @ 0b0 @ 0b00) = Some(CLoad(rd, cb, 0b00000, 0b00000000, false, B, true)) /* CLLBU */
-function clause decode (0b010010 @ 0b10000 @ rd : regno @ cb : regno @ 0b00000001 @ 0b1 @ 0b00) = Some(CLoad(rd, cb, 0b00000, 0b00000000, true,  B, true)) /* CLLB  */
-function clause decode (0b010010 @ 0b10000 @ rd : regno @ cb : regno @ 0b00000001 @ 0b0 @ 0b01) = Some(CLoad(rd, cb, 0b00000, 0b00000000, false, H, true)) /* CLLHU */
-function clause decode (0b010010 @ 0b10000 @ rd : regno @ cb : regno @ 0b00000001 @ 0b1 @ 0b01) = Some(CLoad(rd, cb, 0b00000, 0b00000000, true,  H, true)) /* CLLH  */
-function clause decode (0b010010 @ 0b10000 @ rd : regno @ cb : regno @ 0b00000001 @ 0b0 @ 0b10) = Some(CLoad(rd, cb, 0b00000, 0b00000000, false, W, true)) /* CLLWU */
-function clause decode (0b010010 @ 0b10000 @ rd : regno @ cb : regno @ 0b00000001 @ 0b1 @ 0b10) = Some(CLoad(rd, cb, 0b00000, 0b00000000, true,  W, true)) /* CLLW  */
-function clause decode (0b010010 @ 0b10000 @ rd : regno @ cb : regno @ 0b00000001 @ 0b0 @ 0b11) = Some(CLoad(rd, cb, 0b00000, 0b00000000, false, D, true)) /* CLLD  */
+function clause decode (0b010010 @ 0b10000 @ rd : regno @ cb : regno @ 0b00000001 @ 0b0 @ 0b00) = Some(CLoadLinked(rd, cb, false, B)) /* CLLBU */
+function clause decode (0b010010 @ 0b10000 @ rd : regno @ cb : regno @ 0b00000001 @ 0b1 @ 0b00) = Some(CLoadLinked(rd, cb, true,  B)) /* CLLB  */
+function clause decode (0b010010 @ 0b10000 @ rd : regno @ cb : regno @ 0b00000001 @ 0b0 @ 0b01) = Some(CLoadLinked(rd, cb, false, H)) /* CLLHU */
+function clause decode (0b010010 @ 0b10000 @ rd : regno @ cb : regno @ 0b00000001 @ 0b1 @ 0b01) = Some(CLoadLinked(rd, cb, true,  H)) /* CLLH  */
+function clause decode (0b010010 @ 0b10000 @ rd : regno @ cb : regno @ 0b00000001 @ 0b0 @ 0b10) = Some(CLoadLinked(rd, cb, false, W)) /* CLLWU */
+function clause decode (0b010010 @ 0b10000 @ rd : regno @ cb : regno @ 0b00000001 @ 0b1 @ 0b10) = Some(CLoadLinked(rd, cb, true,  W)) /* CLLW  */
+function clause decode (0b010010 @ 0b10000 @ rd : regno @ cb : regno @ 0b00000001 @ 0b0 @ 0b11) = Some(CLoadLinked(rd, cb, false, D)) /* CLLD  */
 
-function clause decode (0b111010 @ rs : regno @ cb : regno@ rt : regno @ offset : bits(8) @ 0b0 @ 0b00) = Some(CStore(rs, cb, rt, 0b00000, offset, B, false)) /* CSB */
-function clause decode (0b111010 @ rs : regno @ cb : regno@ rt : regno @ offset : bits(8) @ 0b0 @ 0b01) = Some(CStore(rs, cb, rt, 0b00000, offset, H, false)) /* CSH */
-function clause decode (0b111010 @ rs : regno @ cb : regno@ rt : regno @ offset : bits(8) @ 0b0 @ 0b10) = Some(CStore(rs, cb, rt, 0b00000, offset, W, false)) /* CSW */
-function clause decode (0b111010 @ rs : regno @ cb : regno@ rt : regno @ offset : bits(8) @ 0b0 @ 0b11) = Some(CStore(rs, cb, rt, 0b00000, offset, D, false)) /* CSD */
+function clause decode (0b111010 @ rs : regno @ cb : regno@ rt : regno @ offset : bits(8) @ 0b0 @ 0b00) = Some(CStore(rs, cb, rt, offset, B)) /* CSB */
+function clause decode (0b111010 @ rs : regno @ cb : regno@ rt : regno @ offset : bits(8) @ 0b0 @ 0b01) = Some(CStore(rs, cb, rt, offset, H)) /* CSH */
+function clause decode (0b111010 @ rs : regno @ cb : regno@ rt : regno @ offset : bits(8) @ 0b0 @ 0b10) = Some(CStore(rs, cb, rt, offset, W)) /* CSW */
+function clause decode (0b111010 @ rs : regno @ cb : regno@ rt : regno @ offset : bits(8) @ 0b0 @ 0b11) = Some(CStore(rs, cb, rt, offset, D)) /* CSD */
 
-function clause decode (0b010010 @ 0b10000 @ rs : regno @ cb : regno @ rd : regno @ 0b0000 @ 0b00) = Some(CStore(rs, cb, 0b00000, rd, 0b00000000, B, true)) /* CSCB */
-function clause decode (0b010010 @ 0b10000 @ rs : regno @ cb : regno @ rd : regno @ 0b0000 @ 0b01) = Some(CStore(rs, cb, 0b00000, rd, 0b00000000, H, true)) /* CSCH */
-function clause decode (0b010010 @ 0b10000 @ rs : regno @ cb : regno @ rd : regno @ 0b0000 @ 0b10) = Some(CStore(rs, cb, 0b00000, rd, 0b00000000, W, true)) /* CSCW */
-function clause decode (0b010010 @ 0b10000 @ rs : regno @ cb : regno @ rd : regno @ 0b0000 @ 0b11) = Some(CStore(rs, cb, 0b00000, rd, 0b00000000, D, true)) /* CSCD */
+function clause decode (0b010010 @ 0b10000 @ rs : regno @ cb : regno @ rd : regno @ 0b0000 @ 0b00) = Some(CStoreConditional(rs, cb, rd, B)) /* CSCB */
+function clause decode (0b010010 @ 0b10000 @ rs : regno @ cb : regno @ rd : regno @ 0b0000 @ 0b01) = Some(CStoreConditional(rs, cb, rd, H)) /* CSCH */
+function clause decode (0b010010 @ 0b10000 @ rs : regno @ cb : regno @ rd : regno @ 0b0000 @ 0b10) = Some(CStoreConditional(rs, cb, rd, W)) /* CSCW */
+function clause decode (0b010010 @ 0b10000 @ rs : regno @ cb : regno @ rd : regno @ 0b0000 @ 0b11) = Some(CStoreConditional(rs, cb, rd, D)) /* CSCD */
 
-function clause decode (0b111110 @ cs : regno @ cb : regno@ rt : regno @ offset : bits(11)) = Some(CSC(cs, cb, rt, 0b00000, offset, false))
-function clause decode (0b010010 @ 0b10000 @ cs : regno @ cb : regno@ rd : regno @ 0b00 @ 0b0111) = Some(CSC(cs, cb, 0b00000, rd, 0b00000000000, true))     /* CSCC */
+function clause decode (0b111110 @ cs : regno @ cb : regno@ rt : regno @ offset : bits(11)) = Some(CSC(cs, cb, rt, offset))
+function clause decode (0b010010 @ 0b10000 @ cs : regno @ cb : regno@ rd : regno @ 0b00 @ 0b0111) = Some(CSCC(cs, cb, rd))
 
-function clause decode (0b110110 @ cd : regno @ cb : regno @ rt : regno @ offset : bits(11)) = Some(CLC(cd, cb, rt, sign_extend(offset), false))            /* CLC */
-function clause decode (0b010010 @ 0b10000 @ cd : regno @ cb : regno@ 0b0000000 @ 0b1111) = Some(CLC(cd, cb, 0b00000, 0x0000, true))                        /* CLLC */
-function clause decode (0b011101 @ cd : regno @ cb : regno @ offset : bits(16)) = Some(CLC(cd, cb, 0b00000, offset, false))                                 /* CLCBI */
+function clause decode (0b110110 @ cd : regno @ cb : regno @ rt : regno @ offset : bits(11)) = Some(CLC(cd, cb, rt, offset))
+function clause decode (0b010010 @ 0b10000 @ cd : regno @ cb : regno@ 0b0000000 @ 0b1111) = Some(CLLC(cd, cb))
+function clause decode (0b011101 @ cd : regno @ cb : regno @ offset : bits(16)) = Some(CLCBI(cd, cb, offset))
 
 function clause decode (0b010010 @ 0b00100 @ rt : regno @ 0x0006) = Some(C2Dump(rt))
