@@ -128,11 +128,11 @@ cheri.v cheri_types.v: $(CHERI_SAILS)
 	$(SAIL) -coq -o cheri -coq_lib mips_extras -undefined_gen -memo_z3 -dcoq_undef_axioms $^
 
 CHERI_COQ = cheri_types.v mips_extras.v cheri.v
-COQ_LIBS = -R ../../bbv/theories bbv -R ../lib/coq Sail
+COQ_LIBS = -R $(SAIL_DIR)/../bbv/theories bbv -R $(SAIL_DIR)/lib/coq Sail -R ../mips ''
 
 %.vo: %.v
 	coqc $(COQ_LIBS) $<
-cheri.vo: cheri_types.vo mips_extras.vo
+cheri.vo: cheri_types.vo ../mips/mips_extras.vo
 
 CHERI_CC_QTEST_BUILD=cheri_cc_qtest_build
 
