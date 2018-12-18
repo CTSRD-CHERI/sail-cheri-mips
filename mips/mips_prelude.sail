@@ -658,7 +658,7 @@ function isAddressAligned (addr, wordType) =
   let a = unsigned(addr) in
   a / alignment_width == (a + wordWidthBytes(wordType) - 1) / alignment_width
 
-val reverse_endianness = "reverse_endianness" : forall 'W, 'W >= 1. bits(8 * 'W) -> bits(8 * 'W) effect pure
+val reverse_endianness = "reverse_endianness" : forall 'n, mod('n, 8) == 0 & 'n >= 8. bits('n) -> bits('n) effect pure
 
 val extendLoad : forall 'sz, 'sz <= 64 .  (bits('sz), bool) -> bits(64) effect pure
 function extendLoad(memResult, sign) = {

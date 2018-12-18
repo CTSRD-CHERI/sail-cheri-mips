@@ -103,7 +103,7 @@ cheri_no_tlb.lem: $(CHERI_NO_TLB_SAILS)
 cheri_no_tlb_types.lem: cheri_no_tlb.lem
 
 cheri.lem: $(CHERI_MONO_SAILS) $(CHERI_MAIN)
-	$(SAIL) -lem -o cheri -auto_mono -mono_rewrites -lem_mwords -lem_lib Mips_extras -undefined_gen -memo_z3 $^
+	$(SAIL) -lem -o cheri -auto_mono -mono_rewrites -dmono_continue -lem_mwords -lem_lib Mips_extras -undefined_gen -memo_z3 $^
 cheri_types.lem: cheri.lem
 
 cheri128_no_tlb.lem: $(CHERI128_NO_TLB_SAILS)
