@@ -40,7 +40,8 @@ struct Capability = {
   padding                 : bits(8) ,
   otype                   : bits(24),
   uperms                  : bits(16),
-  perm_reserved11_14      : bits(4) ,
+  perm_reserved12_14      : bits(3) ,
+  permit_set_CID          : bool    ,
   access_system_regs      : bool    ,
   permit_unseal           : bool    ,
   permit_ccall            : bool    ,
@@ -63,7 +64,8 @@ let null_cap : Capability = struct {
   padding = zeros(),
   otype = zeros(),
   uperms = zeros(),
-  perm_reserved11_14 = zeros(),
+  perm_reserved12_14 = zeros(),
+  permit_set_CID = false,
   access_system_regs = false,
   permit_unseal = false,
   permit_ccall = false,
@@ -86,7 +88,8 @@ let default_cap : Capability = struct {
   padding = zeros(),
   otype = zeros(),
   uperms = ones(),
-  perm_reserved11_14 = zeros(),
+  perm_reserved12_14 = zeros(),
+  permit_set_CID = true,
   access_system_regs = true,
   permit_unseal = true,
   permit_ccall = true,
@@ -112,7 +115,8 @@ function capBitsToCapability(tag, capBits) : (bool, CapBits) -> Capability =
     padding                    = capBits[255..248],
     otype                      = capBits[247..224],
     uperms                     = capBits[223..208],
-    perm_reserved11_14         = capBits[207..204],
+    perm_reserved12_14         = capBits[207..205],
+    permit_set_CID             = capBits[204],
     access_system_regs         = capBits[203],
     permit_unseal              = capBits[202],
     permit_ccall               = capBits[201],
@@ -137,7 +141,8 @@ val getCapPerms : Capability -> bits(31)
 function getCapPerms(cap) = 
   (
     cap.uperms
-      @ cap.perm_reserved11_14
+      @ cap.perm_reserved12_14
+      @ cap.permit_set_CID
       @ cap.access_system_regs
       @ cap.permit_unseal
       @ cap.permit_ccall
@@ -193,7 +198,8 @@ val setCapPerms : (Capability, bits(31)) -> Capability
 function setCapPerms(cap, perms) =
     { cap with
       uperms                 = perms[30..15],
-      /* perm_reserved11_14     = perms[14..11], XXX should allow to set? only affects cbuildcap. */
+      /* perm_reserved12_14     = perms[14..12], XXX should allow to set? only affects cbuildcap. */
+      permit_set_CID         = perms[11],
       access_system_regs     = perms[10],
       permit_unseal          = perms[9],
       permit_ccall           = perms[8],

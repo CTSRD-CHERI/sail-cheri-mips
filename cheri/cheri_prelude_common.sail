@@ -204,7 +204,8 @@ enum CapEx = {
   CapEx_AccessSystemRegsViolation,
   CapEx_PermitCCallViolation,
   CapEx_AccessCCallIDCViolation,
-  CapEx_PermitUnsealViolation
+  CapEx_PermitUnsealViolation,
+  CapEx_PermitSetCIDViolation
 }
 
 function CapExCode(ex) : CapEx -> bits(8)=
@@ -231,7 +232,8 @@ function CapExCode(ex) : CapEx -> bits(8)=
     CapEx_AccessSystemRegsViolation     => 0x18,
     CapEx_PermitCCallViolation          => 0x19,
     CapEx_AccessCCallIDCViolation       => 0x1a,
-    CapEx_PermitUnsealViolation         => 0x1b
+    CapEx_PermitUnsealViolation         => 0x1b,
+    CapEx_PermitSetCIDViolation         => 0x1c
   }
 
 function string_of_capex (ex) : CapEx -> string = 
@@ -258,7 +260,8 @@ function string_of_capex (ex) : CapEx -> string =
     CapEx_AccessSystemRegsViolation     => "AccessSystemRegsViolation"   ,
     CapEx_PermitCCallViolation          => "PermitCCallViolation"        ,
     CapEx_AccessCCallIDCViolation       => "AccessCCallIDCViolation"     ,
-    CapEx_PermitUnsealViolation         => "PermitUnsealViolation"
+    CapEx_PermitUnsealViolation         => "PermitUnsealViolation"       ,
+    CapEx_PermitSetCIDViolation         => "PermitSetCIDViolation"
   }
 
 bitfield CapCauseReg : bits(16) = {
@@ -267,6 +270,7 @@ bitfield CapCauseReg : bits(16) = {
 }
 
 register CapCause : CapCauseReg
+register CID : bits(64)
 
 /*!
 THIS executes a branch to the given capability, replacing PCC and taking the new PC from the offset field. Note that on MIPS the new PCC does not take effect until after the branch delay slot.

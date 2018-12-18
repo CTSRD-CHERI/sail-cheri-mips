@@ -142,11 +142,41 @@ function clause execute (CSetCause(rt)) =
   if not (pcc_access_system_regs ()) then
     raise_c2_exception_noreg(CapEx_AccessSystemRegsViolation)
   else
-    {
-      let rt_val = rGPR(rt);
-      CapCause->ExcCode() = rt_val[15..8];
-      CapCause->RegNum()  = rt_val[7..0];
-    }
+  {
+    let rt_val = rGPR(rt);
+    CapCause->ExcCode() = rt_val[15..8];
+    CapCause->RegNum()  = rt_val[7..0];
+  }
+}
+
+union clause ast = CGetCID : regno
+function clause execute (CGetCID(rd)) = 
+{
+  checkCP2usable();
+  wGPR(rd) = CID;
+}
+
+union clause ast = CSetCID : regno
+function clause execute (CSetCID(cb)) = 
+{
+  checkCP2usable();
+  let cb_val = readCapReg(cb);
+  if not (cb_val.tag) then
+    raise_c2_exception(CapEx_TagViolation, cb)
+  else if cb_val.sealed then
+    raise_c2_exception(CapEx_SealViolation, cb)
+  else if not (cb_val.permit_set_CID) then
+    raise_c2_exception(CapEx_PermitSetCIDViolation, cb)
+  else
+  {
+    let addr = getCapCursor(cb_val);
+    if addr < getCapBase(cb_val) then
+      raise_c2_exception(CapEx_LengthViolation, cb)
+    else if addr >= getCapTop(cb_val) then
+      raise_c2_exception(CapEx_LengthViolation, cb)
+    else
+      CID = to_bits(64, addr);
+  }
 }
 
 union clause ast = CReadHwr : (regno, regno)
@@ -1307,6 +1337,8 @@ function clause decode (0b010010 @ 0b00000 @ rd : regno @    0b00001 @    0b1111
 function clause decode (0b010010 @ 0b00000 @ rs : regno @    0b00010 @    0b11111 @ 0b111111) = Some(CSetCause(rs))
 function clause decode (0b010010 @ 0b00000 @ cd : regno @    0b00000 @    0b11111 @ 0b111111) = Some(CGetPCC(cd))
 function clause decode (0b010010 @ 0b00000 @ cb : regno @    0b00011 @    0b11111 @ 0b111111) = Some(CJALR(0b00000, cb, false)) /* CJR */
+function clause decode (0b010010 @ 0b00000 @ rd : regno @    0b00100 @    0b11111 @ 0b111111) = Some(CGetCID(rd))
+function clause decode (0b010010 @ 0b00000 @ cb : regno @    0b00101 @    0b11111 @ 0b111111) = Some(CSetCID(cb))
 
 /* Two arg */
 function clause decode (0b010010 @ 0b00000 @ cs : regno @ rt : regno @    0b01000 @ 0b111111) = Some(CCheckPerm(cs, rt))

@@ -43,6 +43,7 @@ populated by capBitsToCapability
 struct Capability = {
   tag                    : bool    ,
   uperms                 : bits(4) ,
+  permit_set_CID         : bool    ,
   access_system_regs     : bool    ,
   permit_unseal          : bool    ,
   permit_ccall           : bool    ,
@@ -54,7 +55,7 @@ struct Capability = {
   permit_load            : bool    ,
   permit_execute         : bool    ,
   global                 : bool    ,
-  reserved               : bits(3) ,
+  reserved               : bits(2) ,
   internal_e             : bool    ,
   E                      : bits(6) ,
   lenMSB                 : bit     ,
@@ -72,6 +73,7 @@ let resetT = 0b010 @ 0x00000 /* bit 22 set */
 let null_cap : Capability = struct {
   tag                    = false,
   uperms                 = zeros(),
+  permit_set_CID         = false,
   access_system_regs     = false,
   permit_unseal          = false,
   permit_ccall           = false,
@@ -97,6 +99,7 @@ let null_cap : Capability = struct {
 let default_cap : Capability = struct {
   tag                    = true,
   uperms                 = ones(),
+  permit_set_CID         = true,
   access_system_regs     = true,
   permit_unseal          = true,
   permit_ccall           = true,
@@ -165,18 +168,19 @@ function capBitsToCapability(t, c) : (bool, CapBits) -> Capability = {
   return struct {
     tag                    = t,
     uperms                 = c[127..124],
-    access_system_regs     = c[123],
-    permit_unseal          = c[122],
-    permit_ccall           = c[121],
-    permit_seal            = c[120],
-    permit_store_local_cap = c[119],
-    permit_store_cap       = c[118],
-    permit_load_cap        = c[117],
-    permit_store           = c[116],
-    permit_load            = c[115],
-    permit_execute         = c[114],
-    global                 = c[113],
-    reserved               = c[112..110],
+    permit_set_CID         = c[123],
+    access_system_regs     = c[122],
+    permit_unseal          = c[121],
+    permit_ccall           = c[120],
+    permit_seal            = c[119],
+    permit_store_local_cap = c[118],
+    permit_store_cap       = c[117],
+    permit_load_cap        = c[116],
+    permit_store           = c[115],
+    permit_load            = c[114],
+    permit_execute         = c[113],
+    global                 = c[112],
+    reserved               = c[111..110],
     internal_e             = internal_exponent,
     E                      = E,
     lenMSB                 = lenMSB,
@@ -188,8 +192,9 @@ function capBitsToCapability(t, c) : (bool, CapBits) -> Capability = {
   }
 }
 
-function getCapHardPerms(cap) : Capability -> bits(11) =
-   (cap.access_system_regs
+function getCapHardPerms(cap) : Capability -> bits(12) =
+   (cap.permit_set_CID
+  @ cap.access_system_regs
   @ cap.permit_unseal
   @ cap.permit_ccall
   @ cap.permit_seal
@@ -257,7 +262,8 @@ function getCapPerms(cap) : Capability -> bits(31) =
 function setCapPerms(cap, perms) : (Capability, bits(31)) -> Capability =
     { cap with
       uperms                 = perms[18..15],
-      /* 14..11 reserved -- ignore */
+      /* 14..12 reserved -- ignore */
+      permit_set_CID         = perms[11],
       access_system_regs     = perms[10],
       permit_unseal          = perms[9],
       permit_ccall           = perms[8],
