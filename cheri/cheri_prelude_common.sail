@@ -596,6 +596,7 @@ function capToString (cap, fixlen) = {
          len = getCapLength(cap);
          /* When dumping caps at end of test we cap length at 64 bits for compatibility with test suite, when tracing we print the actual value */
          len_str = if fixlen then BitStr(to_bits(64, min(len, MAX(64)))) else BitStr(to_bits(68, len));
+         let otype24 : bits(24) = if signed(cap.otype) == -1 then 0x000000 else zero_extend(cap.otype);
          concat_str(" t:",
          concat_str(if cap.tag then "1" else "0",
          concat_str(" s:",
@@ -603,7 +604,7 @@ function capToString (cap, fixlen) = {
          concat_str(" perms:",
          concat_str(BitStr(0b0 @ getCapPerms(cap)),
          concat_str(" type:",
-         concat_str(BitStr(cap.otype),
+         concat_str(BitStr(otype24),
          concat_str(" offset:",
          concat_str(BitStr(to_bits(64, getCapOffset(cap))),
          concat_str(" base:",

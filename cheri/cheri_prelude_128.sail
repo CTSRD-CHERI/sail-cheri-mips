@@ -55,20 +55,19 @@ struct Capability = {
   permit_load            : bool    ,
   permit_execute         : bool    ,
   global                 : bool    ,
-  reserved               : bits(2) ,
+  reserved               : bits(3) ,
   internal_e             : bool    ,
   E                      : bits(6) ,
-  lenMSB                 : bit     ,
   sealed                 : bool    ,
-  B                      : bits(23),
-  T                      : bits(23),
-  otype                  : bits(24),
+  B                      : bits(14),
+  T                      : bits(14),
+  otype                  : bits(18),
   address                : bits(64)
 }
 
-/* Reset E and T calculated to make top 2**65. */
-let resetE = 0b101011 /* 43 */
-let resetT = 0b010 @ 0x00000 /* bit 22 set */
+/* Reset E and T calculated to make top 2**64. */
+let resetE = to_bits(6, 52)
+let resetT = 0b01 @ 0x000 /* bit 12 set */
 
 let null_cap : Capability = struct {
   tag                    = false,
@@ -88,11 +87,10 @@ let null_cap : Capability = struct {
   reserved               = zeros(),
   internal_e             = true,
   E                      = resetE,
-  lenMSB                 = bitzero,
   sealed                 = false,
   B                      = zeros(),
   T                      = resetT,
-  otype                  = zeros(),
+  otype                  = ones(),
   address                = zeros()
 }
 
@@ -114,11 +112,10 @@ let default_cap : Capability = struct {
   reserved               = zeros(),
   internal_e             = true,
   E                      = resetE,
-  lenMSB                 = bitzero,
   sealed                 = false,
   B                      = zeros(),
   T                      = resetT,
-  otype                  = zeros(),
+  otype                  = ones(),
   address                = zeros()
 }
 
@@ -128,34 +125,25 @@ let 'cap_size = 16
 Convert from capabilty bits (128 bits with tag) to a more convenient struct.
  */
 function capBitsToCapability(t, c) : (bool, CapBits) -> Capability = {
-  internal_exponent : bool = c[109];
+  internal_exponent : bool = c[90];
+  otype : bits(18) = c[108..91];
+  let sealed : bool = otype != ones();
   E : bits(6)  = zeros();
-  Bs : bits(23) = zeros();
-  T : bits(21) = zeros();
+  Bs : bits(14) = zeros();
+  T : bits(12) = zeros();
   lenMSBs : bits(2) = zeros();
-  otype : bits(24) = zeros();
-  sealed : bool = c[108] & internal_exponent;
-  lenMSB : bit = c[108] & (~(internal_exponent));
   if internal_exponent then {
     /* Exponent stored instead of T[2..0] and B[2..0] */
-    E = c[89..87] @ c [66..64];
+    E = c[80..78] @ c [66..64];
     /* Exponent chosen so that length MSBs is 01 */
     lenMSBs = 0b01;
-    /* Sealed bit stored instead of second top bit of T */
-    if sealed then {
-      /* otype stored in T[11..3] and B[11..3] */
-      otype = zero_extend(c[98..90] @ c[75..67]);
-      T = c[107..99] @ 0x000;
-      Bs = c[86..76] @ 0x000;
-    } else {
-      T = c[107..90] @ 0b000;
-      Bs = c[86..67] @ 0b000;
-    };
+    T = c[89..81] @ 0b000;
+    Bs = c[77..67] @ 0b000;
   } else {
     /* Exponent zero */
-    lenMSBs = 0b0 @ c[108];
-    T = c[107..87];
-    Bs = c[86..64];
+    lenMSBs = 0b00;
+    T = c[89..78];
+    Bs = c[77..64];
   };
   /* 
   Reconstruct top two bits of T given T = B + len and:
@@ -163,8 +151,8 @@ function capBitsToCapability(t, c) : (bool, CapBits) -> Capability = {
   2) most significant two bits of length derived from format above
   3) carry out of B[20..0] + len[20..0] that is implied if T[20..0] < B[20..0]
   */
-  carry_out = if T[20..0] <_u Bs[20..0] then 0b01 else 0b00;
-  Ttop2 = Bs[22..21] + lenMSBs + carry_out;
+  carry_out = if T <_u Bs[11..0] then 0b01 else 0b00;
+  Ttop2 = Bs[13..12] + lenMSBs + carry_out;
   return struct {
     tag                    = t,
     uperms                 = c[127..124],
@@ -180,10 +168,9 @@ function capBitsToCapability(t, c) : (bool, CapBits) -> Capability = {
     permit_load            = c[114],
     permit_execute         = c[113],
     global                 = c[112],
-    reserved               = c[111..110],
+    reserved               = c[111..109],
     internal_e             = internal_exponent,
     E                      = E,
-    lenMSB                 = lenMSB,
     sealed                 = sealed,
     B                      = Bs,
     T                      = Ttop2 @ T,
@@ -210,32 +197,22 @@ function getCapHardPerms(cap) : Capability -> bits(12) =
 Convert from capabilty struct to bits (128 -- no tag) 
  */
 function capToBits(cap) : Capability -> bits(128) = {
-  sealedOrLenMSB : bits(1) = cap.lenMSB;
-  t_hi : bits(9)  = cap.T[20..12];
-  t_mid : bits(9) = cap.T[11..3];
+  t_hi : bits(9)  = cap.T[11..3];
   t_lo : bits(3)  = cap.T[2..0];
-  b_hi : bits(11) = cap.B[22..12];
-  b_mid : bits(9) = cap.B[11..3];
+  b_hi : bits(11) = cap.B[13..3];
   b_lo : bits(3)  = cap.B[2..0];
   if cap.internal_e then {
-    sealedOrLenMSB = cap.sealed;
     t_lo = cap.E[5..3];
     b_lo = cap.E[2..0];
-    if cap.sealed then {
-      t_mid = cap.otype[17..9];
-      b_mid = cap.otype[8..0];
-    }
   };
   return (cap.uperms
     @ getCapHardPerms(cap)
     @ cap.reserved
+    @ cap.otype
     @ cap.internal_e
-    @ sealedOrLenMSB
     @ t_hi
-    @ t_mid
     @ t_lo
     @ b_hi
-    @ b_mid
     @ b_lo
     @ cap.address
   );
@@ -277,11 +254,8 @@ function setCapPerms(cap, perms) : (Capability, bits(31)) -> Capability =
       global                 = perms[0]
       }
 
-function sealCap(cap, otype) : (Capability, bits(24)) -> (bool, Capability) =
-    if (((cap.T)[11..0] == zeros()) & ((cap.B)[11..0] == zeros())) then /* XXX check internal_e */
-        (true, {cap with sealed=true, internal_e=true, otype=otype})
-    else
-        (false, cap /* XXX should be undefined? */ )
+function sealCap(cap, otyp) : (Capability, bits(24)) -> (bool, Capability) =
+    (true, {cap with sealed=true, internal_e=true, otype=otyp[17..0]})
 
 function a_top_correction(a_mid, R, bound) : (bits(3), bits(3), bits(3)) -> bits(65) =
     match (a_mid <_u R, bound <_u R) {
@@ -295,13 +269,13 @@ function getCapBounds(c) : Capability -> (uint64, CapLen) = {
   let E = unsigned(c.E) in
   let a : bits(65) = zero_extend(c.address) in
   /* Extract bits we need to make the top correction and calculate representable limit */
-  let a3 = truncate(a >> (E + 20), 3) in
+  let a3 = truncate(a >> (E + 11), 3) in
   let B3 = truncateLSB(c.B, 3) in
   let T3 = truncateLSB(c.T, 3) in
   let R3 = B3 - 0b001 in /* wraps */
   let correction_base = a_top_correction(a3, R3, B3) in
   let correction_top  = a_top_correction(a3, R3, T3) in
-  let a_top = (a >> E+23) in
+  let a_top = (a >> E+14) in
   let e_zeros = zeros(E) in
   let base : bits(64) = truncate((a_top + correction_base) @ c.B @ e_zeros, 64) in
   let top  : bits(65) = truncate((a_top + correction_top)  @ c.T @ e_zeros, 65) in
@@ -386,64 +360,63 @@ An 'ideal' version of setCapBounds as described in paper.
  */
 function setCapBounds(cap, base, top) : (Capability, bits(64), bits(65)) -> (bool, Capability) = {
   /* {cap with base=base; length=(bits(64)) length; offset=0} */
-  base65 = 0b0 @ base;
-  let length : bits(65) = top - base65;
+  let base65 = 0b0 @ base;
+  let length = top - base65;
   /* Find an exponent that will put the most significant bit of length 
      second from the top as assumed during decoding. We ignore the bottom
-     MW - 1 bits because those are handled by the e = 0 format. */
-  let e = 43 - CountLeadingZeros(length[64..22]);
-  let e0 = e == 0; // de-normal case?
-  let lenMSB = if e0 then length[21] else bitzero; // sample len MW-2 for e0 case
-  Bs : bits(23) = zeros();
-  T : bits(23) = zeros();
-  incE = false;
+     MW - 1 bits because those are handled by the ie = 0 format. */
+  let e = 52 - CountLeadingZeros(length[64..13]);
+  // Use use internal exponent if e is non-zero or if e is zero but
+  // but the implied bit of length is not zero (denormal vs. normal case)
+  let ie = (e != 0) | length[12];
+
+  /* The non-ie e == 0 case is easy. It is exact so just extract relevant bits. */
+  Bbits = truncate(base, 14);
+  Tbits = truncate(top, 14);
   lostSignificantTop = false;
   lostSignificantBase = false;
+  incE = false;
+  
+  if ie then {
+    /* the internal exponent case is trickier */
 
-  if (e0) then {
-    /* e0 case is easy -- always exact so just extract relevant bits */
-    Bs = truncate(base, 23);
-    T  = truncate(top, 23);
-  } else {
-    /* embedded exp case is trickier */
-
-    /* Extract B and T bits (note we lose 3 bits of each to store the exponent */
-    B20 = truncate(base >> (e + 3), 20);
-    T20 = truncate(top >> (e + 3), 20);
+    /* Extract B and T bits (we lose 3 bits of each to store the exponent) */
+    B_ie = truncate(base >> (e + 3), 11);
+    T_ie = truncate(top >> (e + 3), 11);
     
     /* Find out whether we have lost significant bits of base and top using a
-       mask of bits that we will lose (including 3 for exp). */
+       mask of bits that we will lose (including 3 extra for exp). */
     maskLo : bits(65) = zero_extend(replicate_bits(0b1, e + 3));
     z65    : bits(65) = zeros();
     lostSignificantBase = (base65 & maskLo) != z65;
     lostSignificantTop = (top & maskLo) != z65;
 
     if lostSignificantTop then {
-      /* we must increment T to make sure it is still above top even with lost bits
-         it might overflow but if that makes B<T we will spot it on decode and compensate */
-      T20 = T20 + 1;
+      /* we must increment T to make sure it is still above top even with lost bits.
+         It might wrap around but if that makes B<T then decoding will compensate. */
+      T_ie = T_ie + 1;
     };
 
     /* Has the length overflowed? We chose e so that the top two bits of len would be 0b01,
        but either because of incrementing T or losing bits of base it might have grown. */
-    len20 = T20 - B20;
-    if len20[19] then {
+    len_ie = T_ie - B_ie;
+    if len_ie[10] then {
       /* length overflow -- increment E by one and then recalculate 
          T, B etc accordingly */
       incE = true;
 
-      lostSignificantBase = lostSignificantBase | B20[0];
-      lostSignificantTop  = lostSignificantTop | T20[0];
+      lostSignificantBase = lostSignificantBase | B_ie[0];
+      lostSignificantTop  = lostSignificantTop | T_ie[0];
       
-      B20 = truncate(base >> (e + 4), 20);
+      B_ie = truncate(base >> (e + 4), 11);
       let incT : range(0,1) = if lostSignificantTop then 1 else 0;
-      T20 = truncate(top >> (e + 4), 20) + incT;
+      T_ie = truncate(top >> (e + 4), 11) + incT;
     };
 
-    Bs = B20 @ 0b000;
-    T  = T20 @ 0b000;
+    Bbits = B_ie @ 0b000;
+    Tbits = T_ie @ 0b000;
   };
-  let newCap = {cap with address=base, E=to_bits(6, if incE then e + 1 else e ), B=Bs, T=T, lenMSB=lenMSB, internal_e=not(e0)};
+  let newCap = {cap with address=base, E=to_bits(6, if incE then e + 1 else e), B=Bbits, T=Tbits, internal_e=ie};
   let exact = not(lostSignificantBase | lostSignificantTop);
   (exact, newCap)
 }
@@ -451,6 +424,7 @@ function setCapBounds(cap, base, top) : (Capability, bits(64), bits(65)) -> (boo
 /*
 This version of setCapBounds was transcribed from Bluespec. It uses some approximations to help pass timing that can result in wider bounds than returned by above version.
  */
+/*
 function setCapBounds_hw(cap, base, top) : (Capability, bits(64), bits(65)) -> (bool, Capability) = {
   /* {cap with base=base; length=(bits(64)) length; offset=0} */
   base66 = 0b00 @ base;
@@ -512,6 +486,6 @@ function setCapBounds_hw(cap, base, top) : (Capability, bits(64), bits(65)) -> (
   let exact   = (unsigned(base) == newBase) & (unsigned(top) == newTop);
   (exact, newCap)
 }
-
+*/
 function int_to_cap (offset) : bits(64) -> Capability = 
     {null_cap with address = offset}
