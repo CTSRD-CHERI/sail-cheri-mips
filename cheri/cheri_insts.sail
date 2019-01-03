@@ -1011,17 +1011,17 @@ function clause execute (CLoadTags(rd, cb)) =
       SignalExceptionBadAddr(AdEL, vAddr64)
     else
       {
-        let pAddr  = TLBTranslate(vAddr64, LoadData);
-        let tag0   = MEMr_tag(pAddr + 0*cap_size);
-        let tag1   = MEMr_tag(pAddr + 1*cap_size);
-        let tag2   = MEMr_tag(pAddr + 2*cap_size);
-        let tag3   = MEMr_tag(pAddr + 3*cap_size);
-        let tag4   = MEMr_tag(pAddr + 4*cap_size);
-        let tag5   = MEMr_tag(pAddr + 5*cap_size);
-        let tag6   = MEMr_tag(pAddr + 6*cap_size);
-        let tag7   = MEMr_tag(pAddr + 7*cap_size);
-        wGPR(rd)   = zero_extend (tag7 @ tag6 @ tag5 @ tag4
-                                @ tag3 @ tag2 @ tag1 @ tag0);
+        let pAddr     = TLBTranslate(vAddr64, LoadData);
+        let (tag0, _) = MEMr_tagged(pAddr + 0*cap_size, cap_size);
+        let (tag1, _) = MEMr_tagged(pAddr + 1*cap_size, cap_size);
+        let (tag2, _) = MEMr_tagged(pAddr + 2*cap_size, cap_size);
+        let (tag3, _) = MEMr_tagged(pAddr + 3*cap_size, cap_size);
+        let (tag4, _) = MEMr_tagged(pAddr + 4*cap_size, cap_size);
+        let (tag5, _) = MEMr_tagged(pAddr + 5*cap_size, cap_size);
+        let (tag6, _) = MEMr_tagged(pAddr + 6*cap_size, cap_size);
+        let (tag7, _) = MEMr_tagged(pAddr + 7*cap_size, cap_size);
+        wGPR(rd)      = zero_extend (tag7 @ tag6 @ tag5 @ tag4
+                                   @ tag3 @ tag2 @ tag1 @ tag0);
       }
   }
 }
@@ -1138,7 +1138,7 @@ function clause execute (CSC(cs, cb, rt, offset)) =
       if cs_val.tag & noStoreCap then
         raise_c2_exception(CapEx_TLBNoStoreCap, cs)
       else 
-        MEMw_tagged(pAddr, cs_val.tag, capToMemBits(cs_val));
+        MEMw_tagged(pAddr, cap_size, cs_val.tag, capToMemBits(cs_val));
     }
   }
 }
@@ -1177,7 +1177,7 @@ function clause execute (CSCC(cs, cb, rd)) =
       else
       {
         let success = if (CP0LLBit[0]) then
-            MEMw_tagged_conditional(pAddr, cs_val.tag, capToMemBits(cs_val))
+            MEMw_tagged_conditional(pAddr, cap_size, cs_val.tag, capToMemBits(cs_val))
           else
             false;
         wGPR(rd) = zero_extend(success);
@@ -1211,7 +1211,7 @@ function clause execute (CLC(cd, cb, rt, offset)) =
     else
     {
       let (pAddr, suppressTag) = TLBTranslateC(vAddr64, LoadData);
-      let (tag, mem) = MEMr_tagged(pAddr);
+      let (tag, mem) = MEMr_tagged(pAddr, cap_size);
       let cap = memBitsToCapability(tag & cb_val.permit_load_cap & not (suppressTag), mem);
       writeCapReg(cd, cap);
     }
@@ -1243,7 +1243,7 @@ function clause execute (CLCBI(cd, cb, offset)) =
     else
     {
       let (pAddr, suppressTag) = TLBTranslateC(vAddr64, LoadData);
-      let (tag, mem) = MEMr_tagged(pAddr);
+      let (tag, mem) = MEMr_tagged(pAddr, cap_size);
       let cap = memBitsToCapability(tag & cb_val.permit_load_cap & not (suppressTag), mem);
       writeCapReg(cd, cap);
     }
@@ -1274,7 +1274,7 @@ function clause execute (CLLC(cd, cb)) =
     else
     {
       let (pAddr, suppressTag) = TLBTranslateC(vAddr64, LoadData);
-      let (tag, mem) : (bool, CapBits) = MEMr_tagged_reserve(pAddr);
+      let (tag, mem) : (bool, CapBits) = MEMr_tagged_reserve(pAddr, cap_size);
       let cap = memBitsToCapability(tag & cb_val.permit_load_cap & not (suppressTag), mem);
       writeCapReg(cd, cap);
       CP0LLBit  = 0b1;

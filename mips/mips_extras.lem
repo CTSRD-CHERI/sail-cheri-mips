@@ -6,30 +6,22 @@ open import Sail2_operators
 open import Sail2_prompt_monad
 open import Sail2_prompt
 
-val MEMr             : forall 'regval 'a 'b 'e. Bitvector 'a, Bitvector 'b => 'a -> integer -> monad 'regval 'b 'e
-val MEMr_reserve     : forall 'regval 'a 'b 'e. Bitvector 'a, Bitvector 'b => 'a -> integer -> monad 'regval 'b 'e
-val MEMr_tag         : forall 'regval 'a 'b 'e. Bitvector 'a, Bitvector 'b => 'a -> integer -> monad 'regval (bool * 'b) 'e
-val MEMr_tag_reserve : forall 'regval 'a 'b 'e. Bitvector 'a, Bitvector 'b => 'a -> integer -> monad 'regval (bool * 'b) 'e
+val MEMr                : forall 'regval 'a 'b 'e. Bitvector 'a, Bitvector 'b => 'a -> integer -> monad 'regval 'b 'e
+val MEMr_reserve        : forall 'regval 'a 'b 'e. Bitvector 'a, Bitvector 'b => 'a -> integer -> monad 'regval 'b 'e
+val MEMr_tagged         : forall 'regval 'a 'b 'e. Bitvector 'a, Bitvector 'b => 'a -> integer -> monad 'regval (bool * 'b) 'e
+val MEMr_tagged_reserve : forall 'regval 'a 'b 'e. Bitvector 'a, Bitvector 'b => 'a -> integer -> monad 'regval (bool * 'b) 'e
 
 let MEMr addr size             = read_mem Read_plain addr size
 let MEMr_reserve addr size     = read_mem Read_reserve addr size
 
-val read_tag_bool : forall 'regval 'a 'e. Bitvector 'a => 'a -> monad 'regval bool 'e
-let read_tag_bool addr =
-  read_tag addr >>= fun t ->
-  maybe_fail "read_tag_bool" (bool_of_bitU t)
-
-val write_tag_bool : forall 'regval 'a 'e. Bitvector 'a => 'a -> bool -> monad 'regval unit 'e
-let write_tag_bool addr t = write_tag addr (bitU_of_bool t) >>= fun _ -> return ()
-
-let MEMr_tag addr size =
-  read_mem Read_plain addr size >>= fun v ->
-  read_tag_bool addr >>= fun t ->
+let MEMr_tagged addr size =
+  read_memt Read_plain addr size >>= fun (v, t) ->
+  maybe_fail "bool_of_bitU" (bool_of_bitU t) >>= fun t ->
   return (t, v)
 
-let MEMr_tag_reserve addr size =
-  read_mem Read_plain addr size >>= fun v ->
-  read_tag_bool addr >>= fun t ->
+let MEMr_tagged_reserve addr size =
+  read_memt Read_plain addr size >>= fun (v, t) ->
+  maybe_fail "bool_of_bitU" (bool_of_bitU t) >>= fun t ->
   return (t, v)
 
 
@@ -41,19 +33,20 @@ val MEMea_tag_conditional : forall 'regval 'a 'e. Bitvector 'a => 'a -> integer 
 let MEMea addr size                 = write_mem_ea Write_plain addr size
 let MEMea_conditional addr size     = write_mem_ea Write_conditional addr size
 
-let MEMea_tag addr size             = write_mem_ea Write_plain addr size
-let MEMea_tag_conditional addr size = write_mem_ea Write_conditional addr size
+val MEMval                    : forall 'regval 'a 'b 'e. Bitvector 'a, Bitvector 'b => 'a -> integer -> 'b -> monad 'regval unit 'e
+val MEMval_conditional        : forall 'regval 'a 'b 'e. Bitvector 'a, Bitvector 'b => 'a -> integer -> 'b -> monad 'regval bool 'e
+val MEMval_tagged             : forall 'regval 'a 'b 'e. Bitvector 'a, Bitvector 'b => 'a -> integer -> bool -> 'b -> monad 'regval unit 'e
+val MEMval_tagged_conditional : forall 'regval 'a 'b 'e. Bitvector 'a, Bitvector 'b => 'a -> integer -> bool -> 'b -> monad 'regval bool 'e
 
+let MEMval addr size v                      = write_mem Write_plain addr size v >>= fun _ -> return ()
+let MEMval_conditional addr size v          = write_mem Write_conditional addr size v
+let MEMval_tagged addr size t v             = write_memt Write_plain addr size v (bitU_of_bool t) >>= fun _ -> return ()
+let MEMval_tagged_conditional addr size t v = write_memt Write_conditional addr size v (bitU_of_bool t)
 
-val MEMval                 : forall 'regval 'a 'b 'e. Bitvector 'a, Bitvector 'b => 'a -> integer -> 'b -> monad 'regval unit 'e
-val MEMval_conditional     : forall 'regval 'a 'b 'e. Bitvector 'a, Bitvector 'b => 'a -> integer -> 'b -> monad 'regval bool 'e
-val MEMval_tag             : forall 'regval 'a 'b 'e. Bitvector 'a, Bitvector 'b => 'a -> integer -> bool -> 'b -> monad 'regval unit 'e
-val MEMval_tag_conditional : forall 'regval 'a 'b 'e. Bitvector 'a, Bitvector 'b => 'a -> integer -> bool -> 'b -> monad 'regval bool 'e
-
-let MEMval _ size v                      = write_mem_val v >>= fun _ -> return ()
-let MEMval_conditional _ size v          = write_mem_val v >>= fun b -> return (if b then true else false)
-let MEMval_tag addr size t v             = write_mem_val v >>= fun _ -> write_tag_bool addr t >>= fun _ -> return ()
-let MEMval_tag_conditional addr size t v = write_mem_val v >>= fun b -> write_tag_bool addr t >>= fun _ -> return (if b then true else false)
+let MEMw addr size t v                    = MEMea addr size             >> MEMval addr size v
+let MEMw_conditional addr size t v        = MEMea_conditional addr size >> MEMval_conditional addr size v
+let MEMw_tagged addr size t v             = MEMea addr size             >> MEMval_tagged addr size t v
+let MEMw_tagged_conditional addr size t v = MEMea_conditional addr size >> MEMval_tagged_conditional addr size t v
 
 val MEM_sync  : forall 'regval 'e. unit -> monad 'regval unit 'e
 
