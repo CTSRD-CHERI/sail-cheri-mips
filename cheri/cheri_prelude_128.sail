@@ -299,8 +299,12 @@ function getCapOffset(c) : Capability -> uint64 =
 
 function getCapLength(c) : Capability -> CapLen =
     let ('base, 'top) = getCapBounds(c) in {
-        assert (top >= base);
-        top - base
+        /* For valid capabilties we expect top >= base and hence
+           length >= 0 but representation does allow top < base in some 
+           cases so might encounter on untagged capabilities. Here we just 
+           pretend it is a 65-bit quantitiy and wrap. */
+        assert (not(c.tag) | top >= base);
+        (top - base) % pow2(65)
     }
 
 function getCapCursor(cap) : Capability -> uint64 = unsigned(cap.address)
