@@ -177,3 +177,15 @@ rewrite Z.quot_mul; auto with zarith.
 Qed.
 Hint Resolve MEMr_wrapper_lemma : sail.
 
+Lemma getCapOffset_lemma {x0 x1 x2 x : Z} :
+ 0 <= x0 <= 18446744073709551616 - 1 ->
+ 0 <= x1 <= 18446744073709551616 - 1 ->
+ 18446744073709551616 <= x2 <= 18446744073709551616 ->
+ x = ZEuclid.modulo (x0 - x1) x2 ->
+ 0 <= x <= 18446744073709551616 - 1.
+intros.
+match goal with H:context [ZEuclid.modulo ?X ?Y] |- _ => pose proof (ZEuclid.mod_always_pos X Y) end.
+omega with Z.
+Qed.
+Hint Resolve getCapOffset_lemma : sail.
+
