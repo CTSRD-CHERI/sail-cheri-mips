@@ -255,7 +255,10 @@ function setCapPerms(cap, perms) : (Capability, bits(31)) -> Capability =
       }
 
 function sealCap(cap, otyp) : (Capability, bits(24)) -> (bool, Capability) =
-    (true, {cap with sealed=true, internal_e=true, otype=otyp[17..0]})
+    (true, {cap with sealed=true, otype=otyp[17..0]})
+
+function unsealCap(cap) : Capability -> Capability =
+    {cap with sealed=false, otype=ones()}
 
 function a_top_correction(a_mid, R, bound) : (bits(3), bits(3), bits(3)) -> bits(65) =
     match (a_mid <_u R, bound <_u R) {

@@ -765,9 +765,7 @@ function clause execute (CUnseal(cd, cs, ct)) =
   else if ct_cursor >= getCapTop(ct_val) then
     raise_c2_exception(CapEx_LengthViolation, ct)
   else
-    writeCapReg(cd, {cs_val with 
-      sealed=false,
-      otype=zeros(),
+    writeCapReg(cd, {unsealCap(cs_val) with 
       global=(cs_val.global & ct_val.global)
     })
 }
@@ -837,14 +835,8 @@ function clause execute (CCall(cs, cb, 0b00000000001)) = /* selector=1 */
     raise_c2_exception(CapEx_LengthViolation, cs)
   else
   {
-    set_next_pcc({cs_val with
-      sealed=false,
-      otype=zeros()
-    });
-    C26 = {cb_val with
-      sealed=false,
-      otype=zeros()
-    };
+    set_next_pcc(unsealCap(cs_val));
+    C26 = unsealCap(cb_val);
     NextPC = to_bits(64, getCapOffset(cs_val));
   }
 }

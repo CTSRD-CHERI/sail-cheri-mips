@@ -214,11 +214,18 @@ function setCapPerms(cap, perms) =
    }
 
 /*!
-THIS(cap, otype) returns a new capability derived from `cap` but with the sealed bit set and otype set to `otype`. The returned boolean indicates whether the sealed capability is exactly representable (there may be additional restrictions on sealed capabilities depending on the compression used).
+THIS(cap, otype) returns a new capability derived from `cap` but sealed with the given otype. The returned boolean indicates whether the sealed capability is exactly representable (there may be additional restrictions on sealed capabilities depending on the compression used).
  */
 val sealCap : (Capability, bits(24)) -> (bool, Capability)
 function sealCap(cap, otype) =
     (true, {cap with sealed=true, otype=otype})
+
+/*!
+THIS(cap) returns a new unsealed capability derived from `cap`. The value of otype is lost.
+ */
+val sealCap : Capability -> Capability
+function sealCap(cap) =
+  {cap with sealed=false, otype=zeros()}
 
 /*!
 returns the base of the given capability as an integer in the range $0$ to $2^{64} - 1$.
