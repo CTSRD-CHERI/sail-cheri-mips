@@ -643,7 +643,7 @@ function clause execute (CCheckTag (cs)) =
   checkCP2usable();
   let cs_val = readCapReg(cs);
   if not(cs_val.tag) then
-    raise_c2_exception(CapEx_TypeViolation, cs);
+    raise_c2_exception(CapEx_TagViolation, cs);
 }
 
 union clause ast = CTestSubset : (regno, regno, regno)
