@@ -77,13 +77,13 @@ register C29 : Capability
 register C30 : Capability
 register C31 : Capability
 
-register CTLSU : Capability /* User thread local storage capabiltiy */
-register CTLSP : Capability /* Privileged thread local storage capabiltiy */
-register KR1C  : Capability /* kernel reserved capability 1 */
-register KR2C  : Capability /* kernel reserved capability 2 */
-register KCC   : Capability /* kernel code capability */
-register KDC   : Capability /* kernel data capability */
-register EPCC  : Capability /* exception program counter capability */
+register CULR : Capability /* User thread local storage capabiltiy */
+register CPLR : Capability /* Privileged thread local storage capabiltiy */
+register KR1C : Capability /* kernel reserved capability 1 */
+register KR2C : Capability /* kernel reserved capability 2 */
+register KCC  : Capability /* kernel code capability */
+register KDC  : Capability /* kernel data capability */
+register EPCC : Capability /* exception program counter capability */
 
 let CapRegs : vector(32, dec, register(Capability)) =
   [
@@ -554,8 +554,8 @@ function init_cp2_state () = {
   KDC  = null_cap;
   KR1C = null_cap;
   KR2C = null_cap;
-  CTLSP = null_cap;
-  CTLSU = null_cap;
+  CPLR = null_cap;
+  CULR = null_cap;
   foreach(i from 1 to 31) {
     let idx = to_bits(5, i) in
     writeCapReg(idx, null_cap)
@@ -618,8 +618,8 @@ function dump_cp2_state () = {
     print(concat_str("DEBUG CAP REG ", concat_str(string_of_int(i), capToString(readCapReg(to_bits(5, i)), true))))
   };
   print(concat_str("DEBUG CAP HWREG 00", capToString(DDC, true)));
-  print(concat_str("DEBUG CAP HWREG 01", capToString(CTLSU, true)));
-  print(concat_str("DEBUG CAP HWREG 08", capToString(CTLSP, true)));
+  print(concat_str("DEBUG CAP HWREG 01", capToString(CULR, true)));
+  print(concat_str("DEBUG CAP HWREG 08", capToString(CPLR, true)));
   /* TODO: these two should not be mirrored to match the FPGA */
   print(concat_str("DEBUG CAP HWREG 22", capToString(KR1C, true)));
   print(concat_str("DEBUG CAP HWREG 23", capToString(KR2C, true)));

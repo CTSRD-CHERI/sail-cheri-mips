@@ -185,8 +185,8 @@ function clause execute (CReadHwr(cd, sel)) =
   checkCP2usable();
   let (needSup, needAccessSys) : (bool, bool) = match unsigned(sel) {
     0  => (false, false), /* DDC   -- no access control */
-    1  => (false, false), /* CTLSU -- no access control */
-    8  => (false, true),  /* CTLSP -- privileged TLS */
+    1  => (false, false), /* CULR -- no access control */
+    8  => (false, true),  /* CPLR -- privileged TLS */
     22 => (true, false),  /* KR1C */
     23 => (true, false),  /* KR2C */
     29 => (true, true),   /* KCC */
@@ -201,8 +201,8 @@ function clause execute (CReadHwr(cd, sel)) =
   else {
     let capVal : Capability = match unsigned(sel) {
       0  => DDC,
-      1  => CTLSU,
-      8  => CTLSP,
+      1  => CULR,
+      8  => CPLR,
       22 => KR1C,
       23 => KR2C,
       29 => KCC,
@@ -220,8 +220,8 @@ function clause execute (CWriteHwr(cb, sel)) =
   checkCP2usable();
   let (needSup, needAccessSys) : (bool, bool) = match unsigned(sel) {
     0  => (false, false), /* DDC   -- no access control */
-    1  => (false, false), /* CTLSU -- no access control */
-    8  => (false, true),  /* CTLSP -- privileged TLS */
+    1  => (false, false), /* CULR -- no access control */
+    8  => (false, true),  /* CPLR -- privileged TLS */
     22 => (true, false),  /* KR1C */
     23 => (true, false),  /* KR2C */
     29 => (true, true),   /* KCC */
@@ -236,13 +236,13 @@ function clause execute (CWriteHwr(cb, sel)) =
   else {
     let capVal = readCapReg(cb);
     match unsigned(sel) {
-      0  => DDC   = capVal,
-      1  => CTLSU = capVal,
-      8  => CTLSP = capVal,
-      22 => KR1C  = capVal,
-      23 => KR2C  = capVal,
-      29 => KCC   = capVal,
-      30 => KDC   = capVal,
+      0  => DDC  = capVal,
+      1  => CULR = capVal,
+      8  => CPLR = capVal,
+      22 => KR1C = capVal,
+      23 => KR2C = capVal,
+      29 => KCC  = capVal,
+      30 => KDC  = capVal,
       31 =>
           {
             EPCC  = capVal;
