@@ -223,8 +223,8 @@ function sealCap(cap, otype) =
 /*!
 THIS(cap) returns a new unsealed capability derived from `cap`. The value of otype is lost.
  */
-val sealCap : Capability -> Capability
-function sealCap(cap) =
+val unsealCap : Capability -> Capability
+function unsealCap(cap) =
   {cap with sealed=false, otype=zeros()}
 
 /*!
