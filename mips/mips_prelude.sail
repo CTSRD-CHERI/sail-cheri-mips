@@ -259,8 +259,12 @@ let TLBEntries : vector(64, dec, register(TLBEntry)) = [
 
 register CP0Compare : bits(32)
 register CP0Cause : CauseReg
-register CP0EPC : bits(64)
-register CP0ErrorEPC : bits(64)
+/* CP0EPC is accessed via getter/setters for CHERI extensibility */
+val get_CP0EPC : unit -> bits(64) effect {rreg}
+val set_CP0EPC : bits(64) -> unit effect {rreg, wreg}
+/* similarly for ErrorEPC  */
+val get_CP0ErrorEPC : unit -> bits(64) effect {rreg}
+val set_CP0ErrorEPC : bits(64) -> unit effect {rreg, wreg}
 register CP0LLBit : bits(1)
 register CP0LLAddr : bits(64)
 register CP0BadVAddr : bits(64)
@@ -440,56 +444,48 @@ function string_of_exception(ex) : Exception -> string =
       MCheck       => "MCheck"
    }
 
-val SignalExceptionMIPS : forall ('o : Type) . (Exception, bits(64)) -> 'o effect {escape, rreg, wreg}
-function SignalExceptionMIPS (ex, kccBase) = 
-  {
-    if trace then {
-      prerr(" EXCEPTION ");
-      prerr_endline(string_of_exception(ex));
-    };
-    /* Only update EPC and BD if not already in EXL mode */
-    if (~ (CP0Status.EXL())) then 
-      {
-        if (InBranchDelay[0]) then
-          {
-            CP0EPC = PC - 4;
-            CP0Cause->BD() = 0b1;
-          }
-        else
-          {
-            CP0EPC = PC;
-            CP0Cause->BD() = 0b0;
-          }
-      };
-      /* Fill in BadInstr + BadInstrP. */
-      if (InBranchDelay[0]) then
-        {
-            CP0BadInstrP = LastInstrBits; /* PC - 4 */
-        };
-      CP0BadInstr = CurrentInstrBits; /* PC */
+val traceException : Exception -> unit
+function traceException (ex : Exception) = {
+  if trace then {
+    prerr(" EXCEPTION ");
+    prerr_endline(string_of_exception(ex));
+  };
+}
+/*! 
+Choose an exception vector offset based on current state of processor
+and exception type. Some are not supported e.g. Reset. 
+*/
+val exceptionVectorOffset : Exception -> bits(12) effect {rreg}
+function exceptionVectorOffset (ex) = 
+  if (CP0Status.EXL()) then
+    0x180 /* Always use common vector if in exception mode already */
+  else if ((ex == XTLBRefillL) | (ex == XTLBRefillS)) then 
+    0x080
+  else if (ex == C2Trap) then
+    0x280 /* Special vector for CHERI traps */
+  else
+    0x180 /* Common vector */
 
-      /* choose an exception vector to branch to. Some are not supported 
-         e.g. Reset */
-      vectorOffset = 
-        if (CP0Status.EXL()) then
-          0x180 /* Always use common vector if in exception mode already */
-        else if ((ex == XTLBRefillL) | (ex == XTLBRefillS)) then 
-          0x080
-        else if (ex == C2Trap) then
-          0x280 /* Special vector for CHERI traps */
-        else
-          0x180; /* Common vector */
-      vectorBase : bits(64) = if CP0Status.BEV() then
-                   0xFFFFFFFFBFC00200
-                else
-                   0xFFFFFFFF80000000;
-      /* On CHERI we have to subtract KCC.base so that we end up at the 
-         right absolute vector address after indirecting via new PCC */
-      NextPC = vectorBase + sign_extend(vectorOffset) - kccBase;
-      CP0Cause->ExcCode() = ExceptionCode(ex);
-      CP0Status->EXL()    = 0b1;
-      throw (ISAException());
-  }
+/*!
+Choose appropariate exception vector base for current processor state.
+ */
+val exceptionVectorBase : unit -> bits(64) effect {rreg}
+function exceptionVectorBase () =
+  if CP0Status.BEV() then
+   0xFFFFFFFFBFC00200
+  else
+   0xFFFFFFFF80000000
+
+/*!
+Update CP0BadInstr and CP0BadInstrP for exception.
+ */
+val updateBadInstr : unit -> unit effect{rreg, wreg}
+function updateBadInstr () = {
+  if (InBranchDelay[0]) then {
+    CP0BadInstrP = LastInstrBits; /* PC - 4 */
+  };
+  CP0BadInstr = CurrentInstrBits; /* PC */
+}
 
 /*
  Defined either in mips_wrappers (directly calling SignalExceptionMIPS) or in cheri_prelude_common (cheri things plus above) 

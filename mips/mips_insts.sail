@@ -1436,7 +1436,7 @@ function clause execute (MFC0(rt, rd, sel, double)) = {
           (0b01011,0b000) => zero_extend(CP0Compare), /* 11, Compare reg */
           (0b01100,0b000) => zero_extend(CP0Status.bits()),  /* 12, Status reg */
           (0b01101,0b000) => zero_extend(CP0Cause.bits()),   /* 13, Cause reg */
-          (0b01110,0b000) => CP0EPC,           /* 14, EPC */
+          (0b01110,0b000) => get_CP0EPC(),            /* 14, EPC */
           (0b01111,0b000) => zero_extend(0x00000400), /* 15, sel 0: PrID processor ID */
           (0b01111,0b110) => zero_extend(0b0),        /* 15, sel 6: CHERI core ID */
           (0b01111,0b111) => zero_extend(0b0),        /* 15, sel 7: CHERI thread ID */
@@ -1481,7 +1481,7 @@ function clause execute (MFC0(rt, rd, sel, double)) = {
           (0b10010,0b000) => zero_extend(0b0),        /* 18, WatchLo */
           (0b10011,0b000) => zero_extend(0b0),        /* 19, WatchHi */
           (0b10100,0b000) => TLBXContext.bits(), /* 20, XContext */
-          (0b11110,0b000) => CP0ErrorEPC,      /* 30, ErrorEPC */
+          (0b11110,0b000) => get_CP0ErrorEPC(),      /* 30, ErrorEPC */
           _               => (SignalException(ResI))
         } in
   wGPR(rt) = if (double) then result else sign_extend(result[31..0])
@@ -1548,10 +1548,10 @@ function clause execute (MTC0(rt, rd, sel, double)) = {
         let ip = CP0Cause.IP() in
         CP0Cause->IP() = ((ip[7..2]) @ (reg_val[9..8]));
       },
-      (0b01110,0b000) => CP0EPC = reg_val, /* 14, EPC */
+      (0b01110,0b000) => set_CP0EPC(reg_val), /* 14, EPC */
       (0b10000,0b000) => CP0ConfigK0 = reg_val[2..0], /*  K0 cache config 16: Config0 */
       (0b10100,0b000) => TLBXContext->XPTEBase() = reg_val[63..33],
-      (0b11110,0b000) => CP0ErrorEPC = reg_val, /* 30, ErrorEPC */
+      (0b11110,0b000) => set_CP0ErrorEPC(reg_val), /* 30, ErrorEPC */
       _               => (SignalException(ResI))
     }
 }
@@ -1685,12 +1685,12 @@ function clause execute (ERET()) =
         CP0LLBit = 0b0;
         if (CP0Status.ERL() == bitone) then
           {
-            NextPC = CP0ErrorEPC;
+            NextPC = get_CP0ErrorEPC();
             CP0Status->ERL() = 0b0;
           }
         else
           {
-            NextPC = CP0EPC;
+            NextPC = get_CP0EPC();
             CP0Status->EXL() = 0b0;
           }
       }

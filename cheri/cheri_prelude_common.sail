@@ -83,7 +83,8 @@ register KR1C : Capability /* kernel reserved capability 1 */
 register KR2C : Capability /* kernel reserved capability 2 */
 register KCC  : Capability /* kernel code capability */
 register KDC  : Capability /* kernel data capability */
-register EPCC : Capability /* exception program counter capability */
+register EPCC : Capability     /* exception program counter capability */
+register ErrorEPCC : Capability /* error program counter capability */
 
 let CapRegs : vector(32, dec, register(Capability)) =
   [
@@ -293,15 +294,42 @@ function set_next_pcc(newPCC) = {
                           that non-capability branches don't override PCC */
 }
 
-function SignalException (ex) = 
+function SignalException (ex) = {
+  traceException(ex);
+  /* Only update EPC and BD if not already in EXL mode */
+  if (~ (CP0Status.EXL())) then 
   {
-    if (not (CP0Status.EXL())) then {
-      EPCC = PCC
+    let epc : bits(64) = if (InBranchDelay[0]) then 
+      {
+        CP0Cause->BD() = 0b1;
+        PC - 4
+      }
+      else {
+        CP0Cause->BD() = 0b0;
+        PC
+      };
+    let (representable, newEPCC) = setCapOffset(PCC, epc);
+    /* EPCC should always be representable because PC should always been (nearly) in bounds */
+    assert(representable);
+    if (PCC.sealed) then {
+      /* Check that we didn't accidentally modify a sealed capabiltiy. */
+      assert(getCapOffset(PCC) == unsigned(epc));
     };
-    set_next_pcc(KCC);
-    let base = getCapBase(KCC) in
-    SignalExceptionMIPS(ex, to_bits(64, base));
-  }
+    EPCC = newEPCC;
+  };
+  /* Fill in BadInstr + BadInstrP. */
+  updateBadInstr();
+  let vectorOffset = exceptionVectorOffset(ex);
+  let vectorBase = exceptionVectorBase();
+  /* On CHERI we have to subtract KCC.base so that we end up at the 
+     right absolute vector address after indirecting via new PCC */
+  let kccBase = getCapBase(KCC) in
+  NextPC = vectorBase + zero_extend(vectorOffset) - to_bits(64, kccBase);
+  set_next_pcc(KCC);
+  CP0Cause->ExcCode() = ExceptionCode(ex);
+  CP0Status->EXL()    = 0b1;
+  throw (ISAException());
+}
 
 function ERETHook() : unit -> unit =
   {
@@ -551,6 +579,7 @@ function init_cp2_state () = {
   DDC  = default_cap;
   KCC  = default_cap;
   EPCC = default_cap;
+  ErrorEPCC = default_cap;
   KDC  = null_cap;
   KR1C = null_cap;
   KR2C = null_cap;
@@ -569,27 +598,36 @@ function cp2_next_pc () = {
   };
 }
 
-val readEPCC : unit -> Capability effect {rreg}
-function readEPCC () = {
-  /* CP0EPC/CP0ErrorEPC and EPCC.offset are supposed to be one register.
-  We fake this by reading CP0EPC/CP0ErrorEPC and setting EPCC.offset
-  when EPCC is read. If status.ERL is set we use CP0ErrorEPC instead of EPC
-  to ensure that reading to EPCC will always fetch the value used by eret */
-  let epccOffset = if (CP0Status.ERL() == bitone) then CP0ErrorEPC else CP0EPC in
-  let epcc = EPCC in
-  let (success, epcc2) = setCapOffset(epcc, epccOffset) in
-  if (success) then
-    epcc2
-  else
-    /* Unrepresentable EPCC -- this should only happen if CP0EPC is
+function get_CP0EPC () =
+  to_bits(64, getCapOffset(EPCC))
+
+/* EPC is the offset of EPCC so treat as set offset. 
+   Take care to clear tag if EPCC is sealed or result is not representable. */
+function set_CP0EPC (newEPC) = {
+  let (representable, newEPCC) = setCapOffset(EPCC, newEPC);
+  /* Unrepresentable EPCC should only happen if CP0EPC is
     written with something far outside bounds of EPCC. Exceptions should
     not cause an unrepresentable EPCC because the PC of the faulting
     instruction is necessarily in-bounds (or nearly in-bounds). For jumps
     that take the PC out-of-bounds the CP2 exception occurs on the jump,
     not the target. */
-    int_to_cap(to_bits(64, getCapBase(epcc)) + unsigned(epccOffset))
+  EPCC = if representable then
+      {newEPCC with tag = newEPCC.tag & not(newEPCC.sealed)}
+    else
+      int_to_cap(to_bits(64, getCapBase(EPCC)) + newEPC);
 }
 
+/* As above but for ErrorEPC... */
+function get_CP0ErrorEPC () =
+  to_bits(64, getCapOffset(ErrorEPCC))
+
+function set_CP0ErrorEPC (v) = {
+  let (representable, newErrorEPCC) = setCapOffset(ErrorEPCC, v);
+  ErrorEPCC = if representable then
+      {newErrorEPCC with tag = newErrorEPCC.tag & not(newErrorEPCC.sealed)}
+    else
+      int_to_cap(to_bits(64, getCapBase(ErrorEPCC)) + v);
+}
 
 function capToString (cap, fixlen) = {
          skip_escape(); /* because cheri128 getCapX functions contain asserts but cheri256 ones do not */
@@ -627,6 +665,6 @@ function dump_cp2_state () = {
   /* KCC, KDC, EPCC */
   print(concat_str("DEBUG CAP HWREG 29", capToString(KCC, true)));
   print(concat_str("DEBUG CAP HWREG 30", capToString(KDC, true)));
-  print(concat_str("DEBUG CAP HWREG 31", capToString(readEPCC(), true)));
+  print(concat_str("DEBUG CAP HWREG 31", capToString(EPCC, true)));
 
 }

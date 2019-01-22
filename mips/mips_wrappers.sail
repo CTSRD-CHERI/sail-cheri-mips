@@ -35,6 +35,20 @@
 /* mips_wrappers.sail: wrappers functions and hooks for CHERI extensibility 
    (mostly identity functions here) */
 
+register CP0EPC : bits(64)
+function get_CP0EPC() = CP0EPC
+function set_CP0EPC(v) = {
+  CP0EPC = v;
+  skip_rreg();
+}
+
+register CP0ErrorEPC : bits(64)
+function get_CP0ErrorEPC() = CP0ErrorEPC
+function set_CP0ErrorEPC(v) = {
+  CP0ErrorEPC = v;
+  skip_rreg();
+}
+
 val MEMw_wrapper : forall 'n, 1 <= 'n <= 8. (bits(64), atom('n), bits(8 * 'n)) -> unit effect {eamem, wmv, wreg}
 
 function MEMw_wrapper(addr, size, data) =
@@ -80,7 +94,30 @@ function TranslatePC (vAddr) = {
 
 let have_cp2 = false
 
-function SignalException (ex) = SignalExceptionMIPS(ex, 0x0000000000000000)
+function SignalException (ex) = {
+  traceException(ex);
+  /* Only update EPC and BD if not already in EXL mode */
+  if (~ (CP0Status.EXL())) then 
+  {
+    if (InBranchDelay[0]) then 
+    {
+      set_CP0EPC(PC - 4);
+      CP0Cause->BD() = 0b1;
+    }
+    else {
+      set_CP0EPC(PC);
+      CP0Cause->BD() = 0b0;
+    }
+  };
+  /* Fill in BadInstr + BadInstrP. */
+  updateBadInstr();
+  let vectorOffset = exceptionVectorOffset(ex);
+  let vectorBase = exceptionVectorBase();
+  NextPC = vectorBase + zero_extend(vectorOffset);
+  CP0Cause->ExcCode() = ExceptionCode(ex);
+  CP0Status->EXL()    = 0b1;
+  throw (ISAException());
+}
 
 val ERETHook : unit -> unit
 function ERETHook() = ()

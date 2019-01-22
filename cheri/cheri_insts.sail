@@ -189,6 +189,7 @@ function clause execute (CReadHwr(cd, sel)) =
     8  => (false, true),  /* CPLR -- privileged TLS */
     22 => (true, false),  /* KR1C */
     23 => (true, false),  /* KR2C */
+    28 => (true, true),   /* ErrorEPCC */
     29 => (true, true),   /* KCC */
     30 => (true, true),   /* KDC */
     31 => (true, true),   /* EPCC */
@@ -205,9 +206,10 @@ function clause execute (CReadHwr(cd, sel)) =
       8  => CPLR,
       22 => KR1C,
       23 => KR2C,
+      28 => ErrorEPCC,
       29 => KCC,
       30 => KDC,
-      31 => readEPCC(), /* Load EPCC with offset = CP0EPC/CP0ErrorEPC */
+      31 => EPCC,
       _  => {assert(false, "CReadHwr: should be unreachable code"); undefined}
     };
     writeCapReg(cd, capVal);
@@ -224,6 +226,7 @@ function clause execute (CWriteHwr(cb, sel)) =
     8  => (false, true),  /* CPLR -- privileged TLS */
     22 => (true, false),  /* KR1C */
     23 => (true, false),  /* KR2C */
+    28 => (true, true),   /* ErrorEPCC */
     29 => (true, true),   /* KCC */
     30 => (true, true),   /* KDC */
     31 => (true, true),   /* EPCC */
@@ -241,20 +244,10 @@ function clause execute (CWriteHwr(cb, sel)) =
       8  => CPLR = capVal,
       22 => KR1C = capVal,
       23 => KR2C = capVal,
+      28 => ErrorEPCC = capVal,
       29 => KCC  = capVal,
       30 => KDC  = capVal,
-      31 =>
-          {
-            EPCC  = capVal;
-            /* CP0EPC/CP0ErrorEPC and EPCC.offset are supposed to be one register.
-            We fake this by writing CP0EPC/CP0ErrorEPC from EPCC.offset when EPCC
-            is written. If status.ERL is set we use CP0ErrorEPC instead of EPC
-            to ensure that reading setting EPCC will set the value used by eret */
-            if CP0Status.ERL() then
-              CP0ErrorEPC = to_bits(64, getCapOffset(capVal))
-            else
-              CP0EPC = to_bits(64, getCapOffset(capVal));
-          },
+      31 => EPCC = capVal,
       _  => assert(false, "CWriteHwr: should be unreachable code")
     };
   };
