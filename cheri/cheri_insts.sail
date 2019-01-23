@@ -189,7 +189,7 @@ function clause execute (CReadHwr(cd, sel)) =
     8  => (false, true),  /* CPLR -- privileged TLS */
     22 => (true, false),  /* KR1C */
     23 => (true, false),  /* KR2C */
-    28 => (true, true),   /* ErrorEPCC */
+/*    28 => (true, true),   /* ErrorEPCC */ */
     29 => (true, true),   /* KCC */
     30 => (true, true),   /* KDC */
     31 => (true, true),   /* EPCC */
@@ -206,7 +206,7 @@ function clause execute (CReadHwr(cd, sel)) =
       8  => CPLR,
       22 => KR1C,
       23 => KR2C,
-      28 => ErrorEPCC,
+/*      28 => ErrorEPCC, */
       29 => KCC,
       30 => KDC,
       31 => EPCC,
@@ -226,7 +226,7 @@ function clause execute (CWriteHwr(cb, sel)) =
     8  => (false, true),  /* CPLR -- privileged TLS */
     22 => (true, false),  /* KR1C */
     23 => (true, false),  /* KR2C */
-    28 => (true, true),   /* ErrorEPCC */
+/*    28 => (true, true),   /* ErrorEPCC */ */
     29 => (true, true),   /* KCC */
     30 => (true, true),   /* KDC */
     31 => (true, true),   /* EPCC */
@@ -244,7 +244,7 @@ function clause execute (CWriteHwr(cb, sel)) =
       8  => CPLR = capVal,
       22 => KR1C = capVal,
       23 => KR2C = capVal,
-      28 => ErrorEPCC = capVal,
+/*      28 => ErrorEPCC = capVal, */
       29 => KCC  = capVal,
       30 => KDC  = capVal,
       31 => EPCC = capVal,
