@@ -333,7 +333,10 @@ function SignalException (ex) = {
 
 function ERETHook() : unit -> unit =
   {
-    set_next_pcc(EPCC);
+    if (CP0Status.ERL() == bitone) then
+      set_next_pcc(ErrorEPCC)
+    else
+      set_next_pcc(EPCC);
   }
 
 val raise_c2_exception8 : forall ('o : Type) . (CapEx, bits(8)) -> 'o effect {escape, rreg, wreg}
