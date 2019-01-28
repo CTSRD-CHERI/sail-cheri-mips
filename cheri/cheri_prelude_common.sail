@@ -665,7 +665,8 @@ function dump_cp2_state () = {
   /* TODO: these two should not be mirrored to match the FPGA */
   print(concat_str("DEBUG CAP HWREG 22", capToString(KR1C, true)));
   print(concat_str("DEBUG CAP HWREG 23", capToString(KR2C, true)));
-  /* KCC, KDC, EPCC */
+  /* ErrorEPCC, KCC, KDC, EPCC */
+  print(concat_str("DEBUG CAP HWREG 28", capToString(ErrorEPCC, true)));
   print(concat_str("DEBUG CAP HWREG 29", capToString(KCC, true)));
   print(concat_str("DEBUG CAP HWREG 30", capToString(KDC, true)));
   print(concat_str("DEBUG CAP HWREG 31", capToString(EPCC, true)));
