@@ -134,26 +134,29 @@ function capBitsToCapability(tag, capBits) : (bool, CapBits) -> Capability =
     length                     = capBits[63..0]
   }
 
+function getCapHardPerms(cap) : Capability -> bits(12) =
+   (cap.permit_set_CID
+  @ cap.access_system_regs
+  @ cap.permit_unseal
+  @ cap.permit_ccall
+  @ cap.permit_seal
+  @ cap.permit_store_local_cap
+  @ cap.permit_store_cap
+  @ cap.permit_load_cap
+  @ cap.permit_store
+  @ cap.permit_load
+  @ cap.permit_execute
+  @ cap.global)
+
 /*!
-gets the permissions of the capabilty as a 31-bit vector. The architecturally defined permissions are in bits 0-10 and user defined permissions are in bits 15 and above. Bits 11-14 are reserved: if they are present (CHERI 256) they act as extra user permissions but when using compressed capabilities they will be zero.
+gets the permissions of the capabilty as a 31-bit vector. The architecturally defined permissions are in the least significant bits and user defined permissions are in bits 15 and above. Reserved bits are zero.
  */
 val getCapPerms : Capability -> bits(31) 
 function getCapPerms(cap) = 
   (
     cap.uperms
-      @ cap.perm_reserved12_14
-      @ cap.permit_set_CID
-      @ cap.access_system_regs
-      @ cap.permit_unseal
-      @ cap.permit_ccall
-      @ cap.permit_seal
-      @ cap.permit_store_local_cap
-      @ cap.permit_store_cap
-      @ cap.permit_load_cap
-      @ cap.permit_store
-      @ cap.permit_load
-      @ cap.permit_execute
-      @ cap.global
+      @ 0b000 /* reserved */
+      @ getCapHardPerms(cap)
   )
 
 
@@ -162,7 +165,9 @@ function capToBits(cap) : Capability -> CapBits =
   (
         cap.padding
       @ cap.otype
-      @ getCapPerms(cap)
+      @ cap.uperms
+      @ cap.perm_reserved12_14
+      @ getCapHardPerms(cap)
       @ cap.sealed
       @ cap.address
       @ cap.base
@@ -192,7 +197,7 @@ function memBitsToCapability(tag, b) =
   capBitsToCapability(tag, b ^ null_cap_bits)
 
 /*!
-sets the permission of the capabiltiy as a 31-bit vector. Writes to reserved permissions are ignored when using compressed capabilities, although this behaviour is subject to change in future revisions.
+sets the permission of the capabiltiy as a 31-bit vector. Writes to reserved bits are ignored, although this behaviour is subject to change in future revisions.
  */
 val setCapPerms : (Capability, bits(31)) -> Capability
 function setCapPerms(cap, perms) =
