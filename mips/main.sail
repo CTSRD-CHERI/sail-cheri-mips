@@ -25,7 +25,7 @@ function fetch_and_execute () = {
     prerr("PC: ");
     prerr(BitStr(PC));
   };
-  loop_again = true;
+  loop_again : bool = true;
   try {
     let pc_pa = TranslatePC(PC);
     /*print_bits("pa: ", pc_pa);*/
