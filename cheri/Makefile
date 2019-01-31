@@ -1,5 +1,7 @@
 include ../etc/sail.mk
 
+.DELETE_ON_ERROR: cheri128.c cheri.c
+
 MIPS_SAIL_DIR:=../mips
 CHERI_SAIL_DIR:=.
 
