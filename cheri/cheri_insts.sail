@@ -54,9 +54,9 @@ function clause execute (CGetType(rd, cb)) =
 {
   checkCP2usable();
   let capVal = readCapReg(cb);
-  wGPR(rd) = if capVal.sealed
+  wGPR(rd) = if unsigned(capVal.otype) <= max_otype
     then zero_extend(capVal.otype)
-    else 0xffffffffffffffff
+    else sign_extend(capVal.otype) /* return negative for reserved otypes */
 }
 
 function clause execute (CGetBase(rd, cb)) =
@@ -734,11 +734,44 @@ function clause execute (CCSeal(cd, cs, ct)) =
   }
 }
 
+union clause ast = CSealEntry : (regno, regno)
+function clause execute (CSealEntry(cd, cs)) =
+{
+  checkCP2usable();
+  let cs_val = readCapReg(cs);
+  let cs_cursor = getCapCursor(cs_val);
+  let cs_top    = getCapTop(cs_val);
+  let cs_base   = getCapBase(cs_val);
+  if not (cs_val.tag) then
+    raise_c2_exception(CapEx_TagViolation, cs)
+  else if cs_val.sealed then
+    raise_c2_exception(CapEx_SealViolation, cs)
+  /* XXX should we have a permission for csealentry?
+  else if not (cs_val.permit_seal) then
+    raise_c2_exception(CapEx_PermitSealViolation, cs) */
+  else if not (cs_val.permit_execute) then
+    raise_c2_exception(CapEx_PermitExecuteViolation, cs)
+  /* XXX should do bounds and alignment check here or wait until cjr?
+  else if cs_cursor < cs_base then
+    raise_c2_exception(CapEx_LengthViolation, cs)
+  else if (cs_cursor + 4) >= cs_top then
+    raise_c2_exception(CapEx_LengthViolation, cs) */
+  else
+  {
+    let (success, newCap) = sealCap(cs_val, to_bits(24, otype_sentry));
+    if not (success) then
+        raise_c2_exception(CapEx_InexactBounds, cs)
+    else
+        writeCapReg(cd, newCap)
+  }
+}
+
 union clause ast = CUnseal : (regno, regno, regno)
 function clause execute (CUnseal(cd, cs, ct)) =
 {
   checkCP2usable();
   let cs_val = readCapReg(cs);
+  let cs_otype  = unsigned(cs_val.otype);
   let ct_val = readCapReg(ct);
   let ct_cursor = getCapCursor(ct_val);
   if not (cs_val.tag) then
@@ -749,7 +782,9 @@ function clause execute (CUnseal(cd, cs, ct)) =
     raise_c2_exception(CapEx_SealViolation, cs)
   else if ct_val.sealed then
     raise_c2_exception(CapEx_SealViolation, ct)
-  else if ct_cursor != unsigned(cs_val.otype) then
+  else if cs_otype > max_otype then
+    raise_c2_exception(CapEx_TypeViolation, cs) /* reserved otype */
+  else if ct_cursor != cs_otype then
     raise_c2_exception(CapEx_TypeViolation, ct)
   else if not (ct_val.permit_unseal) then
     raise_c2_exception(CapEx_PermitUnsealViolation, ct)
@@ -877,13 +912,14 @@ function clause execute(CJALR(cd, cb, link)) =
   checkCP2usable();
   if InBranchDelay then
      SignalException(ResI);
-  let cb_val = readCapReg(cb);
+  cb_val = readCapReg(cb);
   let cb_ptr = getCapCursor(cb_val);
   let cb_top = getCapTop(cb_val);
   let cb_base= getCapBase(cb_val);
+  let sentry = signed(cb_val.otype) == otype_sentry;
   if not (cb_val.tag) then
     raise_c2_exception(CapEx_TagViolation, cb)
-  else if (cb_val.sealed) then
+  else if (cb_val.sealed & not(sentry)) then
     raise_c2_exception(CapEx_SealViolation, cb)
   else if not (cb_val.permit_execute) then
     raise_c2_exception(CapEx_PermitExecuteViolation, cb)
@@ -895,11 +931,18 @@ function clause execute(CJALR(cd, cb, link)) =
     SignalException(AdEL)
   else
   {
+    if sentry then
+       cb_val = unsealCap(cb_val);
     if link then
     {
       let (success, linkCap) = setCapOffset(PCC, PC+8);
       assert(success, "Link cap should always be representable.");
-      writeCapReg(cd, linkCap);
+      if sentry then {
+        let (success2, sealedLink) = sealCap(linkCap, to_bits(24, otype_sentry));
+        assert(success2, "Sealing should always be possible with current format.");
+        writeCapReg(cd, sealedLink);
+      } else
+        writeCapReg(cd, linkCap);
     };
     execute_branch_pcc(cb_val);
   };
@@ -1331,6 +1374,7 @@ function clause decode (0b010010 @ 0b00000 @ cs : regno @ cb : regno @    0b0100
 function clause decode (0b010010 @ 0b00000 @ cd : regno @ cb : regno @    0b01011 @ 0b111111) = Some(CClearTag(cd, cb))
 function clause decode (0b010010 @ 0b00000 @ cd : regno @ cs : regno @    0b01010 @ 0b111111) = Some(CMOVX(cd, cs, 0b00000, false)) /* CMOVE */
 function clause decode (0b010010 @ 0b00000 @ cd : regno @ cb : regno @    0b01100 @ 0b111111) = Some(CJALR(cd, cb, true)) /* CJALR */
+function clause decode (0b010010 @ 0b00000 @ cd : regno @ cb : regno @    0b11101 @ 0b111111) = Some(CSealEntry(cd, cb))
 
 function clause decode (0b010010 @ 0b00000 @ rd : regno @ cb : regno @    0b11110 @ 0b111111) = Some(CLoadTags(rd, cb))
 

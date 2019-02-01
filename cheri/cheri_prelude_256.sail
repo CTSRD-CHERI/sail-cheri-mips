@@ -33,7 +33,7 @@
 /*========================================================================*/
 
 type CapBits = bits(256)
-let max_otype = MAX(24) /*0xffffff*/
+let max_otype = MAX(24) /*0xffffff*/ - reserved_otypes
 
 struct Capability = {
   tag                     : bool    ,

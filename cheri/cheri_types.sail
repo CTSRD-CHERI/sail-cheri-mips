@@ -53,3 +53,9 @@ CLo,
 CHi
 }
 
+/*
+ * How many otype are reserved for special uses (e.g. unsealed == -1)
+ */
+let reserved_otypes = 4
+let otype_unsealed = -1
+let otype_sentry = -2
