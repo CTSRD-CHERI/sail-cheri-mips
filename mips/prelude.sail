@@ -153,6 +153,8 @@ union exception = {
   Error_internal_error : unit
 }
 
+$ifndef FEATURE_IMPLICITS
+
 /* These functions make the first parameter to builtin extension
 functions implicit from length of returned vector.  */
 
@@ -187,6 +189,35 @@ val ones_implicit : forall 'n, 'n >= 0 . unit -> bits('n)
 function ones_implicit () = ones_n ('n)
 
 overload ones = {ones_implicit, ones_n}
+
+$else
+
+/* These functions make the first parameter to builtin extension
+functions implicit from length of returned vector.  */
+
+val mips_sign_extend : forall 'n 'm, 'm >= 'n. (implicit('m), bits('n)) -> bits('m)
+val mips_zero_extend : forall 'n 'm, 'm >= 'n. (implicit('m), bits('n)) -> bits('m)
+
+function mips_sign_extend(m, v) = sail_sign_extend(v, m)
+function mips_zero_extend(m, v) = sail_zero_extend(v, m)
+
+/* Because sail already has builtins with these names we use overload to rename above. */
+overload sign_extend = {mips_sign_extend}
+overload zero_extend = {mips_zero_extend}
+
+val zeros_implicit : forall 'n, 'n >= 0. (implicit('n), unit) -> bits('n)
+function zeros_implicit(n, _) = sail_zeros(n)
+overload zeros = {zeros_implicit, sail_zeros}
+
+val ones_n : forall 'n, 'n >= 0. int('n) -> bits('n)
+function ones_n n = replicate_bits(0b1, n)
+
+val ones_implicit : forall 'n, 'n >= 0. (implicit('n), unit) -> bits('n)
+function ones_implicit(n, _) = ones_n(n)
+
+overload ones = {ones_implicit, ones_n}
+
+$endif
 
 infix 4 <_s
 infix 4 >=_s
@@ -243,7 +274,12 @@ THIS`(l, v)` converts an integer, `v`,  to a bit vector of length `l`. If `v` is
 val to_bits : forall 'l, 'l >= 0 .(atom('l), int) -> bits('l)
 function to_bits (l, n) = get_slice_int(l, n, 0)
 
-val mask : forall 'm 'n , 'm >= 'n > 0 . bits('m) -> bits('n)
-function mask bs = bs['n - 1 .. 0]
+$ifndef FEATURE_IMPLICITS
+val mask : forall 'm 'n, 'm >= 'n > 0. bits('m) -> bits('n)
+function mask(bs) = bs['n - 1 .. 0]
+$else
+val mask : forall 'm 'n, 'm >= 'n > 0. (implicit('n), bits('m)) -> bits('n)
+function mask(n, bs) = bs[n - 1 .. 0]
+$endif
 
 val "get_time_ns" : unit -> int
