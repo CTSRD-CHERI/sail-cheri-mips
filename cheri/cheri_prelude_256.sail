@@ -266,6 +266,13 @@ val getCapCursor : Capability -> uint64
 function getCapCursor(c) = unsigned(c.address)
 
 /*!
+THIS(cap, addr) returns a new capability derived from `cap` with the address set to `addr`. If the operation fails due to representability checks then the result will have the expected address but the bounds may be incorrect.
+ */
+val setCapAddr : (Capability, bits(64)) -> (bool, Capability)
+function setCapAddr(c, addr) =
+    (true, {c with address=addr})
+
+/*!
 THIS(cap, off) returns a new capability derived from `cap` with the offset set to `off` (i.e. with $\mathit{address} = \mathit{cap.base} + \mathit{off}$). If the operation fails due to representability checks then the result will have the expected address but the bounds may be incorrect. Note that, for performance reasons, an approximate representability check may be used that means the operation could fail even though the result would be representable.
  */
 val setCapOffset : (Capability, bits(64)) -> (bool, Capability)

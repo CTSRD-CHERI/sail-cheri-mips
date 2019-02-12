@@ -99,7 +99,16 @@ function clause execute (CGetAddr(rd, cb)) =
 {
   checkCP2usable();
   let capVal = readCapReg(cb);
-  wGPR(rd) = to_bits(64, getCapCursor(capVal));
+  wGPR(rd) = capVal.address;
+}
+
+union clause ast = CGetAddrMasked : (regno, regno, regno)
+function clause execute (CGetAddrMasked(rd, cb, rs)) =
+{
+  checkCP2usable();
+  let capVal = readCapReg(cb);
+  let rs_val = rGPR(rs);
+  wGPR(rd) = capVal.address & rs_val;
 }
 
 union clause ast = CGetPCC : regno
@@ -394,6 +403,43 @@ function clause execute (CSetOffset(cd, cb, rt)) =
         writeCapReg(cd, newCap)
     else
         writeCapReg(cd, int_to_cap(to_bits(64, getCapBase(cb_val)) + rt_val))
+  }
+}
+
+union clause ast = CSetAddr : (regno, regno, regno)
+function clause execute (CSetAddr(cd, cb, rt)) =
+{
+  checkCP2usable();
+  let cb_val = readCapReg(cb);
+  let rt_val = rGPR(rt);
+  if cb_val.tag & cb_val.sealed then
+    raise_c2_exception(CapEx_SealViolation, cb)
+  else
+  {
+    let (representable, newCap) = setCapAddr(cb_val, rt_val);
+    if representable then
+        writeCapReg(cd, newCap)
+    else
+        writeCapReg(cd, int_to_cap(rt_val));
+  }
+}
+
+union clause ast = CAndAddr : (regno, regno, regno)
+function clause execute (CAndAddr(cd, cb, rt)) =
+{
+  checkCP2usable();
+  let cb_val = readCapReg(cb);
+  let rt_val = rGPR(rt);
+  if cb_val.tag & cb_val.sealed then
+    raise_c2_exception(CapEx_SealViolation, cb)
+  else
+  {
+    let newAddr = cb_val.address & rt_val;
+    let (representable, newCap) = setCapAddr(cb_val, newAddr);
+    if representable then
+        writeCapReg(cd, newCap)
+    else
+        writeCapReg(cd, int_to_cap(newAddr));
   }
 }
 
@@ -1347,7 +1393,7 @@ function clause decode (0b010010 @ 0b00000 @ cd : regno @ rs : regno @    0b0011
 function clause decode (0b010010 @ 0b00000 @ cd : regno @ sel : regno @   0b01101 @ 0b111111) = Some(CReadHwr(cd, sel))
 function clause decode (0b010010 @ 0b00000 @ cb : regno @ sel : regno @   0b01110 @ 0b111111) = Some(CWriteHwr(cb, sel))
 
-function clause decode (0b010010 @ 0b00000 @ cb : regno @ sel : regno @   0b01111 @ 0b111111) = Some(CGetAddr(cb, sel))
+function clause decode (0b010010 @ 0b00000 @ rd : regno @ cb : regno @   0b01111 @ 0b111111) = Some(CGetAddr(rd, cb))
 
 /* Three operand */
 
@@ -1371,6 +1417,10 @@ function clause decode (0b010010 @ 0b00000 @ cd : regno @ cb : regno @ rs : regn
 function clause decode (0b010010 @ 0b00000 @ rt : regno @ cb : regno @ cs : regno @ 0b001010) = Some(CSub(rt, cb, cs))
 function clause decode (0b010010 @ 0b00000 @ cd : regno @ cs : regno @ rs : regno @ 0b011011) = Some(CMOVX(cd, cs, rs, false)) /* CMOVZ */
 function clause decode (0b010010 @ 0b00000 @ cd : regno @ cs : regno @ rs : regno @ 0b011100) = Some(CMOVX(cd, cs, rs, true))  /* CMOVN */
+function clause decode (0b010010 @ 0b00000 @ cd : regno @ cs : regno @ rs : regno @ 0b100010) = Some(CSetAddr(cd, cs, rs))
+function clause decode (0b010010 @ 0b00000 @ rd : regno @ cs : regno @ rs : regno @ 0b100011) = Some(CGetAddrMasked(rd, cs, rs))
+function clause decode (0b010010 @ 0b00000 @ cd : regno @ cs : regno @ rs : regno @ 0b100100) = Some(CAndAddr(cd, cs, rs))
+
 
 /* Pointer Comparison */
 function clause decode (0b010010 @ 0b00000 @ rd : regno @ cb : regno @ cs : regno @ 0b010100) = Some(CPtrCmp(rd, cb, cs, CEQ))
