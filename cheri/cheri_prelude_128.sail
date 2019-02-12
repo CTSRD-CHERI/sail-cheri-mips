@@ -340,6 +340,12 @@ function capBoundsEqual (c1, c2) : (Capability, Capability) -> bool =
     let (base2, top2) = getCapBounds(c2) in
     (base1 == base2) & (top1 == top2)
 
+val setCapAddr : (Capability, bits(64)) -> (bool, Capability)
+function setCapAddr(c, addr) =
+    let newCap = { c with address = addr } in
+    let representable = capBoundsEqual(c, newCap) in
+    (representable, newCap)
+
 function setCapOffset(c, offset) : (Capability, bits(64)) -> (bool, Capability) =
     let base64 : bits(64) = to_bits(64, getCapBase(c)) in
     let newAddress : bits(64) = base64 + offset in
