@@ -320,9 +320,9 @@ function clause execute(CPtrCmp(rd, cb, ct, op)) =
   checkCP2usable();
   let cb_val = readCapReg(cb);
   let ct_val = readCapReg(ct);
-  equal  = false;
-  ltu    = false;
-  lts    = false;
+  equal : bool = false;
+  ltu   : bool = false;
+  lts   : bool = false;
   if cb_val.tag != ct_val.tag then
     {
       if not (cb_val.tag) then
