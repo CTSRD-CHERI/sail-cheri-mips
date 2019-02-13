@@ -102,8 +102,8 @@ function clause execute (CGetAddr(rd, cb)) =
   wGPR(rd) = capVal.address;
 }
 
-union clause ast = CGetAddrMasked : (regno, regno, regno)
-function clause execute (CGetAddrMasked(rd, cb, rs)) =
+union clause ast = CGetAndAddr : (regno, regno, regno)
+function clause execute (CGetAndAddr(rd, cb, rs)) =
 {
   checkCP2usable();
   let capVal = readCapReg(cb);
@@ -1418,7 +1418,7 @@ function clause decode (0b010010 @ 0b00000 @ rt : regno @ cb : regno @ cs : regn
 function clause decode (0b010010 @ 0b00000 @ cd : regno @ cs : regno @ rs : regno @ 0b011011) = Some(CMOVX(cd, cs, rs, false)) /* CMOVZ */
 function clause decode (0b010010 @ 0b00000 @ cd : regno @ cs : regno @ rs : regno @ 0b011100) = Some(CMOVX(cd, cs, rs, true))  /* CMOVN */
 function clause decode (0b010010 @ 0b00000 @ cd : regno @ cs : regno @ rs : regno @ 0b100010) = Some(CSetAddr(cd, cs, rs))
-function clause decode (0b010010 @ 0b00000 @ rd : regno @ cs : regno @ rs : regno @ 0b100011) = Some(CGetAddrMasked(rd, cs, rs))
+function clause decode (0b010010 @ 0b00000 @ rd : regno @ cs : regno @ rs : regno @ 0b100011) = Some(CGetAndAddr(rd, cs, rs))
 function clause decode (0b010010 @ 0b00000 @ cd : regno @ cs : regno @ rs : regno @ 0b100100) = Some(CAndAddr(cd, cs, rs))
 
 
