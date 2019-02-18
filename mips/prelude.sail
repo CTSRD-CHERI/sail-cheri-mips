@@ -22,6 +22,7 @@ val not_vec = {c:"not_bits", _:"not_vec"} : forall 'n. bits('n) -> bits('n)
 
 overload ~ = {not_bool, not_vec}
 
+$latex noref not
 val not = {coq:"negb", _:"not"} : bool -> bool
 
 val neq_vec = {lem: "neq"} : forall 'n. (bits('n), bits('n)) -> bool
