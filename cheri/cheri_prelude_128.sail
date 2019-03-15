@@ -260,30 +260,34 @@ function sealCap(cap, otyp) : (Capability, bits(24)) -> (bool, Capability) =
 function unsealCap(cap) : Capability -> Capability =
     {cap with sealed=false, otype=ones()}
 
-function a_top_correction(a_mid, R, bound) : (bits(3), bits(3), bits(3)) -> bits(65) =
-    match (a_mid <_u R, bound <_u R) {
-      (false, false)  => zeros(),
-      (false, true)   => zero_extend(0b1),
-      (true, false)   => ones(),
-      (true, true)    => zeros()
-    }
-
-function getCapBounds(c) : Capability -> (uint64, CapLen) = {
+function getCapBounds(c) : Capability -> (uint64, CapLen) =
   let E = unsigned(c.E) in
-  let a : bits(65) = zero_extend(c.address) in
+  let a : bits(64) = c.address in
   /* Extract bits we need to make the top correction and calculate representable limit */
   let a3 = truncate(a >> (E + 11), 3) in
   let B3 = truncateLSB(c.B, 3) in
   let T3 = truncateLSB(c.T, 3) in
   let R3 = B3 - 0b001 in /* wraps */
-  let correction_base = a_top_correction(a3, R3, B3) in
-  let correction_top  = a_top_correction(a3, R3, T3) in
+  /* Do address, base and top lie in the R aligned region above the one containing R? */
+  let aHi = if a3 <_u R3 then 1 else 0 in
+  let bHi = if B3 <_u R3 then 1 else 0 in
+  let tHi = if T3 <_u R3 then 1 else 0 in
+  /* Compute region corrections for top and base relative to a */
+  let correction_base = bHi - aHi in
+  let correction_top  = tHi - aHi in
   let a_top = (a >> (E + 14)) in
-  let e_zeros = zeros(E) in
-  let base : bits(64) = truncate((a_top + correction_base) @ c.B @ e_zeros, 64) in
-  let top  : bits(65) = truncate((a_top + correction_top)  @ c.T @ e_zeros, 65) in
-  (unsigned(base), unsigned(top))
-}
+  let e_zeros = zeros(E) in {
+    base : bits(65) = truncate((a_top + correction_base) @ c.B @ e_zeros, 65);
+    top  : bits(65) = truncate((a_top + correction_top)  @ c.T @ e_zeros, 65);
+    if (base[64] == bitone) then {
+      /* If base[64] is set this indicates under or overflow i.e. a has 
+         wrapped around the address space and been corrected. In this case
+         we need to correct top[64] because top is not quite modulo 2**64 due
+         to having max top == 2**64 in one particular case: */
+       top[64] = if (aHi == 1) & (tHi == 1) then bitone else bitzero;
+    };
+    (unsigned(base[63..0]), unsigned(top))
+  }
 
 function getCapBase(c) : Capability -> uint64 =
     let (base, _) = getCapBounds(c) in
