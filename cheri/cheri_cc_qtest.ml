@@ -138,10 +138,10 @@ let test_setOffset (bounds, offset) =
   let (rep, cap2) = Cheri_cc.zsetCapOffset(cap1, offset) in
   let zoff = Sail_lib.sint(offset) in
   let len = BI.max (BI.of_int 4096) (Cheri_cc.zgetCapLength cap1) in
-  let z8 = BI.of_int 8 in
+  let z4 = BI.of_int 4 in
   let z7 = BI.of_int 7 in
-  let lowerRepOff = BI.negate (BI.div len z8) in
-  let upperRepOff = BI.div (BI.mul len z7) z8 in
+  let lowerRepOff = BI.negate (BI.div len z4) in
+  let upperRepOff = BI.div (BI.mul len z7) z4 in
   let success = rep || (BI.less zoff lowerRepOff) || (BI.greater zoff upperRepOff) in begin
       if not success then begin
           print_endline (Cheri_cc.string_of_zCapability cap1);
