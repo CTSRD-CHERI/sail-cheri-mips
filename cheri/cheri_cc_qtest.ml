@@ -139,9 +139,9 @@ let test_setOffset (bounds, offset) =
   let zoff = Sail_lib.sint(offset) in
   let len = BI.max (BI.of_int 4096) (Cheri_cc.zgetCapLength cap1) in
   let z4 = BI.of_int 4 in
-  let z7 = BI.of_int 7 in
+  let z6 = BI.of_int 6 in
   let lowerRepOff = BI.negate (BI.div len z4) in
-  let upperRepOff = BI.div (BI.mul len z7) z4 in
+  let upperRepOff = BI.div (BI.mul len z6) z4 in
   let success = rep || (BI.less zoff lowerRepOff) || (BI.greater zoff upperRepOff) in begin
       if not success then begin
           print_endline (Cheri_cc.string_of_zCapability cap1);
