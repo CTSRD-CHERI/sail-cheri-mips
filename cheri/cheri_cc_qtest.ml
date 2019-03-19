@@ -23,6 +23,25 @@ let arbitrary_cap_bits = QCheck.make ~print:Sail_lib.string_of_bits (gen_sailbit
 let test_cap_decode_encode capbits =
   Sail_lib.eq_list (Cheri_cc.zcapToBits (Cheri_cc.zcapBitsToCapability (true, capbits)), capbits)
 
+(* Test whether an arbitrary bit pattern results in top >= base when 
+   decoded. This isn't really a requirement but is interesting as an
+   inidcation of encoding efficiency. We known that large E can result
+   in base > top but this isn't an issue in practice. *)
+let test_get_length capbits =
+  let c = Cheri_cc.zcapBitsToCapability (true, capbits) in
+  let (base, top) = Cheri_cc.zgetCapBounds(c) in
+  let e = Nat_big_num.to_int (Sail_lib.uint (c.zE)) in
+  let passed = (e >= 51) || Nat_big_num.less_equal base top in
+  begin
+  if not passed then
+    begin
+      print_endline "Failure:";
+      print_endline (Cheri_cc.string_of_zCapability(c));
+      print_endline ("base " ^ (Z.format "x" base) ^ " top " ^ (Z.format "x" top));
+    end;
+  passed
+  end
+
 (* XXX this never generates 2^64 for tops... *) 
 let gen_bounds =
   QCheck.Gen.(list_repeat 4 (gen_sailbits_geom 64))
@@ -159,6 +178,7 @@ let testsuite = [
   QCheck.Test.make ~count:10000 ~long_factor:1000 ~name:"setOffset"  arbitrary_setOffset test_setOffset;
   QCheck.Test.make ~count:10000 ~long_factor:1000 ~name:"setCapBounds"  arbitrary_bounds test_setBounds;
   QCheck.Test.make ~count:10000 ~long_factor:1000 ~name:"cap_decode_encode" arbitrary_cap_bits test_cap_decode_encode;
+  (*  QCheck.Test.make ~count:10000 ~long_factor:1000 ~name:"cap_length" arbitrary_cap_bits test_get_length; *)
 ]
 
 let bits_of_string n s =
