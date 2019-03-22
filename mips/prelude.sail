@@ -96,18 +96,15 @@ overload negate = {negate_range, negate_int}
 
 overload operator * = {mult_int}
 
-val quotient_nat = {ocaml: "quotient", lem: "integerDiv", coq: "Z.div"} : (nat, nat) -> nat
-
-val quotient = {ocaml: "quotient", lem: "integerDiv", coq: "Z.mod"} : (int, int) -> int
-
-overload operator / = {quotient_nat, quotient}
+/* 
+Use Euclidean div and mod.
+Plain 'div' and 'mod' are are for compatibility with versions of sail prior to 0.9 
+*/
+overload operator / = {ediv_int, div}
+overload operator % = {emod_int, mod}
 
 val quot_round_zero = {ocaml: "quot_round_zero", lem: "hardware_quot", coq: "Z.quot", _ : "tdiv_int"} : (int, int) -> int
 val rem_round_zero = {ocaml: "rem_round_zero", lem: "hardware_mod", coq: "Z.rem", _ : "tmod_int"} : (int, int) -> int
-
-val modulus = {ocaml: "modulus", lem: "hardware_mod", coq: "euclid_modulo", _ : "tmod_int"} : forall 'n, 'n > 0 .  (int, atom('n)) -> range(0, 'n - 1)
-
-overload operator % = {modulus}
 
 val min_nat = {lem: "min", coq: "min_nat", _: "min_int"} : (nat, nat) -> nat
 
