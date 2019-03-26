@@ -1,6 +1,9 @@
 open Sail_lib
 module BI = Nat_big_num
 
+let bits_of_string n s =
+  Sail_lib.to_bits (Z.of_int n, Z.of_string s)
+
 let gen_sailbits n =
   QCheck.Gen.(list_repeat n (map Sail_lib.bit_of_bool bool))
 
@@ -144,9 +147,15 @@ let gen_bounds2 =
   QCheck.Gen.(list_repeat 2 (gen_sailbits_geom 64))
 
 let gen_offset = gen_sailbits_geom_signed 64
+
+let b64_of_s = bits_of_string 64
+let setOffset_regressions = List.map (fun (base, top, offset) -> ([b64_of_s base; b64_of_s top], b64_of_s offset)) [
+("0x0000000000000000", "0x0000000000000000", "0xffffffffffffffff");
+("0xffffffffffff0000", "0xffffffffffffffff", "0x0000000000010000"); (* NB top should round to 2**64 *)
+]
+
+let gen_setOffset = QCheck.Gen.graft_corners (QCheck.Gen.pair gen_bounds2 gen_offset) setOffset_regressions ()
   
-let gen_setOffset =
-  QCheck.Gen.pair gen_bounds2 gen_offset
   
 let test_setOffset (bounds, offset) =
   (* pair each bit list with Big_int for easy comparison etc. *)
@@ -180,53 +189,8 @@ let testsuite = [
   QCheck.Test.make ~count:10000 ~long_factor:1000 ~name:"cap_decode_encode" arbitrary_cap_bits test_cap_decode_encode;
   (*  QCheck.Test.make ~count:10000 ~long_factor:1000 ~name:"cap_length" arbitrary_cap_bits test_get_length; *)
 ]
-
-let bits_of_string n s =
-  Sail_lib.to_bits (Z.of_int n, Z.of_string s)
   
 let () =
   begin
-    QCheck_runner.run_tests_main testsuite;(*
-    let ones = bits_of_string 64 "0xfffffffffffffff0" in
-    let two64 = bits_of_string 65 "0x10000000000000000" in
-    let z64 = Z.of_int 64 in
-    let z65 = Z.of_int 65 in
-    let (_, c1) = Cheri_cc.zsetCapBounds (Cheri_cc.zdefault_cap, ones, two64) in
-    let (r, c2) = Cheri_cc.zincCapOffset (c1, Sail_lib.to_bits (z64, Z.of_int 20)) in
-    let (b1, t1) = Cheri_cc.zgetCapBounds(c1) in
-    let (b2, t2) = Cheri_cc.zgetCapBounds(c2) in
-    print_endline (Cheri_cc.string_of_zCapability c1);
-    print_endline (if r then "rep " else "unrep ");
-    print_endline (Cheri_cc.string_of_zCapability c2);
-    print_endline ((Z.format "%017x" b1) ^ " " ^ (Z.format "%017x" t1));
-    print_endline ((Z.format "%017x" b2) ^ " " ^ (Z.format "%017x" t2));
-
-    let (_, c1) = Cheri_cc.zsetCapBounds (Cheri_cc.zdefault_cap, ones, bits_of_string 65 "0xfffffffffffffff0") in
-    let (r, c2) = Cheri_cc.zincCapOffset (c1, Sail_lib.to_bits (z64, Z.of_int 20)) in
-    let (b1, t1) = Cheri_cc.zgetCapBounds(c1) in
-    let (b2, t2) = Cheri_cc.zgetCapBounds(c2) in
-    print_endline (Cheri_cc.string_of_zCapability c1);
-    print_endline (if r then "rep " else "unrep ");
-    print_endline (Cheri_cc.string_of_zCapability c2);
-    print_endline ((Z.format "%017x" b1) ^ " " ^ (Z.format "%017x" t1));
-    print_endline ((Z.format "%017x" b2) ^ " " ^ (Z.format "%017x" t2));
-
-    let (_, c1) = Cheri_cc.zsetCapBounds (Cheri_cc.zdefault_cap, bits_of_string 64 "0x0040000000000000", two64) in
-    let (r, c2) = Cheri_cc.zsetCapAddr (c1, bits_of_string 64 "0x0") in
-    let (b1, t1) = Cheri_cc.zgetCapBounds(c1) in
-    let (b2, t2) = Cheri_cc.zgetCapBounds(c2) in
-    cap_encode_decode c2;
-    print_endline (Cheri_cc.string_of_zCapability c1);
-    print_endline (if r then "rep " else "unrep ");
-    print_endline (Cheri_cc.string_of_zCapability c2);
-    print_endline ((Z.format "%017x" b1) ^ " " ^ (Z.format "%017x" t1));
-    print_endline ((Z.format "%017x" b2) ^ " " ^ (Z.format "%017x" t2));
-    
-    let (_, c) = Cheri_cc.zsetCapBounds (Cheri_cc.zdefault_cap, Sail_lib.to_bits (z64, Z.of_int 0), Sail_lib.to_bits (z65, Z.of_int 0)) in
-    let (r, c2) = Cheri_cc.zincCapOffset (c, ones) in
-    let (b, t) = Cheri_cc.zgetCapBounds(c2) in
-    print_endline (Cheri_cc.string_of_zCapability c);
-    print_endline (if r then "rep " else "unrep ");
-    print_endline (Cheri_cc.string_of_zCapability c2);
-    print_endline ((Z.format "%017x" b) ^ " " ^ (Z.format "%017x" t));*)
+    QCheck_runner.run_tests_main testsuite;
   end
