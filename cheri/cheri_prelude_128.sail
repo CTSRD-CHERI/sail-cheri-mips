@@ -286,6 +286,14 @@ function getCapBounds(c) : Capability -> (uint64, CapLen) =
          to having max top == 2**64 in one particular case: */
        top[64] = if (aHi == 1) & (tHi == 1) then bitone else bitzero;
     };
+    /*
+    /* The following is apparently equivalent to above and used by hw. */
+    let base2 : bits(2) = bitzero @ base[63];
+    let top2  : bits(2) = top[64..63];
+    if (E < (unsigned(resetE) - 1)) & (unsigned(top2 - base2) > 1) then {
+      top[64] = ~(top[64]);
+    };
+    */
     (unsigned(base[63..0]), unsigned(top))
   }
 
