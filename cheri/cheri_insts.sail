@@ -366,7 +366,7 @@ function clause execute (CIncOffset(cd, cb, rt)) =
     if success then
         writeCapReg(cd, newCap)
     else
-        writeCapReg(cd, int_to_cap(to_bits(64, getCapBase(cb_val)) + rt_val))
+        writeCapReg(cd, int_to_cap(cb_val.address + rt_val))
   }
 }
 
@@ -384,7 +384,7 @@ function clause execute (CIncOffsetImmediate(cd, cb, imm)) =
     if success then
         writeCapReg(cd, newCap)
     else
-        writeCapReg(cd, int_to_cap(to_bits(64, getCapBase(cb_val)) + imm64))
+        writeCapReg(cd, int_to_cap(cb_val.address + imm64))
   }
 }
 
