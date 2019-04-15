@@ -53,3 +53,7 @@ CLo,
 CHi
 }
 
+type num_flags_t : Int = 0
+type CFlags = bits(num_flags_t)
+let num_flags = sizeof(num_flags_t)
+

@@ -42,12 +42,20 @@ union clause ast = CGetTag    : (regno, regno)
 union clause ast = CGetSealed : (regno, regno)
 union clause ast = CGetOffset : (regno, regno)
 union clause ast = CGetAddr   : (regno, regno)
+union clause ast = CGetFlags  : (regno, regno)
 
 function clause execute (CGetPerm(rd, cb)) =
 {
   checkCP2usable();
   let capVal = readCapReg(cb);
   wGPR(rd) = zero_extend(getCapPerms(capVal));
+}
+
+function clause execute (CGetFlags(rd, cb)) =
+{
+  checkCP2usable();
+  let capVal = readCapReg(cb);
+  wGPR(rd) = zero_extend(getCapFlags(capVal));
 }
 
 function clause execute (CGetType(rd, cb)) =
@@ -280,7 +288,20 @@ function clause execute(CAndPerm(cd, cb, rt)) =
   }
 }
 
-
+union clause ast = CSetFlags : (regno, regno, regno)
+function clause execute(CSetFlags(cd, cb, rt)) = 
+{
+  checkCP2usable();
+  let cb_val = readCapReg(cb);
+  let rt_val = rGPR(rt);
+  if cb_val.tag & cb_val.sealed then
+    raise_c2_exception(CapEx_SealViolation, cb)
+  else
+  {
+    let newCap  = setCapFlags(cb_val, truncate(rt_val, num_flags));
+    writeCapReg(cd, newCap);
+  }
+}
 
 union clause ast = CToPtr : (regno, regno, regno)
 function clause execute(CToPtr(rd, cb, ct)) = 
@@ -1403,6 +1424,7 @@ function clause decode (0b010010 @ 0b00000 @ cd : regno @ sel : regno @   0b0110
 function clause decode (0b010010 @ 0b00000 @ cb : regno @ sel : regno @   0b01110 @ 0b111111) = Some(CWriteHwr(cb, sel))
 
 function clause decode (0b010010 @ 0b00000 @ rd : regno @ cb : regno @   0b01111 @ 0b111111) = Some(CGetAddr(rd, cb))
+function clause decode (0b010010 @ 0b00000 @ rd : regno @ cb : regno @   0b10010 @ 0b111111) = Some(CGetFlags(rd, cb))
 
 /* Three operand */
 
@@ -1413,7 +1435,7 @@ function clause decode (0b010010 @ 0b00000 @ cd : regno @ cs : regno @ rt : regn
 function clause decode (0b010010 @ 0b00000 @ cd : regno @ cs : regno @ rt : regno @ 0b001111) = Some(CSetOffset(cd, cs, rt))
 function clause decode (0b010010 @ 0b00000 @ cd : regno @ cs : regno @ rt : regno @ 0b001000) = Some(CSetBounds(cd, cs, rt))
 function clause decode (0b010010 @ 0b00000 @ cd : regno @ cs : regno @ rt : regno @ 0b001001) = Some(CSetBoundsExact(cd, cs, rt))
-
+function clause decode (0b010010 @ 0b00000 @ cd : regno @ cs : regno @ rt : regno @ 0b001110) = Some(CSetFlags(cd, cs, rt))
 
 function clause decode (0b010010 @ 0b00000 @ cd : regno @ cb : regno @ rt : regno @ 0b010001) = Some(CIncOffset(cd, cb, rt))
 function clause decode (0b010010 @ 0b00000 @ cd : regno @ cb : regno @ ct : regno @ 0b011101) = Some(CBuildCap(cd, cb, ct))

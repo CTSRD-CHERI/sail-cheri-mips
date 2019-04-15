@@ -658,3 +658,16 @@ function dump_cp2_state () = {
   print(concat_str("DEBUG CAP HWREG 31", capToString(EPCC, true)));
 
 }
+
+
+/*!
+Gets the architecture specific capability flags for given capability.
+ */
+val getCapFlags : Capability -> CFlags
+function getCapFlags(cap) = truncate(0b0, 0)
+
+/*!
+THIS`(cap, flags)` sets the architecture specific capability flags on `cap` to `flags` and returns the result as new capability.
+ */
+val setCapFlags : (Capability, CFlags) -> Capability
+function setCapFlags(cap, flags) = cap
