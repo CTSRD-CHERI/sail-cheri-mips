@@ -7,8 +7,8 @@ Require Import String.
 Require Import List.
 Import List.ListNotations.
 
-Definition MEMr {regval a e} (addr : mword a) size `{ArithFact (size >= 0)}            : monad regval (mword (8 * size)) e := read_mem Read_plain addr size.
-Definition MEMr_reserve {regval a e} (addr : mword a) size `{ArithFact (size >= 0)}    : monad regval (mword (8 * size)) e := read_mem Read_reserve addr size.
+Definition MEMr {regval a e} (addr : mword a) size `{ArithFact (size >= 0)}            : monad regval (mword (8 * size)) e := read_mem Read_plain a addr size.
+Definition MEMr_reserve {regval a e} (addr : mword a) size `{ArithFact (size >= 0)}    : monad regval (mword (8 * size)) e := read_mem Read_reserve a addr size.
 Definition MEM_sync {rv e} (_:unit) : monad rv unit e := barrier Barrier_MIPS_SYNC.
 
 Definition MEMr_tagged {rv a e} (addr : mword a) size `{ArithFact (size > 0)} : monad rv (bool * mword (size * 8)) e :=
@@ -21,11 +21,11 @@ Definition MEMr_tagged_reserve {rv a e} (addr : mword a) size `{ArithFact (size 
   maybe_fail "bool_of_bitU" (bool_of_bitU t) >>= fun t =>
   returnm (t, v).
 
-Definition MEMea {regval a e} (addr : mword a) size                : monad regval unit e := write_mem_ea Write_plain addr size.
-Definition MEMea_conditional {regval a e} (addr : mword a) size    : monad regval unit e := write_mem_ea Write_conditional addr size.
+Definition MEMea {regval a e} (addr : mword a) size                : monad regval unit e := write_mem_ea Write_plain a addr size.
+Definition MEMea_conditional {regval a e} (addr : mword a) size    : monad regval unit e := write_mem_ea Write_conditional a addr size.
 
-Definition MEMval {regval a e} (addr : mword a) (size : Z) (v : mword (8 * size))                      : monad regval unit e := write_mem Write_plain addr size v >>= fun _ => returnm tt.
-Definition MEMval_conditional {regval a e} (addr : mword a) (size : Z) (v : mword (8 * size))          : monad regval bool e := write_mem Write_conditional addr size v.
+Definition MEMval {regval a e} (addr : mword a) (size : Z) (v : mword (8 * size))                      : monad regval unit e := write_mem Write_plain a addr size v >>= fun _ => returnm tt.
+Definition MEMval_conditional {regval a e} (addr : mword a) (size : Z) (v : mword (8 * size))          : monad regval bool e := write_mem Write_conditional a addr size v.
 
 Definition MEMval_tagged {rv a e} (addr : mword a) size t (v : mword (size * 8)) : monad rv unit e            := write_memt Write_plain addr size v (bitU_of_bool t) >>= fun _ => returnm tt.
 Definition MEMval_tagged_conditional {rv a e} (addr : mword a) size t (v : mword (size * 8)) :monad rv bool e := write_memt Write_conditional addr size v (bitU_of_bool t).
