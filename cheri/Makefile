@@ -57,6 +57,9 @@ cheri_c_gcov: cheri_c
 gcovr:
 	gcovr -r . --html --html-detail -o index.html
 
+cheri128_smt: $(CHERI128_NO_TLB_SAILS) properties_128.sail
+	$(SAIL) -smt -undefined_gen -memo_z3 $^
+
 latex_128: $(MIPS_SAIL_DIR)/prelude.sail $(CHERI_SAIL_DIR)/cheri_types.sail $(CHERI_SAIL_DIR)/cheri_prelude_128.sail
 	rm -rf sail_latexcc
 	$(SAIL) -latex -latex_prefix sailcc -o sail_latexcc $^
