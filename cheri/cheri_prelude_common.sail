@@ -664,7 +664,7 @@ function dump_cp2_state () = {
 Gets the architecture specific capability flags for given capability.
  */
 val getCapFlags : Capability -> CFlags
-function getCapFlags(cap) = truncate(0b0, 0)
+function getCapFlags(cap) = []
 
 /*!
 THIS`(cap, flags)` sets the architecture specific capability flags on `cap` to `flags` and returns the result as new capability.
