@@ -120,6 +120,7 @@ let default_cap : Capability = struct {
 }
 
 let 'cap_size = 16
+let 'caps_per_cacheline = 8
 
 /*
 Convert from capabilty bits (128 bits with tag) to a more convenient struct.
@@ -286,8 +287,8 @@ function getCapBounds(c) : Capability -> (uint64, CapLen) =
          to having max top == 2**64 in one particular case: */
        top[64] = if (aHi == 1) & (tHi == 1) then bitone else bitzero;
     };
-    /*
     /* The following is apparently equivalent to above and used by hw. */
+    /*
     let base2 : bits(2) = bitzero @ base[63];
     let top2  : bits(2) = top[64..63];
     if (E < (unsigned(resetE) - 1)) & (unsigned(top2 - base2) > 1) then {

@@ -1064,25 +1064,21 @@ function clause execute (CLoadTags(rd, cb)) =
   {
     let vAddr   = getCapCursor(cb_val);
     let vAddr64 = to_bits(64, getCapCursor(cb_val));
-    if (vAddr + 8 * cap_size) > getCapTop(cb_val) then
+    if (vAddr + caps_per_cacheline * cap_size) > getCapTop(cb_val) then
       raise_c2_exception(CapEx_LengthViolation, cb)
     else if vAddr < getCapBase(cb_val) then
       raise_c2_exception(CapEx_LengthViolation, cb)
-    else if not (vAddr64[5..0] == 0b000000) then /* XXX Cache line width? */
+    else if not(vAddr % (cap_size * caps_per_cacheline) == 0) then
       SignalExceptionBadAddr(AdEL, vAddr64)
     else
       {
         let pAddr     = TLBTranslate(vAddr64, LoadData);
-        let (tag0, _) = MEMr_tagged(pAddr + 0*cap_size, cap_size);
-        let (tag1, _) = MEMr_tagged(pAddr + 1*cap_size, cap_size);
-        let (tag2, _) = MEMr_tagged(pAddr + 2*cap_size, cap_size);
-        let (tag3, _) = MEMr_tagged(pAddr + 3*cap_size, cap_size);
-        let (tag4, _) = MEMr_tagged(pAddr + 4*cap_size, cap_size);
-        let (tag5, _) = MEMr_tagged(pAddr + 5*cap_size, cap_size);
-        let (tag6, _) = MEMr_tagged(pAddr + 6*cap_size, cap_size);
-        let (tag7, _) = MEMr_tagged(pAddr + 7*cap_size, cap_size);
-        wGPR(rd)      = zero_extend (tag7 @ tag6 @ tag5 @ tag4
-                                   @ tag3 @ tag2 @ tag1 @ tag0);
+        x : bits(64)  = zeros();
+        foreach(i from 0 to (caps_per_cacheline - 1)) {
+          let (tag, _) = MEMr_tagged(pAddr + i*cap_size, cap_size);
+          x[i] = tag;
+        };
+        wGPR(rd) = x;
       }
   }
 }

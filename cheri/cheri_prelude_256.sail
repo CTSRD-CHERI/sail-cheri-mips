@@ -108,6 +108,7 @@ let default_cap : Capability = struct {
 }
 
 let 'cap_size = 32
+let 'caps_per_cacheline = 4
 
 function capBitsToCapability(tag, capBits) : (bool, CapBits) -> Capability =
   struct {
