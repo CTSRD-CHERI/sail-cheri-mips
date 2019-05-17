@@ -53,7 +53,8 @@ CLo,
 CHi
 }
 
-type num_flags_t : Int = 0
+/* This should really be zero but that causes problem for HOL... */
+type num_flags_t : Int = 1
 type CFlags = bits(num_flags_t)
 let num_flags = sizeof(num_flags_t)
 
