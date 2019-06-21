@@ -1059,7 +1059,7 @@ function clause execute (CLoadTags(rd, cb)) =
   else if not (cb_val.permit_load) then
     raise_c2_exception(CapEx_PermitLoadViolation, cb)
   else if not (cb_val.permit_load_cap) then
-    raise_c2_exception(CapEx_PermitLoadViolation, cb)
+    raise_c2_exception(CapEx_PermitLoadCapViolation, cb)
   else
   {
     let vAddr   = getCapCursor(cb_val);
