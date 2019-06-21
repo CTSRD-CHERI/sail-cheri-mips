@@ -196,6 +196,22 @@ function clause execute (CSetCID(cb)) =
   }
 }
 
+union clause ast = CRAP : (regno, regno)
+function clause execute(CRAP(rt, rs)) =
+{
+  checkCP2usable();
+  let len = rGPR(rs);
+  wGPR(rt) = getRepresentableLength(len);
+}
+
+union clause ast = CRAM : (regno, regno)
+function clause execute(CRAM(rt, rs)) =
+{
+  checkCP2usable();
+  let len = rGPR(rs);
+  wGPR(rt) = getRepresentableAlignmentMask(len);
+}
+
 union clause ast = CReadHwr : (regno, regno)
 function clause execute (CReadHwr(cd, sel)) = 
 {
@@ -1421,6 +1437,9 @@ function clause decode (0b010010 @ 0b00000 @ cb : regno @ sel : regno @   0b0111
 
 function clause decode (0b010010 @ 0b00000 @ rd : regno @ cb : regno @   0b01111 @ 0b111111) = Some(CGetAddr(rd, cb))
 function clause decode (0b010010 @ 0b00000 @ rd : regno @ cb : regno @   0b10010 @ 0b111111) = Some(CGetFlags(rd, cb))
+
+function clause decode (0b010010 @ 0b00000 @ rt : regno @ rs : regno @   0b10000 @ 0b111111) = Some(CRAP(rt, rs))
+function clause decode (0b010010 @ 0b00000 @ rt : regno @ rs : regno @   0b10001 @ 0b111111) = Some(CRAM(rt, rs))
 
 /* Three operand */
 

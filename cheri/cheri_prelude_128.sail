@@ -447,6 +447,19 @@ function setCapBounds(cap, base, top) : (Capability, bits(64), bits(65)) -> (boo
   (exact, newCap)
 }
 
+function getRepresentableAlignmentMask(len) : bits(64) -> bits(64) = {
+  let (exact, c) = setCapBounds(default_cap,  ones() - len, 0b0 @ 0xffffffffffffffff);
+  let e : range(0, 52) = min(unsigned(c.E), 52);
+  let e' : range(0, 55) = if c.internal_e then e + 3 else 0;
+  let nmask : bits(64) = zero_extend(ones(e'));
+  ~(nmask)
+}
+function getRepresentableLength(len) : bits(64) -> bits(64) = {
+  let m = getRepresentableAlignmentMask(len);
+  (len + ~(m)) & m
+}
+
+
 /*
 This version of setCapBounds was transcribed from Bluespec. It uses some approximations to help pass timing that can result in wider bounds than returned by above version.
  */

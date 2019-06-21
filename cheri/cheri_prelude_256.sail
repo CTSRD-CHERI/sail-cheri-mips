@@ -303,7 +303,9 @@ function setCapBounds(cap, base, top) =
     let length : bits(65) = top - (0b0 @ base) in
     (true, {cap with base = base, length = length[63..0], address = base})
 
-
+function getRepresentableAlignmentMask(len) : bits(64) -> bits(64) = ones()
+function getRepresentableLength(len) : bits(64) -> bits(64) = len
+}
 
 
 /*!
