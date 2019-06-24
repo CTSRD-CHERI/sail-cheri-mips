@@ -374,13 +374,6 @@ function incCapOffset(c, delta) : (Capability, bits(64)) -> (bool, Capability) =
 /*    let representable = fastRepCheck(c, delta) in*/
     (representable, newCap)
 
-val CountLeadingZeros : forall 'N , 'N >= 2. bits('N) -> {'n, 0 <= 'n <= 'N . atom('n)}
-function CountLeadingZeros x = {
-  foreach (i from ('N - 1) to 0 by 1 in dec)
-    if [x[i]] == 0b1 then return 'N - i - 1;
-  return 'N;
-}
-
 /* 
 An 'ideal' version of setCapBounds as described in paper.
  */
@@ -391,7 +384,7 @@ function setCapBounds(cap, base, top) : (Capability, bits(64), bits(65)) -> (boo
   /* Find an exponent that will put the most significant bit of length 
      second from the top as assumed during decoding. We ignore the bottom
      MW - 1 bits because those are handled by the ie = 0 format. */
-  let e = 52 - CountLeadingZeros(length[64..13]);
+  let e = 52 - count_leading_zeros(length[64..13]);
   // Use use internal exponent if e is non-zero or if e is zero but
   // but the implied bit of length is not zero (denormal vs. normal case)
   let ie = (e != 0) | length[12];
@@ -412,7 +405,7 @@ function setCapBounds(cap, base, top) : (Capability, bits(64), bits(65)) -> (boo
     
     /* Find out whether we have lost significant bits of base and top using a
        mask of bits that we will lose (including 3 extra for exp). */
-    maskLo : bits(65) = zero_extend(replicate_bits(0b1, e + 3));
+    maskLo : bits(65) = zero_extend(ones(e + 3));
     z65    : bits(65) = zeros();
     lostSignificantBase = (base65 & maskLo) != z65;
     lostSignificantTop = (top & maskLo) != z65;
@@ -451,9 +444,9 @@ function getRepresentableAlignmentMask(len) : bits(64) -> bits(64) = {
   let (exact, c) = setCapBounds(default_cap,  ones() - len, 0b0 @ 0xffffffffffffffff);
   let e : range(0, 52) = min(unsigned(c.E), 52);
   let e' : range(0, 55) = if c.internal_e then e + 3 else 0;
-  let nmask : bits(64) = zero_extend(ones(e'));
-  ~(nmask)
+  ones(64-e') @ zeros(e')
 }
+
 function getRepresentableLength(len) : bits(64) -> bits(64) = {
   let m = getRepresentableAlignmentMask(len);
   (len + ~(m)) & m
@@ -470,7 +463,7 @@ function setCapBounds_hw(cap, base, top) : (Capability, bits(64), bits(65)) -> (
   top66  = 0b0  @ top;
   let length : bits(66) = top66 - base66; // why 66?
   /* roughly index of highest set bit excluding (MW-1) lower bits */
-  let e = 43 - CountLeadingZeros(length[64..22]);
+  let e = 43 - count_leading_zeros(length[64..22]);
   let e0 = e == 0; // called maxZero in bsv  
   let lenMSB = if e0 then length[21] else bitzero; // sample len MW-2
   // extract MW + 1 bits of top and base -- we might need extra one if we round up e
