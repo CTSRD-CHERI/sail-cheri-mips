@@ -548,9 +548,11 @@ function getAccessLevel() =
       _     => User /* behaviour undefined, assume user */
     }
 
+val checkCP0AccessHook : unit->unit effect{escape, rreg, wreg}
 val checkCP0Access : unit->unit effect{escape, rreg, wreg}
 function checkCP0Access () =
   {
+    checkCP0AccessHook();
     let accessLevel = getAccessLevel() in
     if ((accessLevel != Kernel) & (~(CP0Status.CU()[0]))) then
       {

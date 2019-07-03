@@ -339,6 +339,7 @@ function ERETHook() : unit -> unit =
       set_next_pcc(EPCC);
   }
 
+
 val raise_c2_exception8 : forall ('o : Type) . (CapEx, bits(8)) -> 'o effect {escape, rreg, wreg}
 function raise_c2_exception8(capEx, regnum) =
   {
@@ -371,6 +372,11 @@ function raise_c2_exception_noreg(capEx) =
 
 val pcc_access_system_regs : unit -> bool effect {rreg}
 function pcc_access_system_regs () = PCC.access_system_regs
+
+function checkCP0AccessHook () : unit -> unit = {
+  if not(pcc_access_system_regs()) then
+    raise_c2_exception_noreg(CapEx_AccessSystemRegsViolation)
+}
 
 let cap_addr_mask = to_bits(64, pow2(64) - cap_size)
 
