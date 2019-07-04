@@ -306,9 +306,3 @@ function setCapBounds(cap, base, top) =
 function getRepresentableAlignmentMask(len) : bits(64) -> bits(64) = ones()
 function getRepresentableLength(len) : bits(64) -> bits(64) = len
 
-/*!
-creates a capability with the given 64-bit vector in its offset field. The resulting capability is untagged and has base zero but the other fields are undefined and may vary, depending on the capabilty compression format, to ensure that any offset can be represented.
-*/
-val int_to_cap : bits(64) -> Capability 
-function int_to_cap (address) = 
-    {null_cap with address = address}

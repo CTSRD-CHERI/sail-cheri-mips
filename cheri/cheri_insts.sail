@@ -138,7 +138,7 @@ function clause execute (CGetPCCSetOffset(cd, rs)) =
   if (success) then
     writeCapReg(cd, newPCC)
   else
-    writeCapReg(cd, int_to_cap(rs_val));
+    writeCapReg(cd, nullifyCap(newPCC));
 }
 /* Get and Set CP2 cause register */
 
@@ -403,7 +403,7 @@ function clause execute (CIncOffset(cd, cb, rt)) =
     if success then
         writeCapReg(cd, newCap)
     else
-        writeCapReg(cd, int_to_cap(cb_val.address + rt_val))
+        writeCapReg(cd, nullifyCap(newCap))
   }
 }
 
@@ -421,7 +421,7 @@ function clause execute (CIncOffsetImmediate(cd, cb, imm)) =
     if success then
         writeCapReg(cd, newCap)
     else
-        writeCapReg(cd, int_to_cap(cb_val.address + imm64))
+        writeCapReg(cd, nullifyCap(newCap))
   }
 }
 
@@ -439,7 +439,7 @@ function clause execute (CSetOffset(cd, cb, rt)) =
     if success then
         writeCapReg(cd, newCap)
     else
-        writeCapReg(cd, int_to_cap(to_bits(64, getCapBase(cb_val)) + rt_val))
+        writeCapReg(cd, nullifyCap(newCap))
   }
 }
 
@@ -457,7 +457,7 @@ function clause execute (CSetAddr(cd, cb, rt)) =
     if representable then
         writeCapReg(cd, newCap)
     else
-        writeCapReg(cd, int_to_cap(rt_val));
+        writeCapReg(cd, nullifyCap(newCap));
   }
 }
 
@@ -476,7 +476,7 @@ function clause execute (CAndAddr(cd, cb, rt)) =
     if representable then
         writeCapReg(cd, newCap)
     else
-        writeCapReg(cd, int_to_cap(newAddr));
+        writeCapReg(cd, nullifyCap(newCap));
   }
 }
 
@@ -619,7 +619,7 @@ function clause execute (CFromPtr(cd, cb, rt)) =
     if success then
         writeCapReg(cd, newCap)
     else
-        writeCapReg(cd, int_to_cap(to_bits(64, getCapBase(cb_val)) + rt_val))
+        writeCapReg(cd, nullifyCap(newCap))
   }
 }
 
@@ -688,7 +688,7 @@ function clause execute (CCopyType(cd, cb, ct)) =
     }
   }
   else
-    writeCapReg(cd, int_to_cap(0xffffffffffffffff))
+    writeCapReg(cd, {null_cap with address=ones()})
 }
 
 union clause ast = CCheckPerm : (regno, regno)

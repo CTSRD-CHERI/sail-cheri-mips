@@ -182,6 +182,18 @@ function writeCapReg(n, cap) =
     (*CapRegs[i]) = cap;
   }
 
+/*!
+THIS`(cap)` returns `cap` with the tag unset. It is used when the
+result of a capability operation (e.g. setting the address) has
+caused it to become unrepresentable. The result of subsequent 
+operations such as `cgetbase` will depend on the exact capability 
+format in use but in general the address, length, object type and 
+permissions will remain the same with the expected operation having
+been applied to the address.
+ */
+val nullifyCap : Capability -> Capability
+function nullifyCap(cap) = {cap with tag = false}
+
 enum CapEx = {
   CapEx_None, 
   CapEx_LengthViolation,
@@ -609,7 +621,7 @@ function set_CP0EPC (newEPC) = {
   EPCC = if representable then
       {newEPCC with tag = newEPCC.tag & not(newEPCC.sealed)}
     else
-      int_to_cap(to_bits(64, getCapBase(EPCC)) + newEPC);
+      nullifyCap(newEPCC);
 }
 
 /* As above but for ErrorEPC... */
@@ -621,7 +633,7 @@ function set_CP0ErrorEPC (v) = {
   ErrorEPCC = if representable then
       {newErrorEPCC with tag = newErrorEPCC.tag & not(newErrorEPCC.sealed)}
     else
-      int_to_cap(to_bits(64, getCapBase(ErrorEPCC)) + v);
+      nullifyCap(newErrorEPCC);
 }
 
 function capToString (cap, fixlen) = {

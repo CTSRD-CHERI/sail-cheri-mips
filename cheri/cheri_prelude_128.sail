@@ -519,5 +519,3 @@ function setCapBounds_hw(cap, base, top) : (Capability, bits(64), bits(65)) -> (
   (exact, newCap)
 }
 */
-function int_to_cap (offset) : bits(64) -> Capability = 
-    {null_cap with address = offset}
