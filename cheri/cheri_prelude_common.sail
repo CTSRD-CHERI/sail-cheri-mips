@@ -136,7 +136,7 @@ function readCapReg(n) =
     null_cap
   else
     let i = unsigned(n) in
-    reg_deref(CapRegs[i])
+    *(CapRegs[i])
 
 /*!
 THIS is the same as [readCapReg] except that when the argument is zero the value of DDC is returned 
@@ -146,7 +146,7 @@ null would always generate an exception.
 val readCapRegDDC : regno -> Capability effect {rreg}
 function readCapRegDDC(n) =
   let i = unsigned(n) in
-  reg_deref(CapRegs[i]) /* NB CapRegs[0] is points to DDC */
+  *(CapRegs[i]) /* NB CapRegs[0] is points to DDC */
 
 /*!
 THIS`(cd, cap_val)` writes capability, `cap_val` capability register `cd`. Writes to register zero are ignored.

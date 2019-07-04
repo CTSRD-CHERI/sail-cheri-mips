@@ -52,7 +52,7 @@ function tlbSearch(VAddr) =
   let vpn2 = (VAddr[39..13]) in
   let asid = TLBEntryHi.ASID() in {
     foreach (idx from 0 to 63) {
-      if(tlbEntryMatch(r, vpn2, asid, reg_deref(TLBEntries[idx]))) then
+      if(tlbEntryMatch(r, vpn2, asid, *TLBEntries[idx])) then
 	return Some(to_bits(6, idx))
     };
     None()
@@ -68,7 +68,7 @@ function TLBTranslate2 (vAddr, accessType) = {
   match idx {
     Some(idx) =>
       let i as atom(_) = unsigned(idx) in
-      let entry = reg_deref(TLBEntries[i]) in
+      let entry = *TLBEntries[i] in
       let entryMask = entry.pagemask() in
       let 'evenOddBit : range(12,28) = match (entryMask) {
         0x0000  => 12,
