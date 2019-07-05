@@ -138,7 +138,7 @@ function clause execute (CGetPCCSetOffset(cd, rs)) =
   if (success) then
     writeCapReg(cd, newPCC)
   else
-    writeCapReg(cd, nullifyCap(newPCC));
+    writeCapReg(cd, unrepCap(newPCC));
 }
 /* Get and Set CP2 cause register */
 
@@ -403,7 +403,7 @@ function clause execute (CIncOffset(cd, cb, rt)) =
     if success then
         writeCapReg(cd, newCap)
     else
-        writeCapReg(cd, nullifyCap(newCap))
+        writeCapReg(cd, unrepCap(newCap))
   }
 }
 
@@ -421,7 +421,7 @@ function clause execute (CIncOffsetImmediate(cd, cb, imm)) =
     if success then
         writeCapReg(cd, newCap)
     else
-        writeCapReg(cd, nullifyCap(newCap))
+        writeCapReg(cd, unrepCap(newCap))
   }
 }
 
@@ -439,7 +439,7 @@ function clause execute (CSetOffset(cd, cb, rt)) =
     if success then
         writeCapReg(cd, newCap)
     else
-        writeCapReg(cd, nullifyCap(newCap))
+        writeCapReg(cd, unrepCap(newCap))
   }
 }
 
@@ -457,7 +457,7 @@ function clause execute (CSetAddr(cd, cb, rt)) =
     if representable then
         writeCapReg(cd, newCap)
     else
-        writeCapReg(cd, nullifyCap(newCap));
+        writeCapReg(cd, unrepCap(newCap));
   }
 }
 
@@ -476,7 +476,7 @@ function clause execute (CAndAddr(cd, cb, rt)) =
     if representable then
         writeCapReg(cd, newCap)
     else
-        writeCapReg(cd, nullifyCap(newCap));
+        writeCapReg(cd, unrepCap(newCap));
   }
 }
 
@@ -619,7 +619,7 @@ function clause execute (CFromPtr(cd, cb, rt)) =
     if success then
         writeCapReg(cd, newCap)
     else
-        writeCapReg(cd, nullifyCap(newCap))
+        writeCapReg(cd, unrepCap(newCap))
   }
 }
 
