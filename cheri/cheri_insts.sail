@@ -62,9 +62,9 @@ function clause execute (CGetType(rd, cb)) =
 {
   checkCP2usable();
   let capVal = readCapReg(cb);
-  wGPR(rd) = if unsigned(capVal.otype) <= max_otype
-    then zero_extend(capVal.otype)
-    else sign_extend(capVal.otype) /* return negative for reserved otypes */
+  wGPR(rd) = if hasReservedOType(capVal)
+    then sign_extend(capVal.otype) /* return negative for reserved otypes */
+    else zero_extend(capVal.otype)
 }
 
 function clause execute (CGetBase(rd, cb)) =
@@ -674,21 +674,18 @@ function clause execute (CCopyType(cd, cb, ct)) =
     raise_c2_exception(CapEx_TagViolation, cb)
   else if cb_val.sealed then
     raise_c2_exception(CapEx_SealViolation, cb)
-  else if ct_val.sealed then
-  {
-    if ct_otype < cb_base then
-      raise_c2_exception(CapEx_LengthViolation, cb)
-    else if ct_otype >= cb_top then
-      raise_c2_exception(CapEx_LengthViolation, cb)
-    else
-    {
-      let (success, cap) = setCapOffset(cb_val, to_bits(64, ct_otype - cb_base));
-      assert(success, "CopyType: offset is in bounds so should be representable");
-      writeCapReg(cd, cap);
-    }
-  }
+  else if not(ct_val.sealed) | hasReservedOType(ct_val) then
+    writeCapReg(cd, {null_cap with address = sign_extend(ct_val.otype)})
+  else if ct_otype < cb_base then
+    raise_c2_exception(CapEx_LengthViolation, cb)
+  else if ct_otype >= cb_top then
+    raise_c2_exception(CapEx_LengthViolation, cb)
   else
-    writeCapReg(cd, {null_cap with address=ones()})
+  {
+    let (success, cap) = setCapOffset(cb_val, to_bits(64, ct_otype - cb_base));
+    assert(success, "CopyType: offset is in bounds so should be representable");
+    writeCapReg(cd, cap);
+  }
 }
 
 union clause ast = CCheckPerm : (regno, regno)
@@ -714,9 +711,9 @@ function clause execute (CCheckType(cs, cb)) =
     raise_c2_exception(CapEx_TagViolation, cs)
   else if not (cb_val.tag) then
     raise_c2_exception(CapEx_TagViolation, cb)
-  else if not (cs_val.sealed) then
+  else if not(cs_val.sealed) | hasReservedOType(cs_val) then /* XXX should make latter a TypeViolation? */
     raise_c2_exception(CapEx_SealViolation, cs)
-  else if not (cb_val.sealed) then
+  else if not(cb_val.sealed) | hasReservedOType(cb_val) then  /* XXX should make latter a TypeViolation? */
     raise_c2_exception(CapEx_SealViolation, cb)
   else if cs_val.otype != cb_val.otype then
     raise_c2_exception(CapEx_TypeViolation, cs)
@@ -779,7 +776,7 @@ function clause execute (CSeal(cd, cs, ct)) =
     raise_c2_exception(CapEx_LengthViolation, ct)
   else if ct_cursor >= ct_top then
     raise_c2_exception(CapEx_LengthViolation, ct)
-  else if ct_cursor > max_otype then
+  else if ct_cursor > max_otype then /* prevents sealing with reserved or invalid otypes */
     raise_c2_exception(CapEx_LengthViolation, ct)
   else
   {
@@ -802,8 +799,21 @@ function clause execute (CCSeal(cd, cs, ct)) =
   let ct_base   = getCapBase(ct_val);
   if not (cs_val.tag) then
     raise_c2_exception(CapEx_TagViolation, cs)
-  else if not (ct_val.tag) | (getCapCursor(ct_val) == MAX_U64) then
-    writeCapReg(cd, cs_val)
+  else if (ct_val.address == otype_sentry_bits) then {
+    if cs_val.sealed then
+      raise_c2_exception(CapEx_SealViolation, cs)
+    else if not(cs_val.permit_execute) then
+      raise_c2_exception(CapEx_PermitExecuteViolation, cs)
+    else
+    {
+      let (success, newCap) = sealCap(cs_val, to_bits(24, otype_sentry));
+      if not (success) then
+        raise_c2_exception(CapEx_InexactBounds, cs)
+      else
+        writeCapReg(cd, newCap)
+    }
+  } else if not(ct_val.tag) | (ct_val.address == otype_unsealed_bits) then
+    writeCapReg(cd, cs_val) /* unsealed, just copy cs */
   else if cs_val.sealed then
     raise_c2_exception(CapEx_SealViolation, cs)
   else if ct_val.sealed then
@@ -815,7 +825,7 @@ function clause execute (CCSeal(cd, cs, ct)) =
   else if ct_cursor >= ct_top then
     raise_c2_exception(CapEx_LengthViolation, ct)
   else if ct_cursor > max_otype then
-    raise_c2_exception(CapEx_LengthViolation, ct)
+    raise_c2_exception(CapEx_TypeViolation, ct)
   else
   {
     let (success, newCap) = sealCap(cs_val, to_bits(24, ct_cursor));
@@ -874,8 +884,8 @@ function clause execute (CUnseal(cd, cs, ct)) =
     raise_c2_exception(CapEx_SealViolation, cs)
   else if ct_val.sealed then
     raise_c2_exception(CapEx_SealViolation, ct)
-  else if cs_otype > max_otype then
-    raise_c2_exception(CapEx_TypeViolation, cs) /* reserved otype */
+  else if hasReservedOType(cs_val) then
+    raise_c2_exception(CapEx_TypeViolation, cs)
   else if ct_cursor != cs_otype then
     raise_c2_exception(CapEx_TypeViolation, ct)
   else if not (ct_val.permit_unseal) then
@@ -904,9 +914,9 @@ function clause execute (CCall(cs, cb, 0b00000000000)) = /* selector=0 */
     raise_c2_exception(CapEx_TagViolation, cs)
   else if not (cb_val.tag) then
     raise_c2_exception(CapEx_TagViolation, cb)
-  else if not (cs_val.sealed) then
+  else if not(cs_val.sealed) | hasReservedOType(cs_val) then /* XXX Should latter be type violation? */
     raise_c2_exception(CapEx_SealViolation, cs)
-  else if not (cb_val.sealed) then
+  else if not(cb_val.sealed) | hasReservedOType(cb_val) then  /* XXX Should latter be type violation? */
     raise_c2_exception(CapEx_SealViolation, cb)
   else if cs_val.otype != cb_val.otype then
     raise_c2_exception(CapEx_TypeViolation, cs)
@@ -935,9 +945,9 @@ function clause execute (CCall(cs, cb, 0b00000000001)) = /* selector=1 */
     raise_c2_exception(CapEx_TagViolation, cs)
   else if not (cb_val.tag) then
     raise_c2_exception(CapEx_TagViolation, cb)
-  else if not (cs_val.sealed) then
+  else if hasReservedOType(cs_val) then
     raise_c2_exception(CapEx_SealViolation, cs)
-  else if not (cb_val.sealed) then
+  else if hasReservedOType(cb_val) then
     raise_c2_exception(CapEx_SealViolation, cb)
   else if cs_val.otype != cb_val.otype then
     raise_c2_exception(CapEx_TypeViolation, cs)
@@ -1008,7 +1018,7 @@ function clause execute(CJALR(cd, cb, link)) =
   let cb_ptr = getCapCursor(cb_val);
   let cb_top = getCapTop(cb_val);
   let cb_base= getCapBase(cb_val);
-  let sentry = signed(cb_val.otype) == otype_sentry;
+  let sentry = isSentryCap(cb_val);
   if not (cb_val.tag) then
     raise_c2_exception(CapEx_TagViolation, cb)
   else if (cb_val.sealed & not(sentry)) then

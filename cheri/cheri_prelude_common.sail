@@ -689,3 +689,13 @@ THIS`(cap, flags)` sets the architecture specific capability flags on `cap` to `
  */
 val setCapFlags : (Capability, CFlags) -> Capability
 function setCapFlags(cap, flags) = cap
+
+/*! Returns true if the given capability is a sealed entry capability. */
+val isSentryCap : Capability -> bool
+function isSentryCap (cap) = signed(cap.otype) == otype_sentry
+
+/*! Tests whether the capability has a reserved otype (larger than max_otype).
+    Note that this includes both sealed (e.g. sentry) and unsealed (e.g. all ones)
+    otypes. */
+val hasReservedOType : Capability -> bool
+function hasReservedOType(cap) = unsigned(cap.otype) > max_otype
