@@ -121,6 +121,7 @@ function SignalException (ex) = {
 
 val ERETHook : unit -> unit
 function ERETHook() = ()
+function checkCP0AccessHook () : unit -> unit = ()
 
 function init_cp2_state () = {skip_wreg(); skip_escape()}
 function cp2_next_pc()     = {skip_wreg(); skip_rreg()}

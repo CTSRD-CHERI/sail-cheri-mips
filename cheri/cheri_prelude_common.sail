@@ -136,7 +136,7 @@ function readCapReg(n) =
     null_cap
   else
     let i = unsigned(n) in
-    reg_deref(CapRegs[i])
+    *(CapRegs[i])
 
 /*!
 THIS is the same as [readCapReg] except that when the argument is zero the value of DDC is returned 
@@ -146,7 +146,7 @@ null would always generate an exception.
 val readCapRegDDC : regno -> Capability effect {rreg}
 function readCapRegDDC(n) =
   let i = unsigned(n) in
-  reg_deref(CapRegs[i]) /* NB CapRegs[0] is points to DDC */
+  *(CapRegs[i]) /* NB CapRegs[0] is points to DDC */
 
 /*!
 THIS`(cd, cap_val)` writes capability, `cap_val` capability register `cd`. Writes to register zero are ignored.
@@ -181,6 +181,18 @@ function writeCapReg(n, cap) =
     };
     (*CapRegs[i]) = cap;
   }
+
+/*!
+THIS`(cap)` returns `cap` with the tag unset. It is used when the
+result of a capability operation (e.g. setting the address) has
+caused it to become unrepresentable. The result of subsequent 
+operations such as `cgetbase` will depend on the exact capability 
+format in use but in general the address, length, object type and 
+permissions will remain the same with the expected operation having
+been applied to the address.
+ */
+val nullifyCap : Capability -> Capability
+function nullifyCap(cap) = {cap with tag = false}
 
 enum CapEx = {
   CapEx_None, 
@@ -339,6 +351,7 @@ function ERETHook() : unit -> unit =
       set_next_pcc(EPCC);
   }
 
+
 val raise_c2_exception8 : forall ('o : Type) . (CapEx, bits(8)) -> 'o effect {escape, rreg, wreg}
 function raise_c2_exception8(capEx, regnum) =
   {
@@ -372,76 +385,73 @@ function raise_c2_exception_noreg(capEx) =
 val pcc_access_system_regs : unit -> bool effect {rreg}
 function pcc_access_system_regs () = PCC.access_system_regs
 
+function checkCP0AccessHook () : unit -> unit = {
+  if not(pcc_access_system_regs()) then
+    raise_c2_exception_noreg(CapEx_AccessSystemRegsViolation)
+}
+
+let cap_addr_mask = to_bits(64, pow2(64) - cap_size)
+
 /*!
 reads the tag associated with the given physical address.
  */
-val MEMr_tag = "read_tag_bool"  : bits(64) -> bool effect { rmemt }
-val MEMw_tag = "write_tag_bool" : (bits(64) , bool) -> unit effect { wmvt }
+val "read_tag_bool"  : bits(64) -> bool effect { rmemt }
+val "write_tag_bool" : (bits(64) , bool) -> unit effect { wmvt }
 
 /*!
-reads `cap_size` bytes from the given physical address in memory and the associated tag value. The address should be capability-aligned.
+reads `size` bytes from the given physical address in memory and the associated tag value.
  */
-val MEMr_tagged : bits(64) -> (bool, bits('cap_size * 8)) effect { escape, rmem, rmemt }
-function MEMr_tagged (addr) =
+val MEMr_tagged = {lem: "MEMr_tagged"} : forall 'size, 'size > 0. (bits(64), atom('size)) -> (bool, bits('size * 8)) effect { rmem, rmemt }
+function MEMr_tagged (addr, size) =
 {
-  /* assumes addr is cap. aligned */
-  assert(unsigned(addr) % cap_size == 0);
-  let tag  = MEMr_tag(addr) in
-  let data = MEMr(addr, cap_size) in
+  let tag  = read_tag_bool(addr & cap_addr_mask) in
+  let data = MEMr(addr, size) in
   (tag, reverse_endianness(data))
 }
 
 /*!
 is as [MEMr_tagged] except that the load is marked as part of a load linked / store conditional.
  */
-val MEMr_tagged_reserve : bits(64) -> (bool, bits('cap_size * 8)) effect { escape, rmem, rmemt }
-function MEMr_tagged_reserve (addr) =
+val MEMr_tagged_reserve = {lem: "MEMr_tagged_reserve"} : forall 'size, 'size > 0. (bits(64), atom('size)) -> (bool, bits('size * 8)) effect { rmem, rmemt }
+function MEMr_tagged_reserve (addr, size) =
 {
-  /* assumes addr is cap. aligned */
-  assert(unsigned(addr) % cap_size == 0);
-  let tag = MEMr_tag(addr) in
-  let data = MEMr_reserve(addr, cap_size) in
+  let tag = read_tag_bool(addr & cap_addr_mask) in
+  let data = MEMr_reserve(addr, size) in
   (tag, reverse_endianness(data))
 }
 
 /*!
-THIS`(addr, t, value)` writes `cap_size` bytes, `value`, to physical address, `addr`, with associated tag value, `t`.
+THIS`(addr, size, t, value)` writes `size` bytes, `value`, to physical address, `addr`, with associated tag value, `t`.
  */
-val MEMw_tagged : (bits(64), bool, bits('cap_size * 8)) -> unit effect { escape, eamem, wmv, wmvt }
-function MEMw_tagged(addr, tag, data) =
+val MEMw_tagged = {lem: "MEMw_tagged"} : forall 'size, 'size > 0. (bits(64), atom('size), bool, bits('size * 8)) -> unit effect { eamem, wmv, wmvt }
+function MEMw_tagged(addr, size, tag, data) =
 {
-  /* assumes addr is cap. aligned */
-  assert(unsigned(addr) % cap_size == 0);
-  MEMea(addr, cap_size);
-  MEMval(addr, cap_size, reverse_endianness(data));
-  MEMw_tag(addr, tag);
+  MEMea(addr, size);
+  MEMval(addr, size, reverse_endianness(data));
+  write_tag_bool(addr & cap_addr_mask, tag);
 }
 
 /*!
-THIS`(addr, t, value)` writes `cap_size` bytes, `value`, to physical address, `addr`, with associated tag value, `t` and returns store conditional success or failure.
+THIS`(addr, size, t, value)` writes `size` bytes, `value`, to physical address, `addr`, with associated tag value, `t` and returns store conditional success or failure.
  */
-val MEMw_tagged_conditional : (bits(64), bool, bits('cap_size * 8)) -> bool effect { escape, eamem, wmv, wmvt }
-function MEMw_tagged_conditional(addr, tag, data) =
+val MEMw_tagged_conditional = {lem: "MEMw_tagged_conditional"}: forall 'size, 'size > 0. (bits(64), atom('size), bool, bits('size * 8)) -> bool effect { eamem, wmv, wmvt }
+function MEMw_tagged_conditional(addr, size, tag, data) =
 {
-  /* assumes addr is cap. aligned */
-  assert(unsigned(addr) % cap_size == 0);
-  MEMea_conditional(addr, cap_size);
-  success = MEMval_conditional(addr, cap_size, reverse_endianness(data));
+  MEMea_conditional(addr, size);
+  success = MEMval_conditional(addr, size, reverse_endianness(data));
   if success then
-     MEMw_tag(addr, tag);
+     write_tag_bool(addr & cap_addr_mask, tag);
   success;
 }
-
-let cap_addr_mask = to_bits(64, pow2(64) - cap_size)
 
 /*!
 THIS`(addr, size, value)` writes `size` bytes of `value` to physical address `addr`.
  */
 val MEMw_wrapper : forall 'n, 'n >= 1. (bits(64), atom('n), bits(8 * 'n)) -> unit effect {escape, wmv, wmvt, wreg, eamem}
 function MEMw_wrapper(addr, size, data) =
-  let ledata = reverse_endianness(data) in
   if (addr == 0x000000007f000000) then
   {
+    let ledata   = reverse_endianness(data) in
     UART_WDATA   = ledata[7..0];
     UART_WRITTEN = 0b1;
   }
@@ -449,10 +459,8 @@ function MEMw_wrapper(addr, size, data) =
   {
     /* require that writes don't cross capability boundaries (should be true due to mips alignment requirements) */  
     assert((addr & cap_addr_mask) == ((addr + to_bits(64, size - 1)) & cap_addr_mask));
-    MEMea(addr, size);
-    MEMval(addr, size, ledata);
-    /* On cheri non-capability writes must clear the corresponding tag*/
-    MEMw_tag(addr & cap_addr_mask, false);
+    /* On cheri non-capability writes must clear the corresponding tag */
+    MEMw_tagged(addr, size, false, data);
   }
 
 /*!
@@ -463,12 +471,8 @@ function MEMw_conditional_wrapper(addr, size, data) =
   {
     /* require that writes don't cross capability boundaries (should be true due to mips alignment requirements) */
     assert((addr & cap_addr_mask) == ((addr + to_bits(64, size - 1)) & cap_addr_mask));
-    MEMea_conditional(addr, size);
-    success = MEMval_conditional(addr,size,reverse_endianness(data));
-    if success then
-       /* On cheri non-capability writes must clear the corresponding tag */
-       MEMw_tag(addr & cap_addr_mask, false);
-    success;
+    /* On cheri non-capability writes must clear the corresponding tag */
+    MEMw_tagged_conditional(addr, size, false, data)
   }
 
 val checkDDCPerms : (Capability, MemAccessType) -> unit effect {escape, rreg, wreg}
@@ -617,7 +621,7 @@ function set_CP0EPC (newEPC) = {
   EPCC = if representable then
       {newEPCC with tag = newEPCC.tag & not(newEPCC.sealed)}
     else
-      int_to_cap(to_bits(64, getCapBase(EPCC)) + newEPC);
+      nullifyCap(newEPCC);
 }
 
 /* As above but for ErrorEPC... */
@@ -629,7 +633,7 @@ function set_CP0ErrorEPC (v) = {
   ErrorEPCC = if representable then
       {newErrorEPCC with tag = newErrorEPCC.tag & not(newErrorEPCC.sealed)}
     else
-      int_to_cap(to_bits(64, getCapBase(ErrorEPCC)) + v);
+      nullifyCap(newErrorEPCC);
 }
 
 function capToString (cap, fixlen) = {
@@ -672,3 +676,16 @@ function dump_cp2_state () = {
   print(concat_str("DEBUG CAP HWREG 31", capToString(EPCC, true)));
 
 }
+
+
+/*!
+Gets the architecture specific capability flags for given capability.
+ */
+val getCapFlags : Capability -> CFlags
+function getCapFlags(cap) = 0b0 /* Should be [] but breaks HOL */
+
+/*!
+THIS`(cap, flags)` sets the architecture specific capability flags on `cap` to `flags` and returns the result as new capability.
+ */
+val setCapFlags : (Capability, CFlags) -> Capability
+function setCapFlags(cap, flags) = cap

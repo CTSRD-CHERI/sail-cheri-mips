@@ -1613,7 +1613,7 @@ function clause decode (0b010000 @ 0b10000000000000000000 @ 0b000001) = Some(TLB
 function clause execute (TLBR()) = {
   checkCP0Access();
   let i as atom(_) = unsigned(TLBIndex) in
-  let entry = reg_deref(TLBEntries[i]) in {
+  let entry = *(TLBEntries[i]) in {
     TLBPageMask        = entry.pagemask();
     TLBEntryHi->R()    = entry.r();
     TLBEntryHi->VPN2() = entry.vpn2();

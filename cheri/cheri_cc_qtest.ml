@@ -1,6 +1,9 @@
 open Sail_lib
 module BI = Nat_big_num
 
+let bits_of_string n s =
+  Sail_lib.to_bits (Z.of_int n, Z.of_string s)
+
 let gen_sailbits n =
   QCheck.Gen.(list_repeat n (map Sail_lib.bit_of_bool bool))
 
@@ -9,11 +12,38 @@ let gen_sailbits_geom n s =
   let zeros = Random.State.int s (n-1) in
   let lowerBits = gen_sailbits (n - zeros) s in
   Sail_lib.zeros (BI.of_int zeros) @ lowerBits
+
+(* Generate bitvectors of n bits biased towards smaller signed values *)
+let gen_sailbits_geom_signed n s =
+  let leadingBit = if Random.State.bool s then B0 else B1 in
+  let nLeading = Random.State.int s (n-1) in
+  let leadingBits =  replicate_bits ([leadingBit], BI.of_int nLeading) in
+  let lowerBits = gen_sailbits (n - nLeading) s in
+  leadingBits @ lowerBits
   
 let arbitrary_cap_bits = QCheck.make ~print:Sail_lib.string_of_bits (gen_sailbits 128)
 
 let test_cap_decode_encode capbits =
   Sail_lib.eq_list (Cheri_cc.zcapToBits (Cheri_cc.zcapBitsToCapability (true, capbits)), capbits)
+
+(* Test whether an arbitrary bit pattern results in top >= base when 
+   decoded. This isn't really a requirement but is interesting as an
+   inidcation of encoding efficiency. We known that large E can result
+   in base > top but this isn't an issue in practice. *)
+let test_get_length capbits =
+  let c = Cheri_cc.zcapBitsToCapability (true, capbits) in
+  let (base, top) = Cheri_cc.zgetCapBounds(c) in
+  let e = Nat_big_num.to_int (Sail_lib.uint (c.zE)) in
+  let passed = (e >= 51) || Nat_big_num.less_equal base top in
+  begin
+  if not passed then
+    begin
+      print_endline "Failure:";
+      print_endline (Cheri_cc.string_of_zCapability(c));
+      print_endline ("base " ^ (Z.format "x" base) ^ " top " ^ (Z.format "x" top));
+    end;
+  passed
+  end
 
 (* XXX this never generates 2^64 for tops... *) 
 let gen_bounds =
@@ -21,14 +51,17 @@ let gen_bounds =
 
 (* Examples that triggered bugs during development of setBounds. They contain some edge
    cases like requiring rounding up e by one (at least for MW=23). *)
-let bounds_regressions = List.map (List.map (fun x -> Sail_lib.to_bits' (64, Z.of_int x))) [
-[0x000000000086D6A0; 0x000000000000004B; 0x000000007CF18F9B; 0x000000000006D6A8];
-[0x00000712B609C5B0; 0x00000000032DC20F; 0x00000008032D1C77; 0x0000000000000007];
-[0x0B87DF010D7254BB; 0x00000800085F0270; 0x000000000900A7CA; 0x00000000000049FE];
-[0x0080018A6ACD2D6C; 0x0000BEDAF8F73C0F; 0x000001991A6FD045; 0x004D37033A19B295];
-[0x0000003FFFF8EDC8; 0x0000000000032796; 0x000000902DCEEE9C; 0x0000000000003D0E];
-[0x000000000006cdf7; 0x0000000000214459; 0x0000000000086940; 0x1fffff5b88378ec7];
-[0x0010D700C6318A88; 0x383264C38950ADB7; 0x00000D5EBA967A84; 0x0000000002FFFFCE];
+let bounds_regressions = List.map (List.map (fun x -> Sail_lib.to_bits' (64, Z.of_string x))) [
+["0xFFFFFFFFFFFFFFFF"; "0xFFFFFFFFFFFFFFFF"; "0xFFFFFFFFFFFFFFFF"; "0x10000000000000000"];
+["0x000000000000012F"; "0x247BCD4E1DF154E6"; "0x0000000000000087"; "0x000000000000000E"];
+["0x00000000000000C7"; "0x8402D27397759FE2"; "0xEA65A156E6403E7A"; "0xF648C25D993C2D01"];
+["0x000000000086D6A0"; "0x000000000000004B"; "0x000000007CF18F9B"; "0x000000000006D6A8"];
+["0x00000712B609C5B0"; "0x00000000032DC20F"; "0x00000008032D1C77"; "0x0000000000000007"];
+["0x0B87DF010D7254BB"; "0x00000800085F0270"; "0x000000000900A7CA"; "0x00000000000049FE"];
+["0x0080018A6ACD2D6C"; "0x0000BEDAF8F73C0F"; "0x000001991A6FD045"; "0x004D37033A19B295"];
+["0x0000003FFFF8EDC8"; "0x0000000000032796"; "0x000000902DCEEE9C"; "0x0000000000003D0E"];
+["0x000000000006cdf7"; "0x0000000000214459"; "0x0000000000086940"; "0x1fffff5b88378ec7"];
+["0x0010D700C6318A88"; "0x383264C38950ADB7"; "0x00000D5EBA967A84"; "0x0000000002FFFFCE"];
   ]
 
 let print_bounds = QCheck.Print.list Sail_lib.string_of_bits
@@ -110,11 +143,54 @@ let test_setBounds bounds =
     passed
   end
 
-let testsuite = [
-  QCheck.Test.make ~count:10000 ~long_factor:1000 ~name:"setCapBounds"  arbitrary_bounds test_setBounds;  QCheck.Test.make ~count:10000 ~long_factor:1000 ~name:"cap_decode_encode" arbitrary_cap_bits test_cap_decode_encode;
+let gen_bounds2 =
+  QCheck.Gen.(list_repeat 2 (gen_sailbits_geom 64))
+
+let gen_offset = gen_sailbits_geom_signed 64
+
+let b64_of_s = bits_of_string 64
+let setOffset_regressions = List.map (fun (base, top, offset) -> ([b64_of_s base; b64_of_s top], b64_of_s offset)) [
+("0x0000000000000000", "0x0000000000000000", "0xffffffffffffffff");
+("0xffffffffffff0000", "0xffffffffffffffff", "0x0000000000010000"); (* NB top should round to 2**64 *)
 ]
 
+let gen_setOffset = QCheck.Gen.graft_corners (QCheck.Gen.pair gen_bounds2 gen_offset) setOffset_regressions ()
+  
+  
+let test_setOffset (bounds, offset) =
+  (* pair each bit list with Big_int for easy comparison etc. *)
+  let zippedBounds = List.combine bounds (List.map Sail_lib.uint bounds) in
+  let sortedBounds = List.sort (fun (_, a) (_, b) -> BI.compare a b) zippedBounds in
+  let [base; top] = sortedBounds in
+  let (exact, cap1) = Cheri_cc.zsetCapBounds(Cheri_cc.zdefault_cap, fst(base), B0::fst(top)) in
+  let (rep, cap2) = Cheri_cc.zsetCapOffset(cap1, offset) in
+  let zoff = Sail_lib.sint(offset) in
+  let len = BI.max (BI.of_int 4096) (Cheri_cc.zgetCapLength cap1) in
+  let z4 = BI.of_int 4 in
+  let z6 = BI.of_int 6 in
+  let lowerRepOff = BI.negate (BI.div len z4) in
+  let upperRepOff = BI.div (BI.mul len z6) z4 in
+  let success = rep || (BI.less zoff lowerRepOff) || (BI.greater zoff upperRepOff) in begin
+      if not success then begin
+          print_endline (Cheri_cc.string_of_zCapability cap1);
+          print_endline ("lowerRepOff=" ^ (Z.format "x" lowerRepOff));
+          print_endline ("uppperRepOff=" ^ (Z.format "x" upperRepOff));
+        end;
+      success
+  end
+
+let print_setOffset = QCheck.Print.pair print_bounds string_of_bits
+
+let arbitrary_setOffset = QCheck.make ~print:print_setOffset gen_setOffset
+
+let testsuite = [
+  QCheck.Test.make ~count:10000 ~long_factor:1000 ~name:"setOffset"  arbitrary_setOffset test_setOffset;
+  QCheck.Test.make ~count:10000 ~long_factor:1000 ~name:"setCapBounds"  arbitrary_bounds test_setBounds;
+  QCheck.Test.make ~count:10000 ~long_factor:1000 ~name:"cap_decode_encode" arbitrary_cap_bits test_cap_decode_encode;
+  (*  QCheck.Test.make ~count:10000 ~long_factor:1000 ~name:"cap_length" arbitrary_cap_bits test_get_length; *)
+]
+  
 let () =
   begin
-    QCheck_runner.run_tests_main testsuite
+    QCheck_runner.run_tests_main testsuite;
   end

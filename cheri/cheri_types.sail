@@ -59,3 +59,8 @@ CHi
 let reserved_otypes = 4
 let otype_unsealed = -1
 let otype_sentry = -2
+
+type num_flags_t : Int = 1
+type CFlags = bits(num_flags_t)
+let num_flags = sizeof(num_flags_t)
+

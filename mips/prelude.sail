@@ -1,9 +1,5 @@
 default Order dec
 
-val "reg_deref" : forall ('a : Type). register('a) -> 'a effect {rreg}
-/* sneaky deref with no effect necessary for bitfield writes */
-val _reg_deref = "reg_deref" : forall ('a : Type). register('a) -> 'a
-
 /* this is here because if we don't have it before including vector_dec 
    we get infinite loops caused by interaction with bool/bit casts */
 val eq_bit2 = "eq_bit" : (bit, bit) -> bool
@@ -14,31 +10,19 @@ $include <flow.sail>
 $include <arith.sail>
 $include <option.sail>
 $include <vector_dec.sail>
+$include <string.sail>
 
 val eq_anything = {ocaml: "(fun (x, y) -> x = y)", lem: "eq", coq: "generic_eq", _:"eq_anything"} : forall ('a : Type). ('a, 'a) -> bool
 overload operator == = {eq_anything}
 
-val not_vec = {c:"not_bits", _:"not_vec"} : forall 'n. bits('n) -> bits('n)
-
 overload ~ = {not_bool, not_vec}
-
-val not = {coq:"negb", _:"not"} : bool -> bool
-
-val neq_vec = {lem: "neq"} : forall 'n. (bits('n), bits('n)) -> bool
-function neq_vec (x, y) = not_bool(eq_bits(x, y))
+$latex noref not
+overload not = {not_bool}
 
 val neq_anything = {lem: "neq", coq: "generic_neq"} : forall ('a : Type). ('a, 'a) -> bool
 function neq_anything (x, y) = not_bool(x == y)
 
-overload operator != = {neq_atom, neq_int, neq_vec, neq_anything}
-
-val and_bits = {c:"and_bits", _: "and_vec"} : forall 'n. (bits('n), bits('n)) -> bits('n)
-
-overload operator & = {and_bool, and_bits}
-
-val or_bits = {c: "or_bits", _: "or_vec"} : forall 'n. (bits('n), bits('n)) -> bits('n)
-
-overload operator | = {or_bool, or_bits}
+overload operator != = {neq_anything}
 
 val cast cast_unit_vec : bit -> bits(1)
 
@@ -47,22 +31,14 @@ function cast_unit_vec b = match b {
   _ => 0b1
 }
 
-val print = "print_endline" : string -> unit
-
-val "prerr_endline" : string -> unit
+overload print = {print_endline}
 
 val "prerr" : string -> unit
 
 val putchar = {c:"sail_putchar", _:"putchar"} : int -> unit
 
-val concat_str = {lem: "stringAppend", coq: "String.append", _: "concat_str"} : (string, string) -> string
-
 val string_of_int = "string_of_int" : int -> string
-/* Unused?
-val DecStr : int -> string
 
-val HexStr : int -> string
-*/
 val BitStr = "string_of_bits" : forall 'n. bits('n) -> string
 
 val xor_vec = {c: "xor_bits" , _: "xor_vec"} : forall 'n. (bits('n), bits('n)) -> bits('n)
@@ -95,18 +71,15 @@ overload negate = {negate_range, negate_int}
 
 overload operator * = {mult_int}
 
-val quotient_nat = {ocaml: "quotient", lem: "integerDiv", coq: "Z.div"} : (nat, nat) -> nat
-
-val quotient = {ocaml: "quotient", lem: "integerDiv", coq: "Z.mod"} : (int, int) -> int
-
-overload operator / = {quotient_nat, quotient}
+/* 
+Use Euclidean div and mod.
+Plain 'div' and 'mod' are are for compatibility with versions of sail prior to 0.9 
+*/
+overload operator / = {ediv_int, div}
+overload operator % = {emod_int, mod}
 
 val quot_round_zero = {ocaml: "quot_round_zero", lem: "hardware_quot", coq: "Z.quot", _ : "tdiv_int"} : (int, int) -> int
 val rem_round_zero = {ocaml: "rem_round_zero", lem: "hardware_mod", coq: "Z.rem", _ : "tmod_int"} : (int, int) -> int
-
-val modulus = {ocaml: "modulus", lem: "hardware_mod", coq: "euclid_modulo", _ : "tmod_int"} : forall 'n, 'n > 0 .  (int, atom('n)) -> range(0, 'n - 1)
-
-overload operator % = {modulus}
 
 val min_nat = {lem: "min", coq: "min_nat", _: "min_int"} : (nat, nat) -> nat
 
@@ -182,13 +155,10 @@ val zeros_implicit : forall 'n, 'n >= 0 . unit -> bits('n)
 function zeros_implicit () = sail_zeros('n)
 overload zeros = {zeros_implicit, sail_zeros}
 
-val ones_n : forall 'n, 'n >= 0 . int('n) -> bits('n)
-function ones_n n = replicate_bits (0b1, n)
-
 val ones_implicit : forall 'n, 'n >= 0 . unit -> bits('n)
-function ones_implicit () = ones_n ('n)
+function ones_implicit () = sail_ones ('n)
 
-overload ones = {ones_implicit, ones_n}
+overload ones = {ones_implicit, sail_ones}
 
 $else
 
@@ -209,13 +179,10 @@ val zeros_implicit : forall 'n, 'n >= 0. (implicit('n), unit) -> bits('n)
 function zeros_implicit(n, _) = sail_zeros(n)
 overload zeros = {zeros_implicit, sail_zeros}
 
-val ones_n : forall 'n, 'n >= 0. int('n) -> bits('n)
-function ones_n n = replicate_bits(0b1, n)
-
 val ones_implicit : forall 'n, 'n >= 0. (implicit('n), unit) -> bits('n)
-function ones_implicit(n, _) = ones_n(n)
+function ones_implicit(n, _) = sail_ones(n)
 
-overload ones = {ones_implicit, ones_n}
+overload ones = {ones_implicit, sail_ones}
 
 $endif
 

@@ -120,6 +120,7 @@ let default_cap : Capability = struct {
 }
 
 let 'cap_size = 16
+let 'caps_per_cacheline = 8
 
 /*
 Convert from capabilty bits (128 bits with tag) to a more convenient struct.
@@ -260,30 +261,42 @@ function sealCap(cap, otyp) : (Capability, bits(24)) -> (bool, Capability) =
 function unsealCap(cap) : Capability -> Capability =
     {cap with sealed=false, otype=ones()}
 
-function a_top_correction(a_mid, R, bound) : (bits(3), bits(3), bits(3)) -> bits(65) =
-    match (a_mid <_u R, bound <_u R) {
-      (false, false)  => zeros(),
-      (false, true)   => zero_extend(0b1),
-      (true, false)   => ones(),
-      (true, true)    => zeros()
-    }
-
-function getCapBounds(c) : Capability -> (uint64, CapLen) = {
+function getCapBounds(c) : Capability -> (uint64, CapLen) =
   let E = unsigned(c.E) in
-  let a : bits(65) = zero_extend(c.address) in
+  let a : bits(64) = c.address in
   /* Extract bits we need to make the top correction and calculate representable limit */
   let a3 = truncate(a >> (E + 11), 3) in
   let B3 = truncateLSB(c.B, 3) in
   let T3 = truncateLSB(c.T, 3) in
   let R3 = B3 - 0b001 in /* wraps */
-  let correction_base = a_top_correction(a3, R3, B3) in
-  let correction_top  = a_top_correction(a3, R3, T3) in
-  let a_top = (a >> E+14) in
-  let e_zeros = zeros(E) in
-  let base : bits(64) = truncate((a_top + correction_base) @ c.B @ e_zeros, 64) in
-  let top  : bits(65) = truncate((a_top + correction_top)  @ c.T @ e_zeros, 65) in
-  (unsigned(base), unsigned(top))
-}
+  /* Do address, base and top lie in the R aligned region above the one containing R? */
+  let aHi = if a3 <_u R3 then 1 else 0 in
+  let bHi = if B3 <_u R3 then 1 else 0 in
+  let tHi = if T3 <_u R3 then 1 else 0 in
+  /* Compute region corrections for top and base relative to a */
+  let correction_base = bHi - aHi in
+  let correction_top  = tHi - aHi in
+  let a_top = (a >> (E + 14)) in
+  let e_zeros = zeros(E) in {
+    base : bits(65) = truncate((a_top + correction_base) @ c.B @ e_zeros, 65);
+    top  : bits(65) = truncate((a_top + correction_top)  @ c.T @ e_zeros, 65);
+    if (base[64] == bitone) then {
+      /* If base[64] is set this indicates under or overflow i.e. a has 
+         wrapped around the address space and been corrected. In this case
+         we need to correct top[64] because top is not quite modulo 2**64 due
+         to having max top == 2**64 in one particular case: */
+       top[64] = if (aHi == 1) & (tHi == 1) then bitone else bitzero;
+    };
+    /* The following is apparently equivalent to above and used by hw. */
+    /*
+    let base2 : bits(2) = bitzero @ base[63];
+    let top2  : bits(2) = top[64..63];
+    if (E < (unsigned(resetE) - 1)) & (unsigned(top2 - base2) > 1) then {
+      top[64] = ~(top[64]);
+    };
+    */
+    (unsigned(base[63..0]), unsigned(top))
+  }
 
 function getCapBase(c) : Capability -> uint64 =
     let (base, _) = getCapBounds(c) in
@@ -361,13 +374,6 @@ function incCapOffset(c, delta) : (Capability, bits(64)) -> (bool, Capability) =
 /*    let representable = fastRepCheck(c, delta) in*/
     (representable, newCap)
 
-val CountLeadingZeros : forall 'N , 'N >= 2. bits('N) -> {'n, 0 <= 'n <= 'N . atom('n)}
-function CountLeadingZeros x = {
-  foreach (i from ('N - 1) to 0 by 1 in dec)
-    if [x[i]] == 0b1 then return 'N - i - 1;
-  return 'N;
-}
-
 /* 
 An 'ideal' version of setCapBounds as described in paper.
  */
@@ -378,7 +384,7 @@ function setCapBounds(cap, base, top) : (Capability, bits(64), bits(65)) -> (boo
   /* Find an exponent that will put the most significant bit of length 
      second from the top as assumed during decoding. We ignore the bottom
      MW - 1 bits because those are handled by the ie = 0 format. */
-  let e = 52 - CountLeadingZeros(length[64..13]);
+  let e = 52 - count_leading_zeros(length[64..13]);
   // Use use internal exponent if e is non-zero or if e is zero but
   // but the implied bit of length is not zero (denormal vs. normal case)
   let ie = (e != 0) | length[12];
@@ -399,7 +405,7 @@ function setCapBounds(cap, base, top) : (Capability, bits(64), bits(65)) -> (boo
     
     /* Find out whether we have lost significant bits of base and top using a
        mask of bits that we will lose (including 3 extra for exp). */
-    maskLo : bits(65) = zero_extend(replicate_bits(0b1, e + 3));
+    maskLo : bits(65) = zero_extend(ones(e + 3));
     z65    : bits(65) = zeros();
     lostSignificantBase = (base65 & maskLo) != z65;
     lostSignificantTop = (top & maskLo) != z65;
@@ -434,6 +440,19 @@ function setCapBounds(cap, base, top) : (Capability, bits(64), bits(65)) -> (boo
   (exact, newCap)
 }
 
+function getRepresentableAlignmentMask(len) : bits(64) -> bits(64) = {
+  let (exact, c) = setCapBounds(default_cap,  ones() - len, 0b0 @ 0xffffffffffffffff);
+  let e : range(0, 52) = min(unsigned(c.E), 52);
+  let e' : range(0, 55) = if c.internal_e then e + 3 else 0;
+  ones(64-e') @ zeros(e')
+}
+
+function getRepresentableLength(len) : bits(64) -> bits(64) = {
+  let m = getRepresentableAlignmentMask(len);
+  (len + ~(m)) & m
+}
+
+
 /*
 This version of setCapBounds was transcribed from Bluespec. It uses some approximations to help pass timing that can result in wider bounds than returned by above version.
  */
@@ -444,7 +463,7 @@ function setCapBounds_hw(cap, base, top) : (Capability, bits(64), bits(65)) -> (
   top66  = 0b0  @ top;
   let length : bits(66) = top66 - base66; // why 66?
   /* roughly index of highest set bit excluding (MW-1) lower bits */
-  let e = 43 - CountLeadingZeros(length[64..22]);
+  let e = 43 - count_leading_zeros(length[64..22]);
   let e0 = e == 0; // called maxZero in bsv  
   let lenMSB = if e0 then length[21] else bitzero; // sample len MW-2
   // extract MW + 1 bits of top and base -- we might need extra one if we round up e
@@ -500,5 +519,3 @@ function setCapBounds_hw(cap, base, top) : (Capability, bits(64), bits(65)) -> (
   (exact, newCap)
 }
 */
-function int_to_cap (offset) : bits(64) -> Capability = 
-    {null_cap with address = offset}

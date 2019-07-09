@@ -534,7 +534,7 @@ function grantsAccess (currentLevel, requiredLevel) =
   int_of_AccessLevel(currentLevel) >= int_of_AccessLevel(requiredLevel)
 
 /*!
-Returns the current effective access level determined by accessing the relevant parts of the MIPS status register.
+Returns the current effective access level (User, Supervisor or Kernel) determined by accessing the relevant parts of the MIPS status register.
  */
 val getAccessLevel : unit -> AccessLevel effect {rreg}
 function getAccessLevel() =
@@ -548,9 +548,11 @@ function getAccessLevel() =
       _     => User /* behaviour undefined, assume user */
     }
 
+val checkCP0AccessHook : unit->unit effect{escape, rreg, wreg}
 val checkCP0Access : unit->unit effect{escape, rreg, wreg}
 function checkCP0Access () =
   {
+    checkCP0AccessHook();
     let accessLevel = getAccessLevel() in
     if ((accessLevel != Kernel) & (~(CP0Status.CU()[0]))) then
       {
@@ -619,6 +621,9 @@ function compare (cmp, valA, valB) =
 enum WordType = { B, H, W, D}
 enum WordTypeUnaligned = { WL, WR, DL, DR }
 
+/*!
+ Returns the width of the given WordType (byte, half, word, double) in bytes.
+ */
 val wordWidthBytes : WordType -> range(1, 8)
 function wordWidthBytes(w) =
   match w {
@@ -649,6 +654,9 @@ function bool isAddressAligned(addr, (WordType) wordType) =
    either.
 */
 let alignment_width = 16
+/*!
+  THIS`(address, wordtype)` returns whether `address` is naturally aligned for the given `wordtype`.
+ */
 val isAddressAligned : (bits(64), WordType) -> bool
 function isAddressAligned (addr, wordType) =
   let a = unsigned(addr) in
@@ -656,6 +664,9 @@ function isAddressAligned (addr, wordType) =
 
 val reverse_endianness = "reverse_endianness" : forall 'n, mod('n, 8) == 0 & 'n >= 8. bits('n) -> bits('n) effect pure
 
+/*!
+  THIS`(val, signed)` extends `val` to 64-bits in either sign extended or zero extended fashion according to `signed`.
+ */
 val extendLoad : forall 'sz, 'sz <= 64 .  (bits('sz), bool) -> bits(64) effect pure
 function extendLoad(memResult, sign) = {
   if (sign) then

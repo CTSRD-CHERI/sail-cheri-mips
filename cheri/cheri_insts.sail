@@ -42,12 +42,20 @@ union clause ast = CGetTag    : (regno, regno)
 union clause ast = CGetSealed : (regno, regno)
 union clause ast = CGetOffset : (regno, regno)
 union clause ast = CGetAddr   : (regno, regno)
+union clause ast = CGetFlags  : (regno, regno)
 
 function clause execute (CGetPerm(rd, cb)) =
 {
   checkCP2usable();
   let capVal = readCapReg(cb);
   wGPR(rd) = zero_extend(getCapPerms(capVal));
+}
+
+function clause execute (CGetFlags(rd, cb)) =
+{
+  checkCP2usable();
+  let capVal = readCapReg(cb);
+  wGPR(rd) = zero_extend(getCapFlags(capVal));
 }
 
 function clause execute (CGetType(rd, cb)) =
@@ -102,8 +110,8 @@ function clause execute (CGetAddr(rd, cb)) =
   wGPR(rd) = capVal.address;
 }
 
-union clause ast = CGetAddrMasked : (regno, regno, regno)
-function clause execute (CGetAddrMasked(rd, cb, rs)) =
+union clause ast = CGetAndAddr : (regno, regno, regno)
+function clause execute (CGetAndAddr(rd, cb, rs)) =
 {
   checkCP2usable();
   let capVal = readCapReg(cb);
@@ -130,7 +138,7 @@ function clause execute (CGetPCCSetOffset(cd, rs)) =
   if (success) then
     writeCapReg(cd, newPCC)
   else
-    writeCapReg(cd, int_to_cap(rs_val));
+    writeCapReg(cd, nullifyCap(newPCC));
 }
 /* Get and Set CP2 cause register */
 
@@ -186,6 +194,22 @@ function clause execute (CSetCID(cb)) =
     else
       CID = to_bits(64, addr);
   }
+}
+
+union clause ast = CRAP : (regno, regno)
+function clause execute(CRAP(rt, rs)) =
+{
+  checkCP2usable();
+  let len = rGPR(rs);
+  wGPR(rt) = getRepresentableLength(len);
+}
+
+union clause ast = CRAM : (regno, regno)
+function clause execute(CRAM(rt, rs)) =
+{
+  checkCP2usable();
+  let len = rGPR(rs);
+  wGPR(rt) = getRepresentableAlignmentMask(len);
 }
 
 union clause ast = CReadHwr : (regno, regno)
@@ -280,7 +304,20 @@ function clause execute(CAndPerm(cd, cb, rt)) =
   }
 }
 
-
+union clause ast = CSetFlags : (regno, regno, regno)
+function clause execute(CSetFlags(cd, cb, rt)) = 
+{
+  checkCP2usable();
+  let cb_val = readCapReg(cb);
+  let rt_val = rGPR(rt);
+  if cb_val.tag & cb_val.sealed then
+    raise_c2_exception(CapEx_SealViolation, cb)
+  else
+  {
+    let newCap  = setCapFlags(cb_val, truncate(rt_val, num_flags));
+    writeCapReg(cd, newCap);
+  }
+}
 
 union clause ast = CToPtr : (regno, regno, regno)
 function clause execute(CToPtr(rd, cb, ct)) = 
@@ -366,7 +403,7 @@ function clause execute (CIncOffset(cd, cb, rt)) =
     if success then
         writeCapReg(cd, newCap)
     else
-        writeCapReg(cd, int_to_cap(to_bits(64, getCapBase(cb_val)) + rt_val))
+        writeCapReg(cd, nullifyCap(newCap))
   }
 }
 
@@ -384,7 +421,7 @@ function clause execute (CIncOffsetImmediate(cd, cb, imm)) =
     if success then
         writeCapReg(cd, newCap)
     else
-        writeCapReg(cd, int_to_cap(to_bits(64, getCapBase(cb_val)) + imm64))
+        writeCapReg(cd, nullifyCap(newCap))
   }
 }
 
@@ -402,7 +439,7 @@ function clause execute (CSetOffset(cd, cb, rt)) =
     if success then
         writeCapReg(cd, newCap)
     else
-        writeCapReg(cd, int_to_cap(to_bits(64, getCapBase(cb_val)) + rt_val))
+        writeCapReg(cd, nullifyCap(newCap))
   }
 }
 
@@ -420,7 +457,7 @@ function clause execute (CSetAddr(cd, cb, rt)) =
     if representable then
         writeCapReg(cd, newCap)
     else
-        writeCapReg(cd, int_to_cap(rt_val));
+        writeCapReg(cd, nullifyCap(newCap));
   }
 }
 
@@ -439,7 +476,7 @@ function clause execute (CAndAddr(cd, cb, rt)) =
     if representable then
         writeCapReg(cd, newCap)
     else
-        writeCapReg(cd, int_to_cap(newAddr));
+        writeCapReg(cd, nullifyCap(newCap));
   }
 }
 
@@ -537,6 +574,15 @@ function clause execute (CMOVX(cd, cb, rt, ismovn)) =
     writeCapReg(cd) = readCapReg(cb);
 }
 
+/* CMove is currently a separate instruction, so split it here
+ * for documentation pureposes */
+union clause ast = CMove : (regno,regno)
+function clause execute (CMove(cd, cb)) =
+{
+  checkCP2usable();
+  writeCapReg(cd) = readCapReg(cb);
+}
+
 union clause ast = ClearRegs : (ClearRegSet, bits(16))
 function clause execute (ClearRegs(regset, m)) =
 {
@@ -573,7 +619,7 @@ function clause execute (CFromPtr(cd, cb, rt)) =
     if success then
         writeCapReg(cd, newCap)
     else
-        writeCapReg(cd, int_to_cap(to_bits(64, getCapBase(cb_val)) + rt_val))
+        writeCapReg(cd, nullifyCap(newCap))
   }
 }
 
@@ -642,7 +688,7 @@ function clause execute (CCopyType(cd, cb, ct)) =
     }
   }
   else
-    writeCapReg(cd, int_to_cap(0xffffffffffffffff))
+    writeCapReg(cd, {null_cap with address=ones()})
 }
 
 union clause ast = CCheckPerm : (regno, regno)
@@ -1072,30 +1118,26 @@ function clause execute (CLoadTags(rd, cb)) =
   else if not (cb_val.permit_load) then
     raise_c2_exception(CapEx_PermitLoadViolation, cb)
   else if not (cb_val.permit_load_cap) then
-    raise_c2_exception(CapEx_PermitLoadViolation, cb)
+    raise_c2_exception(CapEx_PermitLoadCapViolation, cb)
   else
   {
     let vAddr   = getCapCursor(cb_val);
     let vAddr64 = to_bits(64, getCapCursor(cb_val));
-    if (vAddr + 8 * cap_size) > getCapTop(cb_val) then
+    if (vAddr + caps_per_cacheline * cap_size) > getCapTop(cb_val) then
       raise_c2_exception(CapEx_LengthViolation, cb)
     else if vAddr < getCapBase(cb_val) then
       raise_c2_exception(CapEx_LengthViolation, cb)
-    else if not (vAddr64[5..0] == 0b000000) then /* XXX Cache line width? */
+    else if not(vAddr % (cap_size * caps_per_cacheline) == 0) then
       SignalExceptionBadAddr(AdEL, vAddr64)
     else
       {
-        let pAddr  = TLBTranslate(vAddr64, LoadData);
-        let tag0   = MEMr_tag(pAddr + 0*cap_size);
-        let tag1   = MEMr_tag(pAddr + 1*cap_size);
-        let tag2   = MEMr_tag(pAddr + 2*cap_size);
-        let tag3   = MEMr_tag(pAddr + 3*cap_size);
-        let tag4   = MEMr_tag(pAddr + 4*cap_size);
-        let tag5   = MEMr_tag(pAddr + 5*cap_size);
-        let tag6   = MEMr_tag(pAddr + 6*cap_size);
-        let tag7   = MEMr_tag(pAddr + 7*cap_size);
-        wGPR(rd)   = zero_extend (tag7 @ tag6 @ tag5 @ tag4
-                                @ tag3 @ tag2 @ tag1 @ tag0);
+        let pAddr     = TLBTranslate(vAddr64, LoadData);
+        x : bits(64)  = zeros();
+        foreach(i from 0 to (caps_per_cacheline - 1)) {
+          let (tag, _) = MEMr_tagged(pAddr + i*cap_size, cap_size);
+          x[i] = tag;
+        };
+        wGPR(rd) = x;
       }
   }
 }
@@ -1212,7 +1254,7 @@ function clause execute (CSC(cs, cb, rt, offset)) =
       if cs_val.tag & noStoreCap then
         raise_c2_exception(CapEx_TLBNoStoreCap, cs)
       else 
-        MEMw_tagged(pAddr, cs_val.tag, capToMemBits(cs_val));
+        MEMw_tagged(pAddr, cap_size, cs_val.tag, capToMemBits(cs_val));
     }
   }
 }
@@ -1251,7 +1293,7 @@ function clause execute (CSCC(cs, cb, rd)) =
       else
       {
         let success = if (CP0LLBit[0]) then
-            MEMw_tagged_conditional(pAddr, cs_val.tag, capToMemBits(cs_val))
+            MEMw_tagged_conditional(pAddr, cap_size, cs_val.tag, capToMemBits(cs_val))
           else
             false;
         wGPR(rd) = zero_extend(success);
@@ -1285,7 +1327,7 @@ function clause execute (CLC(cd, cb, rt, offset)) =
     else
     {
       let (pAddr, suppressTag) = TLBTranslateC(vAddr64, LoadData);
-      let (tag, mem) = MEMr_tagged(pAddr);
+      let (tag, mem) = MEMr_tagged(pAddr, cap_size);
       let cap = memBitsToCapability(tag & cb_val.permit_load_cap & not (suppressTag), mem);
       writeCapReg(cd, cap);
     }
@@ -1317,7 +1359,7 @@ function clause execute (CLCBI(cd, cb, offset)) =
     else
     {
       let (pAddr, suppressTag) = TLBTranslateC(vAddr64, LoadData);
-      let (tag, mem) = MEMr_tagged(pAddr);
+      let (tag, mem) = MEMr_tagged(pAddr, cap_size);
       let cap = memBitsToCapability(tag & cb_val.permit_load_cap & not (suppressTag), mem);
       writeCapReg(cd, cap);
     }
@@ -1348,7 +1390,7 @@ function clause execute (CLLC(cd, cb)) =
     else
     {
       let (pAddr, suppressTag) = TLBTranslateC(vAddr64, LoadData);
-      let (tag, mem) : (bool, CapBits) = MEMr_tagged_reserve(pAddr);
+      let (tag, mem) : (bool, CapBits) = MEMr_tagged_reserve(pAddr, cap_size);
       let cap = memBitsToCapability(tag & cb_val.permit_load_cap & not (suppressTag), mem);
       writeCapReg(cd, cap);
       CP0LLBit  = 0b1;
@@ -1418,7 +1460,7 @@ function clause decode (0b010010 @ 0b00000 @ cb : regno @    0b00101 @    0b1111
 function clause decode (0b010010 @ 0b00000 @ cs : regno @ rt : regno @    0b01000 @ 0b111111) = Some(CCheckPerm(cs, rt))
 function clause decode (0b010010 @ 0b00000 @ cs : regno @ cb : regno @    0b01001 @ 0b111111) = Some(CCheckType(cs, cb))
 function clause decode (0b010010 @ 0b00000 @ cd : regno @ cb : regno @    0b01011 @ 0b111111) = Some(CClearTag(cd, cb))
-function clause decode (0b010010 @ 0b00000 @ cd : regno @ cs : regno @    0b01010 @ 0b111111) = Some(CMOVX(cd, cs, 0b00000, false)) /* CMOVE */
+function clause decode (0b010010 @ 0b00000 @ cd : regno @ cs : regno @    0b01010 @ 0b111111) = Some(CMove(cd, cs)) /* CMOVE */
 function clause decode (0b010010 @ 0b00000 @ cd : regno @ cb : regno @    0b01100 @ 0b111111) = Some(CJALR(cd, cb, true)) /* CJALR */
 function clause decode (0b010010 @ 0b00000 @ cd : regno @ cb : regno @    0b11101 @ 0b111111) = Some(CSealEntry(cd, cb))
 
@@ -1438,6 +1480,10 @@ function clause decode (0b010010 @ 0b00000 @ cd : regno @ sel : regno @   0b0110
 function clause decode (0b010010 @ 0b00000 @ cb : regno @ sel : regno @   0b01110 @ 0b111111) = Some(CWriteHwr(cb, sel))
 
 function clause decode (0b010010 @ 0b00000 @ rd : regno @ cb : regno @   0b01111 @ 0b111111) = Some(CGetAddr(rd, cb))
+function clause decode (0b010010 @ 0b00000 @ rd : regno @ cb : regno @   0b10010 @ 0b111111) = Some(CGetFlags(rd, cb))
+
+function clause decode (0b010010 @ 0b00000 @ rt : regno @ rs : regno @   0b10000 @ 0b111111) = Some(CRAP(rt, rs))
+function clause decode (0b010010 @ 0b00000 @ rt : regno @ rs : regno @   0b10001 @ 0b111111) = Some(CRAM(rt, rs))
 
 /* Three operand */
 
@@ -1448,7 +1494,7 @@ function clause decode (0b010010 @ 0b00000 @ cd : regno @ cs : regno @ rt : regn
 function clause decode (0b010010 @ 0b00000 @ cd : regno @ cs : regno @ rt : regno @ 0b001111) = Some(CSetOffset(cd, cs, rt))
 function clause decode (0b010010 @ 0b00000 @ cd : regno @ cs : regno @ rt : regno @ 0b001000) = Some(CSetBounds(cd, cs, rt))
 function clause decode (0b010010 @ 0b00000 @ cd : regno @ cs : regno @ rt : regno @ 0b001001) = Some(CSetBoundsExact(cd, cs, rt))
-
+function clause decode (0b010010 @ 0b00000 @ cd : regno @ cs : regno @ rt : regno @ 0b001110) = Some(CSetFlags(cd, cs, rt))
 
 function clause decode (0b010010 @ 0b00000 @ cd : regno @ cb : regno @ rt : regno @ 0b010001) = Some(CIncOffset(cd, cb, rt))
 function clause decode (0b010010 @ 0b00000 @ cd : regno @ cb : regno @ ct : regno @ 0b011101) = Some(CBuildCap(cd, cb, ct))
@@ -1462,7 +1508,7 @@ function clause decode (0b010010 @ 0b00000 @ rt : regno @ cb : regno @ cs : regn
 function clause decode (0b010010 @ 0b00000 @ cd : regno @ cs : regno @ rs : regno @ 0b011011) = Some(CMOVX(cd, cs, rs, false)) /* CMOVZ */
 function clause decode (0b010010 @ 0b00000 @ cd : regno @ cs : regno @ rs : regno @ 0b011100) = Some(CMOVX(cd, cs, rs, true))  /* CMOVN */
 function clause decode (0b010010 @ 0b00000 @ cd : regno @ cs : regno @ rs : regno @ 0b100010) = Some(CSetAddr(cd, cs, rs))
-function clause decode (0b010010 @ 0b00000 @ rd : regno @ cs : regno @ rs : regno @ 0b100011) = Some(CGetAddrMasked(rd, cs, rs))
+function clause decode (0b010010 @ 0b00000 @ rd : regno @ cs : regno @ rs : regno @ 0b100011) = Some(CGetAndAddr(rd, cs, rs))
 function clause decode (0b010010 @ 0b00000 @ cd : regno @ cs : regno @ rs : regno @ 0b100100) = Some(CAndAddr(cd, cs, rs))
 
 
