@@ -78,17 +78,21 @@ val main : unit -> unit effect {barr, eamem, escape, rmem, rreg, undef, wmv, wre
 function main () = {
   init_registers(to_bits(64, elf_entry()));
   startTime = get_time_ns();
+  intervalStart = startTime;
+  intervalCount : int = 0;
   while (fetch_and_execute()) do {
-    /* uncomment to print IPS every 10M instructions (~10s)
-    if (InstCount == 10000000) then {
+    /* uncomment to print IPS every 10M instructions (~10s) 
+    intervalCount = intervalCount + 1;
+    if (intervalCount == 10000000) then {
       endTime = get_time_ns();
-      elapsed = endTime - startTime;
-      inst_1e9 = InstCount * 1000000000;
+      elapsed = endTime - intervalStart;
+      inst_1e9 = intervalCount * 1000000000;
       ips = inst_1e9 / elapsed;
       print_int("*IPS*: ", ips);
-      startTime = get_time_ns();
-      InstCount = 0; 
-    };*/
+      intervalStart = get_time_ns();
+      intervalCount = 0;
+    };
+    */
     ();
   };
 
