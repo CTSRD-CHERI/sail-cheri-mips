@@ -41,10 +41,11 @@ cheri_trace: $(CHERI_SAILS) $(CHERI_MAIN)
 coverage_report: bisect*.out
 	bisect-ppx-report -I _sbuild/_build -html $@ $^
 
+SAIL_OPT=-O -Oconstant_fold
 cheri.c: $(CHERI_SAILS) $(CHERI_MAIN)
-	$(SAIL) -memo_z3 -O -c $^ 1> $@
+	$(SAIL) -memo_z3 $(SAIL_OPT) -c $^ 1> $@
 
-C_OPT=-O2
+C_OPT=-O3 -flto
 GCOV_FLAGS=
 cheri_c: cheri.c $(SAIL_LIB_DIR)/sail.h Makefile
 	gcc $(C_OPT) $(GCOV_FLAGS) $< $(SAIL_LIB_DIR)/*.c -lgmp -lz -I $(SAIL_LIB_DIR) -o $@
@@ -85,7 +86,7 @@ cheri128_trace: $(CHERI128_SAILS) $(CHERI_MAIN)
 	$(SAIL) -ocaml_trace -o $@ $^
 
 cheri128.c: $(CHERI128_SAILS) $(CHERI_MAIN)
-	$(SAIL) -memo_z3 -O -c $^ 1> $@
+	$(SAIL) -memo_z3 $(SAIL_OPT) -c $^ 1> $@
 
 cheri128_c: cheri128.c $(SAIL_LIB_DIR)/sail.h Makefile
 	gcc $(C_OPT) $(GCOV_FLAGS) $< $(SAIL_LIB_DIR)/*.c -lgmp -lz -I $(SAIL_LIB_DIR) -o $@
