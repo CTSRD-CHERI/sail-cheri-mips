@@ -1088,10 +1088,10 @@ function clause execute (CLoadTags(rd, cb)) =
       SignalExceptionBadAddr(AdEL, vAddr64)
     else
       {
-        let pAddr     = TLBTranslate(vAddr64, LoadData);
         x : bits(64)  = zeros();
         foreach(i from 0 to (caps_per_cacheline - 1)) {
-          let (tag, _) = MEMr_tagged(pAddr + i*cap_size, cap_size);
+          let pAddr    = TLBTranslate(vAddr64 + i*cap_size, LoadData);
+          let (tag, _) = MEMr_tagged(pAddr, cap_size);
           x[i] = tag;
         };
         wGPR(rd) = x;
