@@ -10,19 +10,25 @@ let addr_size = (64:integer)
 
 val MEMr                : forall 'regval 'a 'b 'e. Bitvector 'a, Bitvector 'b => 'a -> integer -> monad 'regval 'b 'e
 val MEMr_reserve        : forall 'regval 'a 'b 'e. Bitvector 'a, Bitvector 'b => 'a -> integer -> monad 'regval 'b 'e
-val MEMr_tagged         : forall 'regval 'a 'b 'e. Bitvector 'a, Bitvector 'b => 'a -> integer -> monad 'regval (bool * 'b) 'e
-val MEMr_tagged_reserve : forall 'regval 'a 'b 'e. Bitvector 'a, Bitvector 'b => 'a -> integer -> monad 'regval (bool * 'b) 'e
+val MEMr_tagged         : forall 'regval 'a 'b 'e. Bitvector 'a, Bitvector 'b => 'a -> integer -> bool -> monad 'regval (bool * 'b) 'e
+val MEMr_tagged_reserve : forall 'regval 'a 'b 'e. Bitvector 'a, Bitvector 'b => 'a -> integer -> bool -> monad 'regval (bool * 'b) 'e
 
 let MEMr addr size             = read_mem Read_plain addr_size addr size
 let MEMr_reserve addr size     = read_mem Read_reserve addr_size addr size
 
-let MEMr_tagged addr size =
-  read_memt Read_plain addr size >>= fun (v, t) ->
+let MEMr_tagged addr size allowTag =
+  (if allowTag then
+    read_memt Read_plain addr size
+   else
+    (read_mem Read_plain addr_size addr size >>= fun v -> return (v, B0))) >>= fun (v, t) ->
   maybe_fail "bool_of_bitU" (bool_of_bitU t) >>= fun t ->
   return (t, v)
 
-let MEMr_tagged_reserve addr size =
-  read_memt Read_plain addr size >>= fun (v, t) ->
+let MEMr_tagged_reserve addr size allowTag =
+  (if allowTag then
+    read_memt Read_plain addr size
+   else
+    (read_mem Read_plain addr_size addr size >>= fun v -> return (v, B0))) >>= fun (v, t) ->
   maybe_fail "bool_of_bitU" (bool_of_bitU t) >>= fun t ->
   return (t, v)
 

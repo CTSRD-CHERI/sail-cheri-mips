@@ -1091,7 +1091,7 @@ function clause execute (CLoadTags(rd, cb)) =
         x : bits(64)  = zeros();
         foreach(i from 0 to (caps_per_cacheline - 1)) {
           let pAddr    = TLBTranslate(vAddr64 + i*cap_size, LoadData);
-          let (tag, _) = MEMr_tagged(pAddr, cap_size);
+          let (tag, _) = MEMr_tagged(pAddr, cap_size, true);
           x[i] = tag;
         };
         wGPR(rd) = x;
@@ -1285,10 +1285,7 @@ function clause execute (CLC(cd, cb, rt, offset)) =
     {
       let (pAddr, suppressTag) = TLBTranslateC(vAddr64, LoadData);
       let (tag, mem) =
-        if (cb_val.permit_load_cap & not (suppressTag)) then
-	  MEMr_tagged(pAddr, cap_size)
-	else
-	  (false, MEMr(pAddr, cap_size))
+        MEMr_tagged(pAddr, cap_size, cb_val.permit_load_cap & not (suppressTag))
       in
       let cap = memBitsToCapability(tag, mem) in
       writeCapReg(cd, cap);
@@ -1322,10 +1319,7 @@ function clause execute (CLCBI(cd, cb, offset)) =
     {
       let (pAddr, suppressTag) = TLBTranslateC(vAddr64, LoadData);
       let (tag, mem) =
-        if (cb_val.permit_load_cap & not (suppressTag)) then
-	  MEMr_tagged(pAddr, cap_size)
-	else
-	  (false, MEMr(pAddr, cap_size))
+        MEMr_tagged(pAddr, cap_size, cb_val.permit_load_cap & not (suppressTag))
       in
       let cap = memBitsToCapability(tag, mem) in
       writeCapReg(cd, cap);
@@ -1358,10 +1352,7 @@ function clause execute (CLLC(cd, cb)) =
     {
       let (pAddr, suppressTag) = TLBTranslateC(vAddr64, LoadData);
       let (tag, mem) =
-        if (cb_val.permit_load_cap & not (suppressTag)) then
-	  MEMr_tagged_reserve(pAddr, cap_size)
-	else
-	  (false, MEMr_reserve(pAddr, cap_size))
+        MEMr_tagged_reserve(pAddr, cap_size, cb_val.permit_load_cap & not (suppressTag))
       in
       let cap = memBitsToCapability(tag, mem) in
       writeCapReg(cd, cap);

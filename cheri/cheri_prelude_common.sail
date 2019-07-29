@@ -399,12 +399,12 @@ val "read_tag_bool"  : bits(64) -> bool effect { rmemt }
 val "write_tag_bool" : (bits(64) , bool) -> unit effect { wmvt }
 
 /*!
-reads `size` bytes from the given physical address in memory and the associated tag value.
+THIS`(addr, size, allowTag)` reads `size` bytes from the given physical address in memory and, if `allowTag` is true, the associated tag value. If `allowTag` is false then the returned tag value is always false.
  */
-val MEMr_tagged = {lem: "MEMr_tagged"} : forall 'size, 'size > 0. (bits(64), atom('size)) -> (bool, bits('size * 8)) effect { rmem, rmemt }
-function MEMr_tagged (addr, size) =
+val MEMr_tagged = {lem: "MEMr_tagged"} : forall 'size, 'size > 0. (bits(64), atom('size), bool) -> (bool, bits('size * 8)) effect { rmem, rmemt }
+function MEMr_tagged (addr, size, allowTag) =
 {
-  let tag  = read_tag_bool(addr & cap_addr_mask) in
+  let tag  = if allowTag then read_tag_bool(addr & cap_addr_mask) else false in
   let data = MEMr(addr, size) in
   (tag, reverse_endianness(data))
 }
@@ -412,10 +412,10 @@ function MEMr_tagged (addr, size) =
 /*!
 is as [MEMr_tagged] except that the load is marked as part of a load linked / store conditional.
  */
-val MEMr_tagged_reserve = {lem: "MEMr_tagged_reserve"} : forall 'size, 'size > 0. (bits(64), atom('size)) -> (bool, bits('size * 8)) effect { rmem, rmemt }
-function MEMr_tagged_reserve (addr, size) =
+val MEMr_tagged_reserve = {lem: "MEMr_tagged_reserve"} : forall 'size, 'size > 0. (bits(64), atom('size), bool) -> (bool, bits('size * 8)) effect { rmem, rmemt }
+function MEMr_tagged_reserve (addr, size, allowTag) =
 {
-  let tag = read_tag_bool(addr & cap_addr_mask) in
+  let tag = if allowTag then read_tag_bool(addr & cap_addr_mask) else false in
   let data = MEMr_reserve(addr, size) in
   (tag, reverse_endianness(data))
 }
