@@ -506,7 +506,7 @@ function addrWrapper(addr, accessType, width) =
       to_bits(64, vAddr);
   }
 
-val addrWrapperUnaligned : (bits(64), MemAccessType, WordTypeUnaligned) -> bits(64) effect {rreg, wreg, escape}
+val addrWrapperUnaligned : (bits(64), MemAccessType, WordTypeUnaligned) -> (bits(64), int) effect {rreg, wreg, escape}
 function addrWrapperUnaligned(addr, accessType, width) =
   {
     let ddc = DDC;
@@ -528,7 +528,7 @@ function addrWrapperUnaligned(addr, accessType, width) =
     else if (waddr < base) then
       (raise_c2_exception(CapEx_LengthViolation, 0b00000))
     else
-      to_bits(64, vAddr);
+      (to_bits(64, waddr), size);
   }
 
 function execute_branch (pc) = {
