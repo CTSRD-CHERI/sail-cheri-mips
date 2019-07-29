@@ -1284,8 +1284,13 @@ function clause execute (CLC(cd, cb, rt, offset)) =
     else
     {
       let (pAddr, suppressTag) = TLBTranslateC(vAddr64, LoadData);
-      let (tag, mem) = MEMr_tagged(pAddr, cap_size);
-      let cap = memBitsToCapability(tag & cb_val.permit_load_cap & not (suppressTag), mem);
+      let (tag, mem) =
+        if (cb_val.permit_load_cap & not (suppressTag)) then
+	  MEMr_tagged(pAddr, cap_size)
+	else
+	  (false, MEMr(pAddr, cap_size))
+      in
+      let cap = memBitsToCapability(tag, mem) in
       writeCapReg(cd, cap);
     }
   }
@@ -1316,8 +1321,13 @@ function clause execute (CLCBI(cd, cb, offset)) =
     else
     {
       let (pAddr, suppressTag) = TLBTranslateC(vAddr64, LoadData);
-      let (tag, mem) = MEMr_tagged(pAddr, cap_size);
-      let cap = memBitsToCapability(tag & cb_val.permit_load_cap & not (suppressTag), mem);
+      let (tag, mem) =
+        if (cb_val.permit_load_cap & not (suppressTag)) then
+	  MEMr_tagged(pAddr, cap_size)
+	else
+	  (false, MEMr(pAddr, cap_size))
+      in
+      let cap = memBitsToCapability(tag, mem) in
       writeCapReg(cd, cap);
     }
   }
@@ -1347,8 +1357,13 @@ function clause execute (CLLC(cd, cb)) =
     else
     {
       let (pAddr, suppressTag) = TLBTranslateC(vAddr64, LoadData);
-      let (tag, mem) : (bool, CapBits) = MEMr_tagged_reserve(pAddr, cap_size);
-      let cap = memBitsToCapability(tag & cb_val.permit_load_cap & not (suppressTag), mem);
+      let (tag, mem) =
+        if (cb_val.permit_load_cap & not (suppressTag)) then
+	  MEMr_tagged_reserve(pAddr, cap_size)
+	else
+	  (false, MEMr_reserve(pAddr, cap_size))
+      in
+      let cap = memBitsToCapability(tag, mem) in
       writeCapReg(cd, cap);
       CP0LLBit  = 0b1;
       CP0LLAddr = pAddr;
