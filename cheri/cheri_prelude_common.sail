@@ -513,15 +513,7 @@ function addrWrapperUnaligned(addr, accessType, width) =
     checkDDCPerms(ddc, accessType);
     cursor = getCapCursor(ddc);
     vAddr  = (cursor + unsigned(addr)) % pow2(64);
-    woffset = vAddr % 4;
-    doffset = vAddr % 8;
-    /* Compute the address and size of the bytes touched -- this depends on alignment. */
-    let (waddr, size) : (int, int) = match width {
-      WL => (vAddr, 4 - woffset),
-      WR => (vAddr - woffset, woffset + 1),
-      DL => (vAddr, 8 - doffset),
-      DR => (vAddr - doffset, doffset + 1)
-    };
+    let (waddr, size) = unalignedBytesTouched(vAddr, width);
     let (base, top) = getCapBounds(ddc);
     if ((waddr + size) > top) then
       (raise_c2_exception(CapEx_LengthViolation, 0b00000))
