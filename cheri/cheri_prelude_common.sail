@@ -401,7 +401,7 @@ val "write_tag_bool" : (bits(64) , bool) -> unit effect { wmvt }
 /*!
 reads `size` bytes from the given physical address in memory and the associated tag value.
  */
-val MEMr_tagged = {lem: "MEMr_tagged"} : forall 'size, 'size > 0. (bits(64), atom('size)) -> (bool, bits('size * 8)) effect { rmem, rmemt }
+val MEMr_tagged = {lem: "MEMr_tagged", coq: "MEMr_tagged"} : forall 'size, 'size > 0. (bits(64), atom('size)) -> (bool, bits('size * 8)) effect { rmem, rmemt }
 function MEMr_tagged (addr, size) =
 {
   let tag  = read_tag_bool(addr & cap_addr_mask) in
@@ -412,7 +412,7 @@ function MEMr_tagged (addr, size) =
 /*!
 is as [MEMr_tagged] except that the load is marked as part of a load linked / store conditional.
  */
-val MEMr_tagged_reserve = {lem: "MEMr_tagged_reserve"} : forall 'size, 'size > 0. (bits(64), atom('size)) -> (bool, bits('size * 8)) effect { rmem, rmemt }
+val MEMr_tagged_reserve = {lem: "MEMr_tagged_reserve", coq: "MEMr_tagged_reserve"} : forall 'size, 'size > 0. (bits(64), atom('size)) -> (bool, bits('size * 8)) effect { rmem, rmemt }
 function MEMr_tagged_reserve (addr, size) =
 {
   let tag = read_tag_bool(addr & cap_addr_mask) in
@@ -423,7 +423,7 @@ function MEMr_tagged_reserve (addr, size) =
 /*!
 THIS`(addr, size, t, value)` writes `size` bytes, `value`, to physical address, `addr`, with associated tag value, `t`.
  */
-val MEMw_tagged = {lem: "MEMw_tagged"} : forall 'size, 'size > 0. (bits(64), atom('size), bool, bits('size * 8)) -> unit effect { eamem, wmv, wmvt }
+val MEMw_tagged = {lem: "MEMw_tagged", coq: "MEMw_tagged"} : forall 'size, 'size > 0. (bits(64), atom('size), bool, bits('size * 8)) -> unit effect { eamem, wmv, wmvt }
 function MEMw_tagged(addr, size, tag, data) =
 {
   MEMea(addr, size);
@@ -434,7 +434,7 @@ function MEMw_tagged(addr, size, tag, data) =
 /*!
 THIS`(addr, size, t, value)` writes `size` bytes, `value`, to physical address, `addr`, with associated tag value, `t` and returns store conditional success or failure.
  */
-val MEMw_tagged_conditional = {lem: "MEMw_tagged_conditional"}: forall 'size, 'size > 0. (bits(64), atom('size), bool, bits('size * 8)) -> bool effect { eamem, wmv, wmvt }
+val MEMw_tagged_conditional = {lem: "MEMw_tagged_conditional", coq: "MEMw_tagged_conditional"}: forall 'size, 'size > 0. (bits(64), atom('size), bool, bits('size * 8)) -> bool effect { eamem, wmv, wmvt }
 function MEMw_tagged_conditional(addr, size, tag, data) =
 {
   MEMea_conditional(addr, size);
