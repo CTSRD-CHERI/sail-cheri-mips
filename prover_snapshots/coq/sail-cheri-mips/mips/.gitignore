@@ -1,0 +1,8 @@
+mips.lem
+mips_types.lem
+mipsScript.sml
+mips_typesScript.sml
+mips_extrasScript.sml
+
+/_sbuild
+/mips_c.dSYM/
