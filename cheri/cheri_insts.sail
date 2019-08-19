@@ -1291,6 +1291,12 @@ function clause execute (CLC(cd, cb, rt, offset)) =
   }
 }
 
+union clause ast = CLCNT : (regno, regno, regno)
+function clause execute (CLCNT(cd, cb, rt)) =
+{
+  execute (CLC(cd, cb, rt, to_bits(11, 0)))
+}
+
 union clause ast = CLCBI : (regno, regno, bits(16))
 function clause execute (CLCBI(cd, cb, offset)) =  
 {
@@ -1356,6 +1362,39 @@ function clause execute (CLLC(cd, cb)) =
   }
 }
 
+union clause ast = CClearTags : (regno)
+function clause execute (CClearTags(cb)) =
+{
+  checkCP2usable();
+  let cb_val = readCapRegDDC(cb);
+  if not (cb_val.tag) then
+    raise_c2_exception(CapEx_TagViolation, cb)
+  else if cb_val.sealed then
+    raise_c2_exception(CapEx_SealViolation, cb)
+  else if not (cb_val.permit_store) then
+    raise_c2_exception(CapEx_PermitStoreViolation, cb)
+  else
+  {
+    let vAddr   = getCapCursor(cb_val);
+    let vAddr64 = to_bits(64, getCapCursor(cb_val));
+    if (vAddr + caps_per_cacheline * cap_size) > getCapTop(cb_val) then
+      raise_c2_exception(CapEx_LengthViolation, cb)
+    else if vAddr < getCapBase(cb_val) then
+      raise_c2_exception(CapEx_LengthViolation, cb)
+    else if not(vAddr % (cap_size * caps_per_cacheline) == 0) then
+      SignalExceptionBadAddr(AdEL, vAddr64)
+    else
+    {
+      let pAddr  = TLBTranslate(vAddr64, StoreData);
+      foreach(i from 0 to (caps_per_cacheline - 1))
+      {
+        let (tag, mem) = MEMr_tagged(pAddr + i*cap_size, cap_size);
+        MEMw_tagged(pAddr + i*cap_size, cap_size, false, mem);
+      }
+    }
+  }
+}
+
 union clause ast = C2Dump : regno
 function clause execute (C2Dump (rt)) =
     () /* Currently a NOP */
@@ -1412,6 +1451,8 @@ function clause decode (0b010010 @ 0b00000 @ cd : regno @    0b00000 @    0b1111
 function clause decode (0b010010 @ 0b00000 @ cb : regno @    0b00011 @    0b11111 @ 0b111111) = Some(CJALR(0b00000, cb, false)) /* CJR */
 function clause decode (0b010010 @ 0b00000 @ rd : regno @    0b00100 @    0b11111 @ 0b111111) = Some(CGetCID(rd))
 function clause decode (0b010010 @ 0b00000 @ cb : regno @    0b00101 @    0b11111 @ 0b111111) = Some(CSetCID(cb))
+
+function clause decode (0b010010 @ 0b00000 @ cb : regno @    0b11000 @    0b11111 @ 0b111111) = Some(CClearTags(cb))
 
 /* Two arg */
 function clause decode (0b010010 @ 0b00000 @ cs : regno @ rt : regno @    0b01000 @ 0b111111) = Some(CCheckPerm(cs, rt))
@@ -1479,6 +1520,9 @@ function clause decode (0b010010 @ 0b00000 @ rd : regno @ cb : regno @ cs : regn
 function clause decode (0b010010 @ 0b00000 @ rd : regno @ cb : regno @ cs : regno @ 0b100001) = Some(CPtrCmp(rd, cb, cs, CNEXEQ))
 
 function clause decode (0b010010 @ 0b00000 @ rd : regno @ cb : regno @ ct : regno @ 0b100000) = Some(CTestSubset(rd, cb, ct))
+
+/* Special-purpose */
+function clause decode (0b010010 @ 0b00000 @ cd : regno @ cs : regno @ rs : regno @ 0b111000) = Some(CLCNT(cd, cs, rs))
 
 function clause decode (0b010010 @ 0b01001 @ cd : regno @ imm : bits(16)) = Some(CBX(cd, imm, true))  /* CBTU */
 function clause decode (0b010010 @ 0b01010 @ cd : regno @ imm : bits(16)) = Some(CBX(cd, imm, false)) /* CBTS */
