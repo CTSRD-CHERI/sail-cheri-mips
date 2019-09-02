@@ -621,6 +621,19 @@ function compare (cmp, valA, valB) =
 enum WordType = { B, H, W, D}
 enum WordTypeUnaligned = { WL, WR, DL, DR }
 
+/* Compute the address and number of bytes touched by an unaligned memory operation.
+   Assumes big-endian mode. */
+function unalignedBytesTouched(vAddr : int, width : WordTypeUnaligned) -> (int, int) = {
+  woffset = vAddr % 4;
+  doffset = vAddr % 8;
+  match width {
+    WL => (vAddr, 4 - woffset),
+    WR => (vAddr - woffset, woffset + 1),
+    DL => (vAddr, 8 - doffset),
+    DR => (vAddr - doffset, doffset + 1)
+  }
+}
+
 /*!
  Returns the width of the given WordType (byte, half, word, double) in bytes.
  */

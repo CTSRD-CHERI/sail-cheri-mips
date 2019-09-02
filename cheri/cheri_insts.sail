@@ -1088,10 +1088,10 @@ function clause execute (CLoadTags(rd, cb)) =
       SignalExceptionBadAddr(AdEL, vAddr64)
     else
       {
-        let pAddr     = TLBTranslate(vAddr64, LoadData);
         x : bits(64)  = zeros();
         foreach(i from 0 to (caps_per_cacheline - 1)) {
-          let (tag, _) = MEMr_tagged(pAddr + i*cap_size, cap_size);
+          let pAddr    = TLBTranslate(vAddr64 + i*cap_size, LoadData);
+          let (tag, _) = MEMr_tagged(pAddr, cap_size, true);
           x[i] = tag;
         };
         wGPR(rd) = x;
@@ -1284,8 +1284,10 @@ function clause execute (CLC(cd, cb, rt, offset)) =
     else
     {
       let (pAddr, suppressTag) = TLBTranslateC(vAddr64, LoadData);
-      let (tag, mem) = MEMr_tagged(pAddr, cap_size);
-      let cap = memBitsToCapability(tag & cb_val.permit_load_cap & not (suppressTag), mem);
+      let (tag, mem) =
+        MEMr_tagged(pAddr, cap_size, cb_val.permit_load_cap & not (suppressTag))
+      in
+      let cap = memBitsToCapability(tag, mem) in
       writeCapReg(cd, cap);
     }
   }
@@ -1316,8 +1318,10 @@ function clause execute (CLCBI(cd, cb, offset)) =
     else
     {
       let (pAddr, suppressTag) = TLBTranslateC(vAddr64, LoadData);
-      let (tag, mem) = MEMr_tagged(pAddr, cap_size);
-      let cap = memBitsToCapability(tag & cb_val.permit_load_cap & not (suppressTag), mem);
+      let (tag, mem) =
+        MEMr_tagged(pAddr, cap_size, cb_val.permit_load_cap & not (suppressTag))
+      in
+      let cap = memBitsToCapability(tag, mem) in
       writeCapReg(cd, cap);
     }
   }
@@ -1347,8 +1351,10 @@ function clause execute (CLLC(cd, cb)) =
     else
     {
       let (pAddr, suppressTag) = TLBTranslateC(vAddr64, LoadData);
-      let (tag, mem) : (bool, CapBits) = MEMr_tagged_reserve(pAddr, cap_size);
-      let cap = memBitsToCapability(tag & cb_val.permit_load_cap & not (suppressTag), mem);
+      let (tag, mem) =
+        MEMr_tagged_reserve(pAddr, cap_size, cb_val.permit_load_cap & not (suppressTag))
+      in
+      let cap = memBitsToCapability(tag, mem) in
       writeCapReg(cd, cap);
       CP0LLBit  = 0b1;
       CP0LLAddr = pAddr;

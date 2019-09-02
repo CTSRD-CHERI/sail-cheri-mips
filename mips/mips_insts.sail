@@ -1208,17 +1208,17 @@ function clause decode(0b100010 @ base : regno @ rt : regno @ offset : imm16) =
       Some(LWL(base, rt, offset))
 function clause execute(LWL(base, rt, offset)) =
       {
-        vAddr = addrWrapperUnaligned(sign_extend(offset) + rGPR(base), LoadData, WL);
+        let (vAddr, size) = addrWrapperUnaligned(sign_extend(offset) + rGPR(base), LoadData, WL);
         let pAddr = (TLBTranslate(vAddr, LoadData)) in
           {
-            mem_val = MEMr_wrapper (pAddr[63..2] @ 0b00, 4); /* read word of interest */
             reg_val = rGPR(rt);
-            result : bits(32) = match vAddr[1..0]
+            result : bits(32) = match size
               {
-                0b00  => mem_val,
-                0b01  => mem_val[23..0] @ reg_val[07..0],
-                0b10  => mem_val[15..0] @ reg_val[15..0],
-                0b11  => mem_val[07..0] @ reg_val[23..0]
+                4 => MEMr_wrapper(pAddr, size),
+                3 => MEMr_wrapper(pAddr, size) @ reg_val[07..0],
+                2 => MEMr_wrapper(pAddr, size) @ reg_val[15..0],
+                1 => MEMr_wrapper(pAddr, size) @ reg_val[23..0],
+		_ => { assert(false); zeros() }
 	      };
 	    wGPR(rt) = sign_extend(result);
           }
@@ -1228,17 +1228,17 @@ function clause decode(0b100110 @ base : regno @ rt : regno @ offset : imm16) =
       Some(LWR(base, rt, offset))
 function clause execute(LWR(base, rt, offset)) =
       {
-        vAddr = addrWrapperUnaligned(sign_extend(offset) + rGPR(base), LoadData, WR);
+        let (vAddr, size) = addrWrapperUnaligned(sign_extend(offset) + rGPR(base), LoadData, WR);
         let pAddr = (TLBTranslate(vAddr, LoadData)) in
           {
-            mem_val = MEMr_wrapper(pAddr[63..2] @ 0b00, 4); /* read word of interest */
             reg_val = rGPR(rt);
-            result : bits(32) = match vAddr[1..0]
+            result : bits(32) = match size
               {
-                0b00  => reg_val[31..8]  @ mem_val[31..24],
-                0b01  => reg_val[31..16] @ mem_val[31..16],
-                0b10  => reg_val[31..24] @ mem_val[31..8],
-                0b11  => mem_val
+                1 => reg_val[31..8]  @ MEMr_wrapper(pAddr, size),
+                2 => reg_val[31..16] @ MEMr_wrapper(pAddr, size),
+                3 => reg_val[31..24] @ MEMr_wrapper(pAddr, size),
+                4 => MEMr_wrapper(pAddr, size),
+		_ => { assert(false); zeros() }
               };
 	    wGPR(rt) = sign_extend(result)
           }
@@ -1250,16 +1250,17 @@ function clause decode(0b101010 @ base : regno @ rt : regno @ offset : imm16) =
       Some(SWL(base, rt, offset))
 function clause execute(SWL(base, rt, offset)) =
       {
-        vAddr = addrWrapperUnaligned(sign_extend(offset) + rGPR(base), StoreData, WL);
+        let (vAddr, size) = addrWrapperUnaligned(sign_extend(offset) + rGPR(base), StoreData, WL);
         let pAddr = TLBTranslate(vAddr, StoreData) in
           {
             reg_val = rGPR(rt);
-            match vAddr[1..0]
+            match size
             {
-              0b00  => (MEMw_wrapper(pAddr, 4) = reg_val[31..0]),
-              0b01  => (MEMw_wrapper(pAddr, 3) = reg_val[31..8]),
-              0b10  => (MEMw_wrapper(pAddr, 2) = reg_val[31..16]),
-              0b11  => (MEMw_wrapper(pAddr, 1) = reg_val[31..24])
+              4 => (MEMw_wrapper(pAddr, size) = reg_val[31..0]),
+              3 => (MEMw_wrapper(pAddr, size) = reg_val[31..8]),
+              2 => (MEMw_wrapper(pAddr, size) = reg_val[31..16]),
+              1 => (MEMw_wrapper(pAddr, size) = reg_val[31..24]),
+	      _ => assert(false)
             }
           }
       }
@@ -1269,17 +1270,17 @@ function clause decode(0b101110 @ base : regno @ rt : regno @ offset : imm16) =
       Some(SWR(base, rt, offset))
 function clause execute(SWR(base, rt, offset)) =
       {
-        vAddr = addrWrapperUnaligned(sign_extend(offset) + rGPR(base), StoreData, WR);
+        let (vAddr, size) = addrWrapperUnaligned(sign_extend(offset) + rGPR(base), StoreData, WR);
         let pAddr = TLBTranslate(vAddr, StoreData) in
           {
-            wordAddr = pAddr[63..2] @ 0b00;
             reg_val = rGPR(rt);
-            match vAddr[1..0]
+            match size
               {
-                0b00  => (MEMw_wrapper(wordAddr, 1) = reg_val[7..0]),
-                0b01  => (MEMw_wrapper(wordAddr, 2) = reg_val[15..0]),
-                0b10  => (MEMw_wrapper(wordAddr, 3) = reg_val[23..0]),
-                0b11  => (MEMw_wrapper(wordAddr, 4) = reg_val[31..0])
+                1 => (MEMw_wrapper(pAddr, size) = reg_val[7..0]),
+                2 => (MEMw_wrapper(pAddr, size) = reg_val[15..0]),
+                3 => (MEMw_wrapper(pAddr, size) = reg_val[23..0]),
+                4 => (MEMw_wrapper(pAddr, size) = reg_val[31..0]),
+	        _ => assert(false)
               }
           }
       }
@@ -1290,21 +1291,21 @@ function clause decode(0b011010 @ base : regno @ rt : regno @ offset : imm16) =
   Some(LDL(base, rt, offset))
 function clause execute(LDL(base, rt, offset)) =
   {
-    vAddr = addrWrapperUnaligned(sign_extend(offset) + rGPR(base), LoadData, DL);
+    let (vAddr, size) = addrWrapperUnaligned(sign_extend(offset) + rGPR(base), LoadData, DL);
     let pAddr = TLBTranslate(vAddr, LoadData) in
       {
-        mem_val = MEMr_wrapper(pAddr[63..3] @ 0b000, 8); /* read double of interest */
         reg_val = rGPR(rt);
-        wGPR(rt) = match vAddr[2..0]
+        wGPR(rt) = match size
               {
-                0b000  => mem_val,
-                0b001  => mem_val[55..0] @ reg_val[7..0],
-                0b010  => mem_val[47..0] @ reg_val[15..0],
-                0b011  => mem_val[39..0] @ reg_val[23..0],
-                0b100  => mem_val[31..0] @ reg_val[31..0],
-                0b101  => mem_val[23..0] @ reg_val[39..0],
-                0b110  => mem_val[15..0] @ reg_val[47..0],
-                0b111  => mem_val[07..0] @ reg_val[55..0]
+                8 => MEMr_wrapper(pAddr, size),
+                7 => MEMr_wrapper(pAddr, size) @ reg_val[7..0],
+                6 => MEMr_wrapper(pAddr, size) @ reg_val[15..0],
+                5 => MEMr_wrapper(pAddr, size) @ reg_val[23..0],
+                4 => MEMr_wrapper(pAddr, size) @ reg_val[31..0],
+                3 => MEMr_wrapper(pAddr, size) @ reg_val[39..0],
+                2 => MEMr_wrapper(pAddr, size) @ reg_val[47..0],
+                1 => MEMr_wrapper(pAddr, size) @ reg_val[55..0],
+		_ => { assert(false); zeros() }
               };
       }
   }
@@ -1315,21 +1316,21 @@ function clause decode(0b011011 @ base : regno @ rt : regno @ offset : imm16) =
   Some(LDR(base, rt, offset))
 function clause execute(LDR(base, rt, offset)) =
   {
-    vAddr = addrWrapperUnaligned(sign_extend(offset) + rGPR(base), LoadData, DR);
+    let (vAddr, size) = addrWrapperUnaligned(sign_extend(offset) + rGPR(base), LoadData, DR);
     let pAddr = TLBTranslate(vAddr, LoadData) in
       {
-        mem_val = MEMr_wrapper(pAddr[63..3] @ 0b000, 8); /* read double of interest */
         reg_val = rGPR(rt);
-        wGPR(rt)  = match vAddr[2..0]
+        wGPR(rt)  = match size
               {
-                0b000  => reg_val[63..08] @ mem_val[63..56],
-                0b001  => reg_val[63..16] @ mem_val[63..48],
-                0b010  => reg_val[63..24] @ mem_val[63..40],
-                0b011  => reg_val[63..32] @ mem_val[63..32],
-                0b100  => reg_val[63..40] @ mem_val[63..24],
-                0b101  => reg_val[63..48] @ mem_val[63..16],
-                0b110  => reg_val[63..56] @ mem_val[63..08],
-                0b111  => mem_val
+                1 => reg_val[63..08] @ MEMr_wrapper(pAddr, size),
+                2 => reg_val[63..16] @ MEMr_wrapper(pAddr, size),
+                3 => reg_val[63..24] @ MEMr_wrapper(pAddr, size),
+                4 => reg_val[63..32] @ MEMr_wrapper(pAddr, size),
+                5 => reg_val[63..40] @ MEMr_wrapper(pAddr, size),
+                6 => reg_val[63..48] @ MEMr_wrapper(pAddr, size),
+                7 => reg_val[63..56] @ MEMr_wrapper(pAddr, size),
+                8 => MEMr_wrapper(pAddr, size),
+		_ => { assert(false); zeros() }
               };
       }
   }
@@ -1340,20 +1341,21 @@ function clause decode(0b101100 @ base : regno @ rt : regno @ offset : imm16) =
       Some(SDL(base, rt, offset))
 function clause execute(SDL(base, rt, offset)) =
       {
-        vAddr = addrWrapperUnaligned(sign_extend(offset) + rGPR(base), StoreData, DL);
+        let (vAddr, size) = addrWrapperUnaligned(sign_extend(offset) + rGPR(base), StoreData, DL);
         let pAddr = TLBTranslate(vAddr, StoreData) in
           {
             reg_val = rGPR(rt);
-            match vAddr[2..0]
+            match size
             {
-              0b000  => (MEMw_wrapper(pAddr, 8) = reg_val[63..00]),
-              0b001  => (MEMw_wrapper(pAddr, 7) = reg_val[63..08]),
-              0b010  => (MEMw_wrapper(pAddr, 6) = reg_val[63..16]),
-              0b011  => (MEMw_wrapper(pAddr, 5) = reg_val[63..24]),
-              0b100  => (MEMw_wrapper(pAddr, 4) = reg_val[63..32]),
-              0b101  => (MEMw_wrapper(pAddr, 3) = reg_val[63..40]),
-              0b110  => (MEMw_wrapper(pAddr, 2) = reg_val[63..48]),
-              0b111  => (MEMw_wrapper(pAddr, 1) = reg_val[63..56])
+              8 => (MEMw_wrapper(pAddr, size) = reg_val[63..00]),
+              7 => (MEMw_wrapper(pAddr, size) = reg_val[63..08]),
+              6 => (MEMw_wrapper(pAddr, size) = reg_val[63..16]),
+              5 => (MEMw_wrapper(pAddr, size) = reg_val[63..24]),
+              4 => (MEMw_wrapper(pAddr, size) = reg_val[63..32]),
+              3 => (MEMw_wrapper(pAddr, size) = reg_val[63..40]),
+              2 => (MEMw_wrapper(pAddr, size) = reg_val[63..48]),
+              1 => (MEMw_wrapper(pAddr, size) = reg_val[63..56]),
+	      _ => assert(false)
             }
           }
       }
@@ -1365,21 +1367,21 @@ function clause decode(0b101101 @ base : regno @ rt : regno @ offset : imm16) =
       Some(SDR(base, rt, offset))
 function clause execute(SDR(base, rt, offset)) =
   {
-        vAddr = addrWrapperUnaligned(sign_extend(offset) + rGPR(base), StoreData, DR);
+        let (vAddr, size) = addrWrapperUnaligned(sign_extend(offset) + rGPR(base), StoreData, DR);
         let pAddr = TLBTranslate(vAddr, StoreData) in
           {
             reg_val = rGPR(rt);
-            wordAddr = pAddr[63..3] @ 0b000;
-            match vAddr[2..0]
+            match size
             {
-              0b000  => (MEMw_wrapper(wordAddr, 1) = reg_val[07..0]),
-              0b001  => (MEMw_wrapper(wordAddr, 2) = reg_val[15..0]),
-              0b010  => (MEMw_wrapper(wordAddr, 3) = reg_val[23..0]),
-              0b011  => (MEMw_wrapper(wordAddr, 4) = reg_val[31..0]),
-              0b100  => (MEMw_wrapper(wordAddr, 5) = reg_val[39..0]),
-              0b101  => (MEMw_wrapper(wordAddr, 6) = reg_val[47..0]),
-              0b110  => (MEMw_wrapper(wordAddr, 7) = reg_val[55..0]),
-              0b111  => (MEMw_wrapper(wordAddr, 8) = reg_val[63..0])
+              1 => (MEMw_wrapper(pAddr, size) = reg_val[07..0]),
+              2 => (MEMw_wrapper(pAddr, size) = reg_val[15..0]),
+              3 => (MEMw_wrapper(pAddr, size) = reg_val[23..0]),
+              4 => (MEMw_wrapper(pAddr, size) = reg_val[31..0]),
+              5 => (MEMw_wrapper(pAddr, size) = reg_val[39..0]),
+              6 => (MEMw_wrapper(pAddr, size) = reg_val[47..0]),
+              7 => (MEMw_wrapper(pAddr, size) = reg_val[55..0]),
+              8 => (MEMw_wrapper(pAddr, size) = reg_val[63..0]),
+	      _ => assert(false)
             }
           }
       }
