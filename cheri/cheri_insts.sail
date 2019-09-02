@@ -1389,8 +1389,9 @@ function clause execute (CCLC(cd, cb)) =
       else
       {
         let (pAddr, suppressTag) = TLBTranslateC(vAddr64, LoadData);
-        let (tag, mem) : (bool, CapBits) = MEMr_tagged_reserve(pAddr, cap_size);
-        let cap = memBitsToCapability(tag & cb_val.permit_load_cap & not (suppressTag), mem);
+        let (tag, mem) : (bool, CapBits) =
+          MEMr_tagged_reserve(pAddr, cap_size, cb_val.permit_load_cap & not(suppressTag));
+        let cap = memBitsToCapability(tag, mem);
         writeCapReg(cd, cap);
       }
     }
