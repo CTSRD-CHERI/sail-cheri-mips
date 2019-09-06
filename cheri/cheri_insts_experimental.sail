@@ -74,10 +74,10 @@ function clause decode (0b010010 @ 0b00000 @ cd : regno @ cs : regno @ rt : regn
 function clause decode (0b010010 @ 0b00000 @ rd : regno @ cb : regno @    0b10010 @ 0b111111) = Some(CGetFlags(rd, cb))
 
 /* >>> */
-/* CRAM and CRAP (D.2) <<< */
+/* CRAM and CRRL (D.2) <<< */
 
-union clause ast = CRAP : (regno, regno)
-function clause execute(CRAP(rt, rs)) =
+union clause ast = CRRL : (regno, regno)
+function clause execute(CRRL(rt, rs)) =
 {
   checkCP2usable();
   let len = rGPR(rs);
@@ -92,7 +92,7 @@ function clause execute(CRAM(rt, rs)) =
   wGPR(rt) = getRepresentableAlignmentMask(len);
 }
 
-function clause decode (0b010010 @ 0b00000 @ rt : regno @ rs : regno @   0b10000 @ 0b111111) = Some(CRAP(rt, rs))
+function clause decode (0b010010 @ 0b00000 @ rt : regno @ rs : regno @   0b10000 @ 0b111111) = Some(CRRL(rt, rs))
 function clause decode (0b010010 @ 0b00000 @ rt : regno @ rs : regno @   0b10001 @ 0b111111) = Some(CRAM(rt, rs))
 
 /* >>> */
