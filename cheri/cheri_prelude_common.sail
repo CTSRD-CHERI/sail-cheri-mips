@@ -321,13 +321,17 @@ function SignalException (ex) = {
         PC
       };
     let (representable, newEPCC) = setCapOffset(PCC, epc);
-    /* EPCC should always be representable because PC should always been (nearly) in bounds */
-    assert(representable);
-    if (PCC.sealed) then {
-      /* Check that we didn't accidentally modify a sealed capabiltiy. */
-      assert(getCapOffset(PCC) == unsigned(epc));
-    };
-    EPCC = newEPCC;
+    /* EPCC should almost always be representable because PC should always be nearly in bounds.
+       It might happen if KCC does not include the exception vector which would probably
+       result in an exception loop. */
+    if (not(representable)) then
+      print("UNREPRESENTABLE EPCC!");
+    /* Similarly PCC should not be sealed unless EPCC was sealed on ERET or KCC was sealed 
+       on exception */
+    if (newEPCC.sealed) then
+      print("SEALED PCC!");
+    /* If either of the above cases happens we clear the tag on EPCC to preserve invariants. */
+    EPCC = if representable & not(newEPCC.sealed) then newEPCC else unrepCap(newEPCC);
   };
   /* Fill in BadInstr + BadInstrP. */
   updateBadInstr();
