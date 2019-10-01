@@ -132,10 +132,10 @@ C%.thy: c%.lem c%_types.lem $(MIPS_SAIL_DIR)/mips_extras.lem
 %Theory.uo: %Script.sml
 	SAIL_LIB_DIR="$(SAIL_LIB_DIR)" Holmake $@
 
-cheri.v cheri_types.v: $(CHERI_SAILS)
+cheri.v cheri_types.v: $(CHERI_SAILS) $(CHERI_SAIL_DIR)/cheri_termination.sail
 	$(SAIL) -coq -o cheri -coq_lib mips_extras -undefined_gen -memo_z3 -dcoq_undef_axioms $^
 
-cheri128.v cheri128_types.v: $(CHERI128_SAILS)
+cheri128.v cheri128_types.v: $(CHERI128_SAILS) $(CHERI_SAIL_DIR)/cheri_termination.sail
 	$(SAIL) -coq -o cheri128 -coq_lib mips_extras -undefined_gen -memo_z3 -dcoq_undef_axioms $^
 
 CHERI_COQ = cheri_types.v mips_extras.v cheri.v
