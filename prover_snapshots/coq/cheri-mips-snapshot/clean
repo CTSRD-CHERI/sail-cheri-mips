@@ -1,0 +1,13 @@
+#!/bin/bash
+
+if [ ! -d bbv ]; then
+  echo Run clean from the cheri-mips-snapshot directory
+  exit 1
+fi
+
+set -ex 
+rm -f *.{vo,glob} .*.aux
+cd lib/sail
+make clean
+cd ../../bbv
+make clean

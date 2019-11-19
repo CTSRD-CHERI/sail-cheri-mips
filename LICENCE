@@ -3,22 +3,19 @@
 The Sail architecture models here are subject to the BSD two-clause
 licence below.
 
-Copyright (c) 2013-2018
-  Kathyrn Gray
+Copyright (c) 2013-2019
+  Alasdair Armstrong
+  Thomas Bauereiss
+  Brian Campbell
+  Nathaniel Filardo
   Shaked Flur
-  Stephen Kell
-  Gabriel Kerneis
+  Jon French
+  Kathyrn Gray
+  Alexandre Joannou
   Robert Norton-Wright
   Christopher Pulte
+  Alexander Richardson
   Peter Sewell
-  Alasdair Armstrong
-  Brian Campbell
-  Thomas Bauereiss
-  Anthony Fox
-  Jon French
-  Dominic Mulligan
-  Stephen Kell
-  Mark Wassell
 
 All rights reserved.
 

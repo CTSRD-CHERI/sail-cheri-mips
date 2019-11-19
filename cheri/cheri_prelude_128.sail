@@ -276,10 +276,9 @@ function getCapBounds(c) : Capability -> (uint64, CapLen) =
   /* Compute region corrections for top and base relative to a */
   let correction_base = bHi - aHi in
   let correction_top  = tHi - aHi in
-  let a_top = (a >> (E + 14)) in
-  let e_zeros = zeros(E) in {
-    base : bits(65) = truncate((a_top + correction_base) @ c.B @ e_zeros, 65);
-    top  : bits(65) = truncate((a_top + correction_top)  @ c.T @ e_zeros, 65);
+  let a_top = (a >> (E + 14)) in {
+    base : bits(65) = truncate((a_top + correction_base) @ c.B @ zeros(E), 65);
+    top  : bits(65) = truncate((a_top + correction_top)  @ c.T @ zeros(E), 65);
     if (base[64] == bitone) then {
       /* If base[64] is set this indicates under or overflow i.e. a has 
          wrapped around the address space and been corrected. In this case

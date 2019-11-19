@@ -12,6 +12,8 @@ else
 TRACE_SAIL=notrace.sail
 endif
 
+MONO_REWRITES=$(SAIL_LIB_DIR)/mono_rewrites.sail
+
 MIPS_PRE:=$(MIPS_SAIL_DIR)/$(TRACE_SAIL) $(MIPS_SAIL_DIR)/prelude.sail $(MIPS_SAIL_DIR)/mips_prelude.sail
 MIPS_TLB:=$(MIPS_SAIL_DIR)/mips_tlb.sail
 MIPS_TLB_STUB:=$(MIPS_SAIL_DIR)/mips_tlb_stub.sail
@@ -41,10 +43,11 @@ cheri_trace: $(CHERI_SAILS) $(CHERI_MAIN)
 coverage_report: bisect*.out
 	bisect-ppx-report -I _sbuild/_build -html $@ $^
 
+SAIL_OPT=-O -Oconstant_fold
 cheri.c: $(CHERI_SAILS) $(CHERI_MAIN)
-	$(SAIL) -memo_z3 -O -c $^ 1> $@
+	$(SAIL) -memo_z3 $(SAIL_OPT) -c $^ 1> $@
 
-C_OPT=-O2
+C_OPT=-O3 -flto
 GCOV_FLAGS=
 cheri_c: cheri.c $(SAIL_LIB_DIR)/sail.h Makefile
 	gcc $(C_OPT) $(GCOV_FLAGS) $< $(SAIL_LIB_DIR)/*.c -lgmp -lz -I $(SAIL_LIB_DIR) -o $@
@@ -85,7 +88,7 @@ cheri128_trace: $(CHERI128_SAILS) $(CHERI_MAIN)
 	$(SAIL) -ocaml_trace -o $@ $^
 
 cheri128.c: $(CHERI128_SAILS) $(CHERI_MAIN)
-	$(SAIL) -memo_z3 -O -c $^ 1> $@
+	$(SAIL) -memo_z3 $(SAIL_OPT) -c $^ 1> $@
 
 cheri128_c: cheri128.c $(SAIL_LIB_DIR)/sail.h Makefile
 	gcc $(C_OPT) $(GCOV_FLAGS) $< $(SAIL_LIB_DIR)/*.c -lgmp -lz -I $(SAIL_LIB_DIR) -o $@
@@ -103,20 +106,20 @@ include ../etc/loc.mk
 # CLoad as of commit b34c3fb, in the TLB translation, and in compressed
 # capability functions
 
-cheri_no_tlb.lem: $(CHERI_NO_TLB_SAILS)
-	$(SAIL) -lem -o cheri_no_tlb -lem_lib Mips_extras -undefined_gen -memo_z3 $^
+cheri_no_tlb.lem: $(MONO_REWRITES) $(CHERI_NO_TLB_SAILS)
+	$(SAIL) -lem -o cheri_no_tlb -auto_mono -mono_rewrites -lem_mwords -lem_lib Mips_extras -undefined_gen -memo_z3 $^
 cheri_no_tlb_types.lem: cheri_no_tlb.lem
 
-cheri.lem: $(CHERI_MONO_SAILS) $(CHERI_MAIN)
-	$(SAIL) -lem -o cheri -auto_mono -mono_rewrites -dmono_continue -lem_mwords -lem_lib Mips_extras -undefined_gen -memo_z3 $^
+cheri.lem: $(MONO_REWRITES) $(CHERI_SAILS) $(CHERI_MAIN)
+	$(SAIL) -lem -o cheri -auto_mono -mono_rewrites -lem_mwords -lem_lib Mips_extras -undefined_gen -memo_z3 $^
 cheri_types.lem: cheri.lem
 
-cheri128_no_tlb.lem: $(CHERI128_NO_TLB_SAILS)
-	$(SAIL) -lem -o cheri128_no_tlb -lem_lib Mips_extras -undefined_gen -memo_z3 $^
+cheri128_no_tlb.lem: $(MONO_REWRITES) $(CHERI128_NO_TLB_SAILS)
+	$(SAIL) -lem -o cheri128_no_tlb -auto_mono -mono_rewrites -lem_mwords -lem_lib Mips_extras -undefined_gen -memo_z3 $^
 cheri128_no_tlb_types.lem: cheri128_no_tlb.lem
 
-cheri128.lem: $(CHERI128_SAILS)
-	$(SAIL) -lem -o cheri128 -lem_lib Mips_extras -undefined_gen -memo_z3 $^
+cheri128.lem: $(MONO_REWRITES) $(CHERI128_SAILS)
+	$(SAIL) -lem -o cheri128 -auto_mono -mono_rewrites -lem_mwords -lem_lib Mips_extras -undefined_gen -memo_z3 $^
 cheri128_types.lem: cheri128.lem
 
 C%.thy: c%.lem c%_types.lem $(MIPS_SAIL_DIR)/mips_extras.lem

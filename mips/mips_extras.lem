@@ -3,42 +3,49 @@ open import Pervasives_extra
 open import Sail2_instr_kinds
 open import Sail2_values
 open import Sail2_operators
+open import Sail2_operators_mwords
 open import Sail2_prompt_monad
 open import Sail2_prompt
 
 let addr_size = (64:integer)
 
-val MEMr                : forall 'regval 'a 'b 'e. Bitvector 'a, Bitvector 'b => 'a -> integer -> monad 'regval 'b 'e
-val MEMr_reserve        : forall 'regval 'a 'b 'e. Bitvector 'a, Bitvector 'b => 'a -> integer -> monad 'regval 'b 'e
-val MEMr_tagged         : forall 'regval 'a 'b 'e. Bitvector 'a, Bitvector 'b => 'a -> integer -> monad 'regval (bool * 'b) 'e
-val MEMr_tagged_reserve : forall 'regval 'a 'b 'e. Bitvector 'a, Bitvector 'b => 'a -> integer -> monad 'regval (bool * 'b) 'e
+val MEMr                : forall 'regval 'a 'b 'e. Size 'a, Size 'b => mword 'a -> integer -> monad 'regval (mword 'b) 'e
+val MEMr_reserve        : forall 'regval 'a 'b 'e. Size 'a, Size 'b => mword 'a -> integer -> monad 'regval (mword 'b) 'e
+val MEMr_tagged         : forall 'regval 'a 'b 'e. Size 'a, Size 'b => mword 'a -> integer -> bool -> monad 'regval (bool * mword 'b) 'e
+val MEMr_tagged_reserve : forall 'regval 'a 'b 'e. Size 'a, Size 'b => mword 'a -> integer -> bool -> monad 'regval (bool * mword 'b) 'e
 
 let MEMr addr size             = read_mem Read_plain addr_size addr size
 let MEMr_reserve addr size     = read_mem Read_reserve addr_size addr size
 
-let MEMr_tagged addr size =
-  read_memt Read_plain addr size >>= fun (v, t) ->
+let MEMr_tagged addr size allowTag =
+  (if allowTag then
+    read_memt Read_plain addr size
+   else
+    (read_mem Read_plain addr_size addr size >>= fun v -> return (v, B0))) >>= fun (v, t) ->
   maybe_fail "bool_of_bitU" (bool_of_bitU t) >>= fun t ->
   return (t, v)
 
-let MEMr_tagged_reserve addr size =
-  read_memt Read_plain addr size >>= fun (v, t) ->
+let MEMr_tagged_reserve addr size allowTag =
+  (if allowTag then
+    read_memt Read_plain addr size
+   else
+    (read_mem Read_plain addr_size addr size >>= fun v -> return (v, B0))) >>= fun (v, t) ->
   maybe_fail "bool_of_bitU" (bool_of_bitU t) >>= fun t ->
   return (t, v)
 
 
-val MEMea                 : forall 'regval 'a 'e. Bitvector 'a => 'a -> integer -> monad 'regval unit 'e
-val MEMea_conditional     : forall 'regval 'a 'e. Bitvector 'a => 'a -> integer -> monad 'regval unit 'e
-val MEMea_tag             : forall 'regval 'a 'e. Bitvector 'a => 'a -> integer -> monad 'regval unit 'e
-val MEMea_tag_conditional : forall 'regval 'a 'e. Bitvector 'a => 'a -> integer -> monad 'regval unit 'e
+val MEMea                 : forall 'regval 'a 'e. Size 'a => mword 'a -> integer -> monad 'regval unit 'e
+val MEMea_conditional     : forall 'regval 'a 'e. Size 'a => mword 'a -> integer -> monad 'regval unit 'e
+val MEMea_tag             : forall 'regval 'a 'e. Size 'a => mword 'a -> integer -> monad 'regval unit 'e
+val MEMea_tag_conditional : forall 'regval 'a 'e. Size 'a => mword 'a -> integer -> monad 'regval unit 'e
 
 let MEMea addr size                 = write_mem_ea Write_plain addr_size addr size
 let MEMea_conditional addr size     = write_mem_ea Write_conditional addr_size addr size
 
-val MEMval                    : forall 'regval 'a 'b 'e. Bitvector 'a, Bitvector 'b => 'a -> integer -> 'b -> monad 'regval unit 'e
-val MEMval_conditional        : forall 'regval 'a 'b 'e. Bitvector 'a, Bitvector 'b => 'a -> integer -> 'b -> monad 'regval bool 'e
-val MEMval_tagged             : forall 'regval 'a 'b 'e. Bitvector 'a, Bitvector 'b => 'a -> integer -> bool -> 'b -> monad 'regval unit 'e
-val MEMval_tagged_conditional : forall 'regval 'a 'b 'e. Bitvector 'a, Bitvector 'b => 'a -> integer -> bool -> 'b -> monad 'regval bool 'e
+val MEMval                    : forall 'regval 'a 'b 'e. Size 'a, Size 'b => mword 'a -> integer -> mword 'b -> monad 'regval unit 'e
+val MEMval_conditional        : forall 'regval 'a 'b 'e. Size 'a, Size 'b => mword 'a -> integer -> mword 'b -> monad 'regval bool 'e
+val MEMval_tagged             : forall 'regval 'a 'b 'e. Size 'a, Size 'b => mword 'a -> integer -> bool -> mword 'b -> monad 'regval unit 'e
+val MEMval_tagged_conditional : forall 'regval 'a 'b 'e. Size 'a, Size 'b => mword 'a -> integer -> bool -> mword 'b -> monad 'regval bool 'e
 
 let MEMval addr size v                      = write_mem Write_plain addr_size addr size v >>= fun _ -> return ()
 let MEMval_conditional addr size v          = write_mem Write_conditional addr_size addr size v
@@ -52,19 +59,10 @@ let MEMw_tagged_conditional addr size t v = MEMea_conditional addr size >> MEMva
 
 val MEM_sync  : forall 'regval 'e. unit -> monad 'regval unit 'e
 
-let MEM_sync () = barrier Barrier_MIPS_SYNC
+let MEM_sync () = barrier (Barrier_MIPS_SYNC ())
 
 (* Some wrappers copied from aarch64_extras *)
 (* TODO: Harmonise into a common library *)
-
-let get_slice_int_bl len n lo =
-  (* TODO: Is this the intended behaviour? *)
-  let hi = lo + len - 1 in
-  let bs = bools_of_int (hi + 1) n in
-  subrange_list false bs hi lo
-
-val get_slice_int : forall 'a. Bitvector 'a => integer -> integer -> integer -> 'a
-let get_slice_int len n lo = of_bools (get_slice_int_bl len n lo)
 
 let write_ram _ size _ addr data =
   MEMea addr size >>
@@ -90,9 +88,9 @@ let undefined_unit () = return ()
 let undefined_int () = return (0:ii)
 val undefined_vector : forall 'rv 'a 'e. integer -> 'a -> monad 'rv (list 'a) 'e
 let undefined_vector len u = return (repeat [u] len)
-val undefined_bitvector : forall 'rv 'a 'e. Bitvector 'a => integer -> monad 'rv 'a 'e
+val undefined_bitvector : forall 'rv 'a 'e. Size 'a => integer -> monad 'rv (mword 'a) 'e
 let undefined_bitvector len = return (of_bools (repeat [false] len))
-val undefined_bits : forall 'rv 'a 'e. Bitvector 'a => integer -> monad 'rv 'a 'e
+val undefined_bits : forall 'rv 'a 'e. Size 'a => integer -> monad 'rv (mword 'a) 'e
 let undefined_bits = undefined_bitvector
 let undefined_bit () = return B0
 let undefined_real () = return (realFromFrac 0 1)

@@ -1,0 +1,15 @@
+{
+    "options" : "",
+    "files" : [
+        "notrace.sail",
+        "prelude.sail",
+        "mips_prelude.sail",
+        "mips_tlb.sail",
+        "mips_wrappers.sail",
+        "mips_ast_decl.sail",
+        "mips_insts.sail",
+        "mips_ri.sail",
+        "mips_epilogue.sail",
+        "main.sail"
+    ]
+}

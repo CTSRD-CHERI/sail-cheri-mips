@@ -1,0 +1,11 @@
+LEMDIR=../../lem/hol-lib
+
+INCLUDES = $(LEMDIR) $(SAIL_LIB_DIR)/hol
+
+all: cheriTheory.uo
+.PHONY: all
+
+ifdef POLY
+BASE_HEAP = $(SAIL_LIB_DIR)/hol/sail-heap
+
+endif

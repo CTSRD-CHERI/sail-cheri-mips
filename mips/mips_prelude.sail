@@ -356,20 +356,20 @@ function wGPR (idx, v) = {
   };
 }
 
-val MEMr = {lem: "MEMr"} : forall 'n, 'n >= 0.
+val MEMr = {lem: "MEMr", coq: "MEMr"} : forall 'n, 'n >= 0.
   ( bits(64) , atom('n) ) -> (bits(8 * 'n)) effect { rmem }
-val MEMr_reserve = {lem: "MEMr_reserve"} : forall 'n, 'n >= 0.
+val MEMr_reserve = {lem: "MEMr_reserve", coq: "MEMr_reserve"} : forall 'n, 'n >= 0.
   ( bits(64) , atom('n) ) -> (bits(8 * 'n)) effect { rmem }
-val MEM_sync = {lem: "MEM_sync"} :
+val MEM_sync = {lem: "MEM_sync", coq: "MEM_sync"} :
   unit -> unit effect { barr }
 
-val MEMea = {lem: "MEMea"} : forall 'n.
+val MEMea = {lem: "MEMea", coq: "MEMea"} : forall 'n.
   ( bits(64) , atom('n)) -> unit effect { eamem }
-val MEMea_conditional = {lem: "MEMea_conditional"} : forall 'n.
+val MEMea_conditional = {lem: "MEMea_conditional", coq: "MEMea_conditional"} : forall 'n.
   ( bits(64) , atom('n)) -> unit effect { eamem }
-val MEMval = {lem: "MEMval"} : forall 'n.
+val MEMval = {lem: "MEMval", coq: "MEMval"} : forall 'n.
   ( bits(64) , atom('n), bits(8*'n)) -> unit effect { wmv }
-val MEMval_conditional = {lem: "MEMval_conditional"} : forall 'n.
+val MEMval_conditional = {lem: "MEMval_conditional", coq: "MEMval_conditional"} : forall 'n.
   ( bits(64) , atom('n), bits(8*'n)) -> bool effect { wmv }
 
 /* Extern nops with effects, sometimes useful for faking effect */
@@ -620,6 +620,19 @@ function compare (cmp, valA, valB) =
   }
 enum WordType = { B, H, W, D}
 enum WordTypeUnaligned = { WL, WR, DL, DR }
+
+/* Compute the address and number of bytes touched by an unaligned memory operation.
+   Assumes big-endian mode. */
+function unalignedBytesTouched(vAddr : int, width : WordTypeUnaligned) -> (int, int) = {
+  woffset = vAddr % 4;
+  doffset = vAddr % 8;
+  match width {
+    WL => (vAddr, 4 - woffset),
+    WR => (vAddr - woffset, woffset + 1),
+    DL => (vAddr, 8 - doffset),
+    DR => (vAddr - doffset, doffset + 1)
+  }
+}
 
 /*!
  Returns the width of the given WordType (byte, half, word, double) in bytes.

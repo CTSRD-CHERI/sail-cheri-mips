@@ -74,9 +74,10 @@ val addrWrapper : (bits(64), MemAccessType, WordType) -> bits(64)
 function addrWrapper(addr, accessType, width) =
     addr
 
-val addrWrapperUnaligned : (bits(64), MemAccessType, WordTypeUnaligned) -> bits(64)
+val addrWrapperUnaligned : (bits(64), MemAccessType, WordTypeUnaligned) -> (bits(64), int)
 function addrWrapperUnaligned(addr, accessType, width) =
-    addr
+  let (addr, size) = unalignedBytesTouched(unsigned(addr), width) in
+  (to_bits(64, addr), size)
 
 $ifdef _MIPS_TLB_STUB
 val TranslatePC : bits(64) -> bits(64) effect {rreg, wreg, escape}

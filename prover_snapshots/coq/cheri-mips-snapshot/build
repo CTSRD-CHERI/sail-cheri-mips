@@ -1,0 +1,17 @@
+#!/bin/bash
+
+if [ ! -d bbv ]; then
+  echo Run build from the cheri-mips-snapshot directory
+  exit 1
+fi
+
+set -ex
+make -C bbv
+make -C lib/sail
+coqc -R bbv/theories bbv -R lib/sail Sail mips_extras.v
+coqc -R bbv/theories bbv -R lib/sail Sail mips_types.v
+coqc -R bbv/theories bbv -R lib/sail Sail mips.v
+coqc -R bbv/theories bbv -R lib/sail Sail cheri_types.v
+coqc -R bbv/theories bbv -R lib/sail Sail cheri.v
+coqc -R bbv/theories bbv -R lib/sail Sail cheri128_types.v
+coqc -R bbv/theories bbv -R lib/sail Sail cheri128.v

@@ -186,13 +186,13 @@ function writeCapReg(n, cap) =
 THIS`(cap)` returns `cap` with the tag unset. It is used when the
 result of a capability operation (e.g. setting the address) has
 caused it to become unrepresentable. The result of subsequent 
-operations such as `cgetbase` will depend on the exact capability 
+operations such as [getCapBase] will depend on the exact capability 
 format in use but in general the address, length, object type and 
-permissions will remain the same with the expected operation having
+permissions will remain the same, with the expected operation having
 been applied to the address.
  */
-val nullifyCap : Capability -> Capability
-function nullifyCap(cap) = {cap with tag = false}
+val unrepCap : Capability -> Capability
+function unrepCap(cap) = {cap with tag = false}
 
 enum CapEx = {
   CapEx_None, 
@@ -321,13 +321,17 @@ function SignalException (ex) = {
         PC
       };
     let (representable, newEPCC) = setCapOffset(PCC, epc);
-    /* EPCC should always be representable because PC should always been (nearly) in bounds */
-    assert(representable);
-    if (PCC.sealed) then {
-      /* Check that we didn't accidentally modify a sealed capabiltiy. */
-      assert(getCapOffset(PCC) == unsigned(epc));
-    };
-    EPCC = newEPCC;
+    /* EPCC should almost always be representable because PC should always be nearly in bounds.
+       It might happen if KCC does not include the exception vector which would probably
+       result in an exception loop. */
+    if (not(representable)) then
+      print("UNREPRESENTABLE EPCC!");
+    /* Similarly PCC should not be sealed unless EPCC was sealed on ERET or KCC was sealed 
+       on exception */
+    if (newEPCC.sealed) then
+      print("SEALED PCC!");
+    /* If either of the above cases happens we clear the tag on EPCC to preserve invariants. */
+    EPCC = if representable & not(newEPCC.sealed) then newEPCC else unrepCap(newEPCC);
   };
   /* Fill in BadInstr + BadInstrP. */
   updateBadInstr();
@@ -399,12 +403,12 @@ val "read_tag_bool"  : bits(64) -> bool effect { rmemt }
 val "write_tag_bool" : (bits(64) , bool) -> unit effect { wmvt }
 
 /*!
-reads `size` bytes from the given physical address in memory and the associated tag value.
+THIS`(addr, size, allowTag)` reads `size` bytes from the given physical address in memory and, if `allowTag` is true, the associated tag value. If `allowTag` is false then the returned tag value is always false.
  */
-val MEMr_tagged = {lem: "MEMr_tagged"} : forall 'size, 'size > 0. (bits(64), atom('size)) -> (bool, bits('size * 8)) effect { rmem, rmemt }
-function MEMr_tagged (addr, size) =
+val MEMr_tagged = {lem: "MEMr_tagged", coq: "MEMr_tagged"} : forall 'size, 'size > 0. (bits(64), atom('size), bool) -> (bool, bits('size * 8)) effect { rmem, rmemt }
+function MEMr_tagged (addr, size, allowTag) =
 {
-  let tag  = read_tag_bool(addr & cap_addr_mask) in
+  let tag  = if allowTag then read_tag_bool(addr & cap_addr_mask) else false in
   let data = MEMr(addr, size) in
   (tag, reverse_endianness(data))
 }
@@ -412,10 +416,10 @@ function MEMr_tagged (addr, size) =
 /*!
 is as [MEMr_tagged] except that the load is marked as part of a load linked / store conditional.
  */
-val MEMr_tagged_reserve = {lem: "MEMr_tagged_reserve"} : forall 'size, 'size > 0. (bits(64), atom('size)) -> (bool, bits('size * 8)) effect { rmem, rmemt }
-function MEMr_tagged_reserve (addr, size) =
+val MEMr_tagged_reserve = {lem: "MEMr_tagged_reserve", coq: "MEMr_tagged_reserve"} : forall 'size, 'size > 0. (bits(64), atom('size), bool) -> (bool, bits('size * 8)) effect { rmem, rmemt }
+function MEMr_tagged_reserve (addr, size, allowTag) =
 {
-  let tag = read_tag_bool(addr & cap_addr_mask) in
+  let tag = if allowTag then read_tag_bool(addr & cap_addr_mask) else false in
   let data = MEMr_reserve(addr, size) in
   (tag, reverse_endianness(data))
 }
@@ -423,7 +427,7 @@ function MEMr_tagged_reserve (addr, size) =
 /*!
 THIS`(addr, size, t, value)` writes `size` bytes, `value`, to physical address, `addr`, with associated tag value, `t`.
  */
-val MEMw_tagged = {lem: "MEMw_tagged"} : forall 'size, 'size > 0. (bits(64), atom('size), bool, bits('size * 8)) -> unit effect { eamem, wmv, wmvt }
+val MEMw_tagged = {lem: "MEMw_tagged", coq: "MEMw_tagged"} : forall 'size, 'size > 0. (bits(64), atom('size), bool, bits('size * 8)) -> unit effect { eamem, wmv, wmvt }
 function MEMw_tagged(addr, size, tag, data) =
 {
   MEMea(addr, size);
@@ -434,7 +438,7 @@ function MEMw_tagged(addr, size, tag, data) =
 /*!
 THIS`(addr, size, t, value)` writes `size` bytes, `value`, to physical address, `addr`, with associated tag value, `t` and returns store conditional success or failure.
  */
-val MEMw_tagged_conditional = {lem: "MEMw_tagged_conditional"}: forall 'size, 'size > 0. (bits(64), atom('size), bool, bits('size * 8)) -> bool effect { eamem, wmv, wmvt }
+val MEMw_tagged_conditional = {lem: "MEMw_tagged_conditional", coq: "MEMw_tagged_conditional"}: forall 'size, 'size > 0. (bits(64), atom('size), bool, bits('size * 8)) -> bool effect { eamem, wmv, wmvt }
 function MEMw_tagged_conditional(addr, size, tag, data) =
 {
   MEMea_conditional(addr, size);
@@ -506,29 +510,21 @@ function addrWrapper(addr, accessType, width) =
       to_bits(64, vAddr);
   }
 
-val addrWrapperUnaligned : (bits(64), MemAccessType, WordTypeUnaligned) -> bits(64) effect {rreg, wreg, escape}
+val addrWrapperUnaligned : (bits(64), MemAccessType, WordTypeUnaligned) -> (bits(64), int) effect {rreg, wreg, escape}
 function addrWrapperUnaligned(addr, accessType, width) =
   {
     let ddc = DDC;
     checkDDCPerms(ddc, accessType);
     cursor = getCapCursor(ddc);
     vAddr  = (cursor + unsigned(addr)) % pow2(64);
-    woffset = vAddr % 4;
-    doffset = vAddr % 8;
-    /* Compute the address and size of the bytes touched -- this depends on alignment. */
-    let (waddr, size) : (int, int) = match width {
-      WL => (vAddr, 4 - woffset),
-      WR => (vAddr - woffset, woffset + 1),
-      DL => (vAddr, 8 - doffset),
-      DR => (vAddr - doffset, doffset + 1)
-    };
+    let (waddr, size) = unalignedBytesTouched(vAddr, width);
     let (base, top) = getCapBounds(ddc);
     if ((waddr + size) > top) then
       (raise_c2_exception(CapEx_LengthViolation, 0b00000))
     else if (waddr < base) then
       (raise_c2_exception(CapEx_LengthViolation, 0b00000))
     else
-      to_bits(64, vAddr);
+      (to_bits(64, waddr), size);
   }
 
 function execute_branch (pc) = {
@@ -621,7 +617,7 @@ function set_CP0EPC (newEPC) = {
   EPCC = if representable then
       {newEPCC with tag = newEPCC.tag & not(newEPCC.sealed)}
     else
-      nullifyCap(newEPCC);
+      unrepCap(newEPCC);
 }
 
 /* As above but for ErrorEPC... */
@@ -633,7 +629,7 @@ function set_CP0ErrorEPC (v) = {
   ErrorEPCC = if representable then
       {newErrorEPCC with tag = newErrorEPCC.tag & not(newErrorEPCC.sealed)}
     else
-      nullifyCap(newErrorEPCC);
+      unrepCap(newErrorEPCC);
 }
 
 function capToString (cap, fixlen) = {
