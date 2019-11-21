@@ -1182,13 +1182,13 @@ function clause execute (Store(width, conditional, base, rt, offset)) =
           {
                 if (conditional) then
                   {
-		    success : bool = if (CP0LLBit[0]) then match width
+                    success : bool = if (CP0LLBit[0] & (CP0LLAddr == pAddr)) then match width
                     {
                       W  => MEMw_conditional_wrapper(pAddr, 4, rt_val[31..0]),
                       D  => MEMw_conditional_wrapper(pAddr, 8, rt_val),
                       _  => throw(Error_internal_error()) /* there is no sbc or shc */
                     } else false;
-		    wGPR(rt) = zero_extend(success)
+                    wGPR(rt) = zero_extend(success)
                   }
                 else
                   match width
