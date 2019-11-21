@@ -1,5 +1,5 @@
 
-val cycle_limit_reached = { c: "cycle_limit_reached" } : unit -> bool
+val cycle_limit_reached = { ocaml: "cycle_limit_reached", c: "cycle_limit_reached" } : unit -> bool
 
 function cycle_limit_reached() = false
 
