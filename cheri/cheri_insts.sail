@@ -357,25 +357,11 @@ function clause execute(CPtrCmp(rd, cb, ct, op)) =
   checkCP2usable();
   let cb_val = readCapReg(cb);
   let ct_val = readCapReg(ct);
-  equal : bool = false;
-  ltu   : bool = false;
-  lts   : bool = false;
-  if cb_val.tag != ct_val.tag then
-    {
-      if not (cb_val.tag) then
-        {
-          ltu = true;
-          lts = true;
-        }
-    }
-  else
-    {
-      cursor1 = getCapCursor(cb_val);
-      cursor2 = getCapCursor(ct_val);
-      equal   = (cursor1 == cursor2);
-      ltu     = (cursor1 < cursor2);
-      lts     = to_bits(64, cursor1) <_s to_bits(64, cursor2);
-    };
+  let cursor1 = getCapCursor(cb_val);
+  let cursor2 = getCapCursor(ct_val);
+  let equal : bool = (cursor1 == cursor2);
+  let ltu : bool = (cursor1 < cursor2);
+  let lts : bool = to_bits(64, cursor1) <_s to_bits(64, cursor2);
   let cmp : bool = match op {
     CEQ    => equal,
     CNE    => not (equal),
