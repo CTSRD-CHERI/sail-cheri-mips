@@ -11,13 +11,19 @@ Definition MEMr {regval a e} (addr : mword a) size `{ArithFact (size >= 0)}     
 Definition MEMr_reserve {regval a e} (addr : mword a) size `{ArithFact (size >= 0)}    : monad regval (mword (8 * size)) e := read_mem Read_reserve a addr size.
 Definition MEM_sync {rv e} (_:unit) : monad rv unit e := barrier (Barrier_MIPS_SYNC tt).
 
-Definition MEMr_tagged {rv a e} (addr : mword a) size `{ArithFact (size > 0)} : monad rv (bool * mword (size * 8)) e :=
-  read_memt Read_plain addr size >>= fun '(v, t) =>
+Definition MEMr_tagged {rv a e} (addr : mword a) size (allowTag : bool) `{ArithFact (size > 0)} : monad rv (bool * mword (size * 8)) e :=
+  (if allowTag then
+    read_memt Read_plain addr size
+  else
+    (read_mem Read_plain a addr size >>= fun v => returnm (v, B0))) >>= fun '(v, t) =>
   maybe_fail "bool_of_bitU" (bool_of_bitU t) >>= fun t =>
   returnm (t, v).
 
-Definition MEMr_tagged_reserve {rv a e} (addr : mword a) size `{ArithFact (size > 0)} : monad rv (bool * mword (size * 8)) e :=
-  read_memt Read_plain addr size >>= fun '(v, t) =>
+Definition MEMr_tagged_reserve {rv a e} (addr : mword a) size (allowTag : bool) `{ArithFact (size > 0)} : monad rv (bool * mword (size * 8)) e :=
+  (if allowTag then
+     read_memt Read_plain addr size
+   else
+     (read_mem Read_plain a addr size >>= fun v => returnm (v, B0))) >>= fun '(v, t) =>
   maybe_fail "bool_of_bitU" (bool_of_bitU t) >>= fun t =>
   returnm (t, v).
 
