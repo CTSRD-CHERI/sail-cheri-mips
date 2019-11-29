@@ -62,9 +62,9 @@ function clause execute (CGetType(rd, cb)) =
 {
   checkCP2usable();
   let capVal = readCapReg(cb);
-  wGPR(rd) = if capVal.sealed
-    then zero_extend(capVal.otype)
-    else 0xffffffffffffffff
+  wGPR(rd) = if hasReservedOType(capVal)
+    then sign_extend(capVal.otype) /* return negative for reserved otypes */
+    else zero_extend(capVal.otype)
 }
 
 function clause execute (CGetBase(rd, cb)) =
@@ -681,21 +681,18 @@ function clause execute (CCopyType(cd, cb, ct)) =
     raise_c2_exception(CapEx_TagViolation, cb)
   else if cb_val.sealed then
     raise_c2_exception(CapEx_SealViolation, cb)
-  else if ct_val.sealed then
-  {
-    if ct_otype < cb_base then
-      raise_c2_exception(CapEx_LengthViolation, cb)
-    else if ct_otype >= cb_top then
-      raise_c2_exception(CapEx_LengthViolation, cb)
-    else
-    {
-      let (success, cap) = setCapOffset(cb_val, to_bits(64, ct_otype - cb_base));
-      assert(success, "CopyType: offset is in bounds so should be representable");
-      writeCapReg(cd, cap);
-    }
-  }
+  else if not(ct_val.sealed) | hasReservedOType(ct_val) then
+    writeCapReg(cd, {null_cap with address = sign_extend(ct_val.otype)})
+  else if ct_otype < cb_base then
+    raise_c2_exception(CapEx_LengthViolation, cb)
+  else if ct_otype >= cb_top then
+    raise_c2_exception(CapEx_LengthViolation, cb)
   else
-    writeCapReg(cd, {null_cap with address=ones()})
+  {
+    let (success, cap) = setCapOffset(cb_val, to_bits(64, ct_otype - cb_base));
+    assert(success, "CopyType: offset is in bounds so should be representable");
+    writeCapReg(cd, cap);
+  }
 }
 
 union clause ast = CCheckPerm : (regno, regno)
@@ -721,9 +718,9 @@ function clause execute (CCheckType(cs, cb)) =
     raise_c2_exception(CapEx_TagViolation, cs)
   else if not (cb_val.tag) then
     raise_c2_exception(CapEx_TagViolation, cb)
-  else if not (cs_val.sealed) then
+  else if not(cs_val.sealed) | hasReservedOType(cs_val) then /* XXX should make latter a TypeViolation? */
     raise_c2_exception(CapEx_SealViolation, cs)
-  else if not (cb_val.sealed) then
+  else if not(cb_val.sealed) | hasReservedOType(cb_val) then  /* XXX should make latter a TypeViolation? */
     raise_c2_exception(CapEx_SealViolation, cb)
   else if cs_val.otype != cb_val.otype then
     raise_c2_exception(CapEx_TypeViolation, cs)
@@ -786,7 +783,7 @@ function clause execute (CSeal(cd, cs, ct)) =
     raise_c2_exception(CapEx_LengthViolation, ct)
   else if ct_cursor >= ct_top then
     raise_c2_exception(CapEx_LengthViolation, ct)
-  else if ct_cursor > max_otype then
+  else if ct_cursor > max_otype then /* prevents sealing with reserved or invalid otypes */
     raise_c2_exception(CapEx_LengthViolation, ct)
   else
   {
@@ -809,8 +806,21 @@ function clause execute (CCSeal(cd, cs, ct)) =
   let ct_base   = getCapBase(ct_val);
   if not (cs_val.tag) then
     raise_c2_exception(CapEx_TagViolation, cs)
-  else if not (ct_val.tag) | (getCapCursor(ct_val) == MAX_U64) then
-    writeCapReg(cd, cs_val)
+  else if (ct_val.address == otype_sentry_bits) then {
+    if cs_val.sealed then
+      raise_c2_exception(CapEx_SealViolation, cs)
+    else if not(cs_val.permit_execute) then
+      raise_c2_exception(CapEx_PermitExecuteViolation, cs)
+    else
+    {
+      let (success, newCap) = sealCap(cs_val, to_bits(24, otype_sentry));
+      if not (success) then
+        raise_c2_exception(CapEx_InexactBounds, cs)
+      else
+        writeCapReg(cd, newCap)
+    }
+  } else if not(ct_val.tag) | (ct_val.address == otype_unsealed_bits) then
+    writeCapReg(cd, cs_val) /* unsealed, just copy cs */
   else if cs_val.sealed then
     raise_c2_exception(CapEx_SealViolation, cs)
   else if ct_val.sealed then
@@ -822,10 +832,42 @@ function clause execute (CCSeal(cd, cs, ct)) =
   else if ct_cursor >= ct_top then
     raise_c2_exception(CapEx_LengthViolation, ct)
   else if ct_cursor > max_otype then
-    raise_c2_exception(CapEx_LengthViolation, ct)
+    raise_c2_exception(CapEx_TypeViolation, ct)
   else
   {
     let (success, newCap) = sealCap(cs_val, to_bits(24, ct_cursor));
+    if not (success) then
+        raise_c2_exception(CapEx_InexactBounds, cs)
+    else
+        writeCapReg(cd, newCap)
+  }
+}
+
+union clause ast = CSealEntry : (regno, regno)
+function clause execute (CSealEntry(cd, cs)) =
+{
+  checkCP2usable();
+  let cs_val = readCapReg(cs);
+  let cs_cursor = getCapCursor(cs_val);
+  let cs_top    = getCapTop(cs_val);
+  let cs_base   = getCapBase(cs_val);
+  if not (cs_val.tag) then
+    raise_c2_exception(CapEx_TagViolation, cs)
+  else if cs_val.sealed then
+    raise_c2_exception(CapEx_SealViolation, cs)
+  /* XXX should we have a permission for csealentry?
+  else if not (cs_val.permit_seal) then
+    raise_c2_exception(CapEx_PermitSealViolation, cs) */
+  else if not (cs_val.permit_execute) then
+    raise_c2_exception(CapEx_PermitExecuteViolation, cs)
+  /* XXX should do bounds and alignment check here or wait until cjr?
+  else if cs_cursor < cs_base then
+    raise_c2_exception(CapEx_LengthViolation, cs)
+  else if (cs_cursor + 4) >= cs_top then
+    raise_c2_exception(CapEx_LengthViolation, cs) */
+  else
+  {
+    let (success, newCap) = sealCap(cs_val, to_bits(24, otype_sentry));
     if not (success) then
         raise_c2_exception(CapEx_InexactBounds, cs)
     else
@@ -838,6 +880,7 @@ function clause execute (CUnseal(cd, cs, ct)) =
 {
   checkCP2usable();
   let cs_val = readCapReg(cs);
+  let cs_otype  = unsigned(cs_val.otype);
   let ct_val = readCapReg(ct);
   let ct_cursor = getCapCursor(ct_val);
   if not (cs_val.tag) then
@@ -848,7 +891,9 @@ function clause execute (CUnseal(cd, cs, ct)) =
     raise_c2_exception(CapEx_SealViolation, cs)
   else if ct_val.sealed then
     raise_c2_exception(CapEx_SealViolation, ct)
-  else if ct_cursor != unsigned(cs_val.otype) then
+  else if hasReservedOType(cs_val) then
+    raise_c2_exception(CapEx_TypeViolation, cs)
+  else if ct_cursor != cs_otype then
     raise_c2_exception(CapEx_TypeViolation, ct)
   else if not (ct_val.permit_unseal) then
     raise_c2_exception(CapEx_PermitUnsealViolation, ct)
@@ -876,9 +921,9 @@ function clause execute (CCall(cs, cb, 0b00000000000)) = /* selector=0 */
     raise_c2_exception(CapEx_TagViolation, cs)
   else if not (cb_val.tag) then
     raise_c2_exception(CapEx_TagViolation, cb)
-  else if not (cs_val.sealed) then
+  else if not(cs_val.sealed) | hasReservedOType(cs_val) then /* XXX Should latter be type violation? */
     raise_c2_exception(CapEx_SealViolation, cs)
-  else if not (cb_val.sealed) then
+  else if not(cb_val.sealed) | hasReservedOType(cb_val) then  /* XXX Should latter be type violation? */
     raise_c2_exception(CapEx_SealViolation, cb)
   else if cs_val.otype != cb_val.otype then
     raise_c2_exception(CapEx_TypeViolation, cs)
@@ -907,9 +952,9 @@ function clause execute (CCall(cs, cb, 0b00000000001)) = /* selector=1 */
     raise_c2_exception(CapEx_TagViolation, cs)
   else if not (cb_val.tag) then
     raise_c2_exception(CapEx_TagViolation, cb)
-  else if not (cs_val.sealed) then
+  else if hasReservedOType(cs_val) then
     raise_c2_exception(CapEx_SealViolation, cs)
-  else if not (cb_val.sealed) then
+  else if hasReservedOType(cb_val) then
     raise_c2_exception(CapEx_SealViolation, cb)
   else if cs_val.otype != cb_val.otype then
     raise_c2_exception(CapEx_TypeViolation, cs)
@@ -976,13 +1021,14 @@ function clause execute(CJALR(cd, cb, link)) =
   checkCP2usable();
   if InBranchDelay then
      SignalException(ResI);
-  let cb_val = readCapReg(cb);
+  cb_val = readCapReg(cb);
   let cb_ptr = getCapCursor(cb_val);
   let cb_top = getCapTop(cb_val);
   let cb_base= getCapBase(cb_val);
+  let sentry = isSentryCap(cb_val);
   if not (cb_val.tag) then
     raise_c2_exception(CapEx_TagViolation, cb)
-  else if (cb_val.sealed) then
+  else if (cb_val.sealed & not(sentry)) then
     raise_c2_exception(CapEx_SealViolation, cb)
   else if not (cb_val.permit_execute) then
     raise_c2_exception(CapEx_PermitExecuteViolation, cb)
@@ -994,11 +1040,18 @@ function clause execute(CJALR(cd, cb, link)) =
     SignalException(AdEL)
   else
   {
+    if sentry then
+       cb_val = unsealCap(cb_val);
     if link then
     {
       let (success, linkCap) = setCapOffset(PCC, PC+8);
       assert(success, "Link cap should always be representable.");
-      writeCapReg(cd, linkCap);
+      if sentry then {
+        let (success2, sealedLink) = sealCap(linkCap, to_bits(24, otype_sentry));
+        assert(success2, "Sealing should always be possible with current format.");
+        writeCapReg(cd, sealedLink);
+      } else
+        writeCapReg(cd, linkCap);
     };
     execute_branch_pcc(cb_val);
   };
@@ -1514,6 +1567,7 @@ function clause decode (0b010010 @ 0b00000 @ cs : regno @ cb : regno @    0b0100
 function clause decode (0b010010 @ 0b00000 @ cd : regno @ cb : regno @    0b01011 @ 0b111111) = Some(CClearTag(cd, cb))
 function clause decode (0b010010 @ 0b00000 @ cd : regno @ cs : regno @    0b01010 @ 0b111111) = Some(CMove(cd, cs)) /* CMOVE */
 function clause decode (0b010010 @ 0b00000 @ cd : regno @ cb : regno @    0b01100 @ 0b111111) = Some(CJALR(cd, cb, true)) /* CJALR */
+function clause decode (0b010010 @ 0b00000 @ cd : regno @ cb : regno @    0b11101 @ 0b111111) = Some(CSealEntry(cd, cb))
 
 function clause decode (0b010010 @ 0b00000 @ rd : regno @ cb : regno @    0b11110 @ 0b111111) = Some(CLoadTags(rd, cb))
 

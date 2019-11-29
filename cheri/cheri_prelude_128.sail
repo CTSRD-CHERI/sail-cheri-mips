@@ -33,7 +33,7 @@
 /*========================================================================*/
 
 type CapBits = bits(128)
-let max_otype = MAX(18)
+let max_otype = MAX(18) - reserved_otypes
 
 /*
 A partially decompressed version of a capability -- E, B, T,

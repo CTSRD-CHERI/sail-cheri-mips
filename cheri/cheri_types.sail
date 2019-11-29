@@ -58,3 +58,12 @@ type num_flags_t : Int = 1
 type CFlags = bits(num_flags_t)
 let num_flags = sizeof(num_flags_t)
 
+/*
+ * How many otype are reserved for special uses (e.g. unsealed == -1)
+ */
+let reserved_otypes = 4
+let otype_unsealed = -1
+let otype_sentry = -2
+let otype_unsealed_bits = to_bits(64, otype_unsealed)
+let otype_sentry_bits = to_bits(64, otype_sentry)
+
