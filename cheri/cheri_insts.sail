@@ -855,16 +855,8 @@ function clause execute (CSealEntry(cd, cs)) =
     raise_c2_exception(CapEx_TagViolation, cs)
   else if cs_val.sealed then
     raise_c2_exception(CapEx_SealViolation, cs)
-  /* XXX should we have a permission for csealentry?
-  else if not (cs_val.permit_seal) then
-    raise_c2_exception(CapEx_PermitSealViolation, cs) */
   else if not (cs_val.permit_execute) then
     raise_c2_exception(CapEx_PermitExecuteViolation, cs)
-  /* XXX should do bounds and alignment check here or wait until cjr?
-  else if cs_cursor < cs_base then
-    raise_c2_exception(CapEx_LengthViolation, cs)
-  else if (cs_cursor + 4) >= cs_top then
-    raise_c2_exception(CapEx_LengthViolation, cs) */
   else
   {
     let (success, newCap) = sealCap(cs_val, to_bits(24, otype_sentry));
