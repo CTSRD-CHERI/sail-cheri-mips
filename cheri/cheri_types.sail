@@ -61,7 +61,7 @@ let num_flags = sizeof(num_flags_t)
 /*
  * How many otype are reserved for special uses (e.g. unsealed == -1)
  */
-let reserved_otypes = 4
+let reserved_otypes = 16
 let otype_unsealed = -1
 let otype_sentry = -2
 let otype_unsealed_bits = to_bits(64, otype_unsealed)
