@@ -140,6 +140,29 @@ function clause execute (CGetPCCSetOffset(cd, rs)) =
   else
     writeCapReg(cd, unrepCap(newPCC));
 }
+union clause ast = CGetPCCIncOffset : (regno, regno)
+function clause execute (CGetPCCIncOffset(cd, rs)) =
+{
+  checkCP2usable();
+  let rs_val = rGPR(rs);
+  let (success, newCap) = incCapOffset(PCC, PC + rs_val);
+  if success then
+      writeCapReg(cd, newCap)
+  else
+      writeCapReg(cd, unrepCap(newCap))
+}
+union clause ast = CGetPCCSetAddr : (regno, regno)
+function clause execute (CGetPCCSetAddr(cd, rs)) =
+{
+  checkCP2usable();
+  let rs_val = rGPR(rs);
+  let (success, newCap) = setCapAddr(PCC, rs_val);
+  if success then
+      writeCapReg(cd, newCap)
+  else
+      writeCapReg(cd, unrepCap(newCap))
+}
+
 /* Get and Set CP2 cause register */
 
 union clause ast = CGetCause : regno
@@ -1509,6 +1532,9 @@ function clause decode (0b010010 @ 0b00000 @ cb : regno @ sel : regno @   0b0111
 
 function clause decode (0b010010 @ 0b00000 @ rd : regno @ cb : regno @   0b01111 @ 0b111111) = Some(CGetAddr(rd, cb))
 function clause decode (0b010010 @ 0b00000 @ rd : regno @ cb : regno @   0b10010 @ 0b111111) = Some(CGetFlags(rd, cb))
+
+function clause decode (0b010010 @ 0b00000 @ rd : regno @ cb : regno @   0b10011 @ 0b111111) = Some(CGetPCCIncOffset(rd, cb))
+function clause decode (0b010010 @ 0b00000 @ rd : regno @ cb : regno @   0b10100 @ 0b111111) = Some(CGetPCCSetAddr(rd, cb))
 
 function clause decode (0b010010 @ 0b00000 @ rt : regno @ rs : regno @   0b10000 @ 0b111111) = Some(CRAP(rt, rs))
 function clause decode (0b010010 @ 0b00000 @ rt : regno @ rs : regno @   0b10001 @ 0b111111) = Some(CRAM(rt, rs))
