@@ -57,6 +57,7 @@ bitfield CauseReg : bits(32) = {
 bitfield TLBEntryLoReg : bits(64) = {
   CapS : 63,
   CapL : 62,
+  CapLG : 61, /* CHERI: Capability Load Generation */
   PFN : 29.. 6,
   C : 5.. 3,
   D : 2,
@@ -66,6 +67,9 @@ bitfield TLBEntryLoReg : bits(64) = {
 
 bitfield TLBEntryHiReg : bits(64) = {
   R : 63.. 62,
+  CLGK : 61, /* CHERI: Capability Load Generation for Kernel pages */
+  CLGS : 60, /* ... Supervisor pages */
+  CLGU : 59, /* ... User pages */
   VPN2 : 39.. 13,
   ASID : 7..  0,
 }
@@ -93,19 +97,21 @@ let MAX_U64 = MAX(64) /*unsigned(0xffffffffffffffff)*/
 let MAX_VA  = MAX(40) /*unsigned(0xffffffffff)*/
 let MAX_PA  = MAX(36) /*unsigned(0xfffffffff)*/
 
-bitfield TLBEntry : bits(117) = {
-  pagemask : 116..  101,
-  r        : 100..  99,
-  vpn2     : 98..  72,
-  asid     : 71..  64,
-  g        : 63,
-  valid    : 62,
-  caps1    : 61,
-  capl1    : 60,
-  pfn1     : 59..  36,
-  c1       : 35..  33,
-  d1       : 32,
-  v1       : 31,
+bitfield TLBEntry : bits(119) = {
+  pagemask : 118..  103,
+  r        : 102..  101,
+  vpn2     : 100..  74,
+  asid     : 73..  66,
+  g        : 65,
+  valid    : 64,
+  caplg1   : 63,
+  caps1    : 62,
+  capl1    : 61,
+  pfn1     : 60..  37,
+  c1       : 36..  34,
+  d1       : 33,
+  v1       : 32,
+  caplg0   : 31,
   caps0    : 30,
   capl0    : 29,
   pfn0     : 28..  5,

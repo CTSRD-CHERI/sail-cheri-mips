@@ -78,9 +78,9 @@ function MIPSSegmentOf (vAddr) = {
 /** For given virtual address and accessType returns physical address and
     reports any restrictions on the capability operation
  */
-
-val TLBTranslate2 : (bits(64), MemAccessType) -> (bits(64), MemAccessCapRestriction) effect {rreg, wreg, undef, escape}
-function TLBTranslate2 (vAddr, accessType) = {
+val TLBTranslate2 : (bits(64), MemAccessType, AccessLevel)
+                  -> (bits(64), MemAccessCapRestriction) effect {rreg, wreg, undef, escape}
+function TLBTranslate2 (vAddr, accessType, accessLevel) = {
   let idx = tlbSearch(vAddr) in
   match idx {
     Some(idx) =>
@@ -100,11 +100,11 @@ function TLBTranslate2 (vAddr, accessType) = {
         _       => undefined
       } in
       let isOdd = (vAddr[evenOddBit]) in
-      let (caps : bits(1), capl : bits(1), pfn : bits(24), d : bits(1), v : bits(1))  =
+      let (caps : bits(1), caplg : bits(1), capl : bits(1), pfn : bits(24), d : bits(1), v : bits(1))  =
         if (isOdd) then
-          (entry.caps1(), entry.capl1(), entry.pfn1(), entry.d1(), entry.v1())
+          (entry.caps1(), entry.caplg1(), entry.capl1(), entry.pfn1(), entry.d1(), entry.v1())
         else
-          (entry.caps0(), entry.capl0(), entry.pfn0(), entry.d0(), entry.v0()) in
+          (entry.caps0(), entry.caplg0(), entry.capl0(), entry.pfn0(), entry.d0(), entry.v0()) in
       if (~(v)) then
         SignalExceptionTLB(if (accessType == StoreData) then XTLBInvS else XTLBInvL, vAddr)
       else if ((accessType == StoreData) & ~(d)) then
@@ -114,7 +114,14 @@ function TLBTranslate2 (vAddr, accessType) = {
         let macr = if (accessType == StoreData) then
                     if caps then Trap else Unrestricted
                    else
-                    if capl then Clear else Unrestricted
+                    if capl then Clear
+                    else
+                        let gclg : bits(1) = match accessLevel {
+                            User => TLBEntryHi.CLGU(),
+                            Supervisor => TLBEntryHi.CLGS(),
+                            Kernel => TLBEntryHi.CLGK()
+                        } in
+                        if gclg != caplg then Trap else Unrestricted
           in
         (res,  macr),
     None()  =>  SignalExceptionTLB(
@@ -141,7 +148,7 @@ function TLBTranslateC (vAddr, accessType) =
         None()  => if ((~(compat32)) & (unsigned(vAddr[61..0]) > MAX_VA)) then
             SignalExceptionBadAddr(if (accessType == StoreData) then AdES else AdEL, vAddr)
           else
-            TLBTranslate2(vAddr, accessType)
+            TLBTranslate2(vAddr, accessType, requiredLevel)
       }
       in if (unsigned(pa) > MAX_PA) then
           SignalExceptionBadAddr(if (accessType == StoreData) then AdES else AdEL, vAddr)
