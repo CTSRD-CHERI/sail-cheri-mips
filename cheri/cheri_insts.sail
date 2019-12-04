@@ -1420,44 +1420,6 @@ function clause execute (CLLC(cd, cb)) =
   }
 }
 
-union clause ast = CCLC : (regno, regno)
-function clause execute (CCLC(cd, cb)) =
-{
-  checkCP2usable();
-  if (CP0LLBit[0]) then
-  {
-    let cb_val = readCapRegDDC(cb);
-
-    if not (cb_val.tag) then
-      raise_c2_exception(CapEx_TagViolation, cb)
-    else if cb_val.sealed then
-      raise_c2_exception(CapEx_SealViolation, cb)
-    else if not (cb_val.permit_load) then
-      raise_c2_exception(CapEx_PermitLoadViolation, cb)
-    else
-    {
-      let vAddr   = getCapCursor(cb_val);
-      let vAddr64 = to_bits(64, vAddr);
-      if (vAddr + cap_size) > getCapTop(cb_val) then
-        raise_c2_exception(CapEx_LengthViolation, cb)
-      else if vAddr < getCapBase(cb_val) then
-        raise_c2_exception(CapEx_LengthViolation, cb)
-      else if (vAddr % cap_size) != 0 then
-        SignalExceptionBadAddr(AdEL, vAddr64)
-      else
-      {
-        let (pAddr, suppressTag) = TLBTranslateC(vAddr64, LoadData);
-        let (tag, mem) : (bool, CapBits) =
-          MEMr_tagged_reserve(pAddr, cap_size, cb_val.permit_load_cap & not(suppressTag));
-        let cap = memBitsToCapability(tag, mem);
-        writeCapReg(cd, cap);
-      }
-    }
-  }
-  else
-    writeCapReg(cd, null_cap);
-}
-
 union clause ast = CClearTags : (regno)
 function clause execute (CClearTags(cb)) =
 {
@@ -1674,7 +1636,6 @@ function clause decode (0b010010 @ 0b10000 @ cs : regno @ cb : regno@ rd : regno
 
 function clause decode (0b110110 @ cd : regno @ cb : regno @ rt : regno @ offset : bits(11)) = Some(CLC(cd, cb, rt, offset))
 function clause decode (0b010010 @ 0b10000 @ cd : regno @ cb : regno@ 0b0000000 @ 0b1111) = Some(CLLC(cd, cb))
-function clause decode (0b010010 @ 0b10000 @ cd : regno @ cb : regno@ 0b0000001 @ 0b1111) = Some(CCLC(cd, cb))
 function clause decode (0b011101 @ cd : regno @ cb : regno @ offset : bits(16)) = Some(CLCBI(cd, cb, offset))
 
 function clause decode (0b010010 @ 0b00100 @ rt : regno @ 0x0006) = Some(C2Dump(rt))
