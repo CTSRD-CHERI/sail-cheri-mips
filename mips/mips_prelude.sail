@@ -516,6 +516,9 @@ function SignalExceptionTLB(ex, badAddr) = {
 }
 
 enum MemAccessType = {Instruction, LoadData, StoreData}
+
+enum MemAccessCapRestriction = { Unrestricted, Trap, Clear }
+
 enum AccessLevel = {User, Supervisor, Kernel} 
 
 val int_of_AccessLevel : AccessLevel -> {|0, 1, 2|} effect pure
