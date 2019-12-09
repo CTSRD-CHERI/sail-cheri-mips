@@ -347,15 +347,6 @@ function SignalException (ex) = {
   throw (ISAException());
 }
 
-function ERETHook() : unit -> unit =
-  {
-    if (CP0Status.ERL() == bitone) then
-      set_next_pcc(ErrorEPCC)
-    else
-      set_next_pcc(EPCC);
-  }
-
-
 val raise_c2_exception8 : forall ('o : Type) . (CapEx, bits(8)) -> 'o effect {escape, rreg, wreg}
 function raise_c2_exception8(capEx, regnum) =
   {
@@ -695,3 +686,11 @@ function setCapFlags(cap, flags) = cap
 /*! Returns true if the given capability is a sealed entry capability. */
 val isSentryCap : Capability -> bool
 function isSentryCap (cap) = signed(cap.otype) == otype_sentry
+
+function ERETHook() : unit -> unit =
+  {
+    if (CP0Status.ERL() == bitone) then
+      set_next_pcc(if isSentryCap(ErrorEPCC) then unsealCap(ErrorEPCC) else ErrorEPCC)
+    else
+      set_next_pcc(if isSentryCap(EPCC) then unsealCap(EPCC) else ErrorEPCC);
+  }
