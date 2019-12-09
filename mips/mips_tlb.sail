@@ -58,6 +58,23 @@ function tlbSearch(VAddr) =
     None()
   }
 
+val MIPSSegmentOf : bits(64) -> (AccessLevel, option(bits(64))) effect pure
+function MIPSSegmentOf (vAddr) = {
+ let compat32 = (vAddr[61..31] == 0b1111111111111111111111111111111) in
+ match (vAddr[63..62]) {
+  0b11  => match (compat32, vAddr[30..29]) { /* xkseg */
+   (true, 0b11)  => (Kernel, None() : option(bits(64))),               /* kseg3 mapped 32-bit compat */
+   (true, 0b10)  => (Supervisor, None() : option(bits(64))),           /* sseg  mapped 32-bit compat */
+   (true, 0b01)  => (Kernel, Some(0x00000000 @ 0b000 @ vAddr[28..0])), /* kseg1 unmapped uncached 32-bit compat */
+   (true, 0b00)  => (Kernel, Some(0x00000000 @ 0b000 @ vAddr[28..0])), /* kseg0 unmapped cached 32-bit compat */
+   (_, _)        => (Kernel, None() : option(bits(64))) /* xkseg mapped */
+  },
+  0b10  => (Kernel, Some(0b00000 @ vAddr[58..0])), /* xkphys bits 61-59 are cache mode (ignored) */
+  0b01  => (Supervisor, None() : option(bits(64))),  /* xsseg - supervisor mapped */
+  0b00  => (User, None() : option(bits(64)))         /* xuseg - user mapped */
+ }
+}
+
 /** For given virtual address and accessType returns physical address and
 bool flag indicating whether capability stores / loads are permitted for
 page (depending on access type). */
@@ -108,18 +125,8 @@ function TLBTranslateC (vAddr, accessType) =
   {
     let currentAccessLevel = getAccessLevel() in
     let compat32 = (vAddr[61..31] == 0b1111111111111111111111111111111) in
-    let (requiredLevel, addr) : (AccessLevel, option(bits(64))) = match (vAddr[63..62]) {
-      0b11  => match (compat32, vAddr[30..29]) { /* xkseg */
-	(true, 0b11)  => (Kernel, None() : option(bits(64))),               /* kseg3 mapped 32-bit compat */
-	(true, 0b10)  => (Supervisor, None() : option(bits(64))),           /* sseg  mapped 32-bit compat */
-	(true, 0b01)  => (Kernel, Some(0x00000000 @ 0b000 @ vAddr[28..0])), /* kseg1 unmapped uncached 32-bit compat */
-	(true, 0b00)  => (Kernel, Some(0x00000000 @ 0b000 @ vAddr[28..0])), /* kseg0 unmapped cached 32-bit compat */
-	(_, _)        => (Kernel, None() : option(bits(64))) /* xkseg mapped */
-      },
-      0b10  => (Kernel, Some(0b00000 @ vAddr[58..0])), /* xkphys bits 61-59 are cache mode (ignored) */
-      0b01  => (Supervisor, None() : option(bits(64))),  /* xsseg - supervisor mapped */
-      0b00  => (User, None() : option(bits(64)))         /* xuseg - user mapped */
-    } in
+    let (requiredLevel, addr) : (AccessLevel, option(bits(64))) = MIPSSegmentOf(vAddr)
+    in
     if not(grantsAccess(currentAccessLevel, requiredLevel)) then
       SignalExceptionBadAddr(if (accessType == StoreData) then AdES else AdEL, vAddr)
     else
