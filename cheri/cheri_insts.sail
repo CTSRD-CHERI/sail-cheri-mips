@@ -1140,13 +1140,21 @@ function clause execute (CLoadTags(rd, cb)) =
       SignalExceptionBadAddr(AdEL, vAddr64)
     else
       {
-        x : bits(64)  = zeros();
-        foreach(i from 0 to (caps_per_cacheline - 1)) {
-          let pAddr    = TLBTranslate(vAddr64 + i*cap_size, LoadData);
-          let (tag, _) = MEMr_tagged(pAddr, cap_size, true);
-          x[i] = tag;
-        };
-        wGPR(rd) = x;
+        let (pAddr, macr) = TLBTranslateC(vAddr64, LoadData);
+
+        match macr {
+          Clear => raise_c2_exception(CapEx_TLBLoadCap, cb),
+          Trap => raise_c2_exception(CapEx_TLBLoadCap, cb),
+
+          Unrestricted => {
+            x : bits(64)  = zeros();
+            foreach(i from 0 to (caps_per_cacheline - 1)) {
+              let (tag, _) = MEMr_tagged(pAddr + i*cap_size, cap_size, true);
+              x[i] = tag;
+            };
+            wGPR(rd) = x;
+          }
+        }
       }
   }
 }
