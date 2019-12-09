@@ -632,13 +632,19 @@ function set_CP0ErrorEPC (v) = {
       unrepCap(newErrorEPCC);
 }
 
+/*! Tests whether the capability has a reserved otype (larger than max_otype).
+    Note that this includes both sealed (e.g. sentry) and unsealed (e.g. all ones)
+    otypes. */
+val hasReservedOType : Capability -> bool
+function hasReservedOType(cap) = unsigned(cap.otype) > max_otype
+
 function capToString (cap, fixlen) = {
          skip_escape(); /* because cheri128 getCapX functions contain asserts but cheri256 ones do not */
          len = getCapLength(cap);
          /* When dumping caps at end of test we cap length at 64 bits for compatibility with test suite, when tracing we print the actual value */
          len_str = if fixlen then BitStr(to_bits(64, min(len, MAX(64)))) else BitStr(to_bits(68, len));
          /* Print architectural type which is -1 for unsealed caps */
-         let otype64 : bits(64) = if cap.sealed then zero_extend(cap.otype) else ones();
+         let otype64 : bits(64) = if hasReservedOType(cap) then sign_extend(cap.otype) else zero_extend(cap.otype);
          concat_str(" t:",
          concat_str(if cap.tag then "1" else "0",
          concat_str(" s:",
@@ -689,9 +695,3 @@ function setCapFlags(cap, flags) = cap
 /*! Returns true if the given capability is a sealed entry capability. */
 val isSentryCap : Capability -> bool
 function isSentryCap (cap) = signed(cap.otype) == otype_sentry
-
-/*! Tests whether the capability has a reserved otype (larger than max_otype).
-    Note that this includes both sealed (e.g. sentry) and unsealed (e.g. all ones)
-    otypes. */
-val hasReservedOType : Capability -> bool
-function hasReservedOType(cap) = unsigned(cap.otype) > max_otype
