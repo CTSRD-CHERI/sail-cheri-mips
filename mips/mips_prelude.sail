@@ -581,6 +581,7 @@ function incrementCP0Count() = {
 }
 
 type regno = bits(5)                      /* a register number */
+type IntRegEnc = bits(5)                  /* a register number */
 type imm16 = bits(16)                     /* 16-bit immediate */
 /* a commonly used instruction format with three register operands */
 type regregreg = (regno, regno, regno)
