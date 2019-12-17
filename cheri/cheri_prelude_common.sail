@@ -41,6 +41,10 @@ scattered function execute
 val decode : bits(32) -> option(ast) effect pure
 scattered function decode
 
+type CapRegEnc = bits(5)                    /* a register number */
+type CapRegOrDDCEnc = bits(5)               /* a register number */
+type CapHwrEnc = bits(5)                    /* a register number */
+
 register PCC        : Capability
 register NextPCC    : Capability
 register DelayedPCC : Capability
