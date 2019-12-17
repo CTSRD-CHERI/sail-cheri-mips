@@ -58,12 +58,29 @@ function tlbSearch(VAddr) =
     None()
   }
 
-/** For given virtual address and accessType returns physical address and
-bool flag indicating whether capability stores / loads are permitted for
-page (depending on access type). */
+val MIPSSegmentOf : bits(64) -> (AccessLevel, option(bits(64))) effect pure
+function MIPSSegmentOf (vAddr) = {
+ let compat32 = (vAddr[61..31] == 0b1111111111111111111111111111111) in
+ match (vAddr[63..62]) {
+  0b11  => match (compat32, vAddr[30..29]) { /* xkseg */
+   (true, 0b11)  => (Kernel, None() : option(bits(64))),               /* kseg3 mapped 32-bit compat */
+   (true, 0b10)  => (Supervisor, None() : option(bits(64))),           /* sseg  mapped 32-bit compat */
+   (true, 0b01)  => (Kernel, Some(0x00000000 @ 0b000 @ vAddr[28..0])), /* kseg1 unmapped uncached 32-bit compat */
+   (true, 0b00)  => (Kernel, Some(0x00000000 @ 0b000 @ vAddr[28..0])), /* kseg0 unmapped cached 32-bit compat */
+   (_, _)        => (Kernel, None() : option(bits(64))) /* xkseg mapped */
+  },
+  0b10  => (Kernel, Some(0b00000 @ vAddr[58..0])), /* xkphys bits 61-59 are cache mode (ignored) */
+  0b01  => (Supervisor, None() : option(bits(64))),  /* xsseg - supervisor mapped */
+  0b00  => (User, None() : option(bits(64)))         /* xuseg - user mapped */
+ }
+}
 
-val TLBTranslate2 : (bits(64), MemAccessType) -> (bits(64), bool) effect {rreg, wreg, undef, escape}
-function TLBTranslate2 (vAddr, accessType) = {
+/** For given virtual address and accessType returns physical address and
+    reports any restrictions on the capability operation
+ */
+val TLBTranslate2 : (bits(64), MemAccessType, AccessLevel)
+                  -> (bits(64), MemAccessCapRestriction) effect {rreg, wreg, undef, escape}
+function TLBTranslate2 (vAddr, accessType, accessLevel) = {
   let idx = tlbSearch(vAddr) in
   match idx {
     Some(idx) =>
@@ -83,52 +100,55 @@ function TLBTranslate2 (vAddr, accessType) = {
         _       => undefined
       } in
       let isOdd = (vAddr[evenOddBit]) in
-      let (caps : bits(1), capl : bits(1), pfn : bits(24), d : bits(1), v : bits(1))  =
+      let (caps : bits(1), caplg : bits(1), capl : bits(1), pfn : bits(24), d : bits(1), v : bits(1))  =
         if (isOdd) then
-          (entry.caps1(), entry.capl1(), entry.pfn1(), entry.d1(), entry.v1())
+          (entry.caps1(), entry.caplg1(), entry.capl1(), entry.pfn1(), entry.d1(), entry.v1())
         else
-          (entry.caps0(), entry.capl0(), entry.pfn0(), entry.d0(), entry.v0()) in
+          (entry.caps0(), entry.caplg0(), entry.capl0(), entry.pfn0(), entry.d0(), entry.v0()) in
       if (~(v)) then
         SignalExceptionTLB(if (accessType == StoreData) then XTLBInvS else XTLBInvL, vAddr)
       else if ((accessType == StoreData) & ~(d)) then
         SignalExceptionTLB(TLBMod, vAddr)
       else
         let res : bits(64) = zero_extend(pfn[23..(evenOddBit - 12)] @ vAddr[(evenOddBit - 1) .. 0]) in
-        (res,  bits_to_bool(if (accessType == StoreData) then caps else capl)),
+        let macr = if (accessType == StoreData) then
+                    if caps then Trap else Unrestricted
+                   else
+                    if capl then Clear
+                    else
+                        let gclg : bits(1) = match accessLevel {
+                            User => TLBEntryHi.CLGU(),
+                            Supervisor => TLBEntryHi.CLGS(),
+                            Kernel => TLBEntryHi.CLGK()
+                        } in
+                        if gclg != caplg then Trap else Unrestricted
+          in
+        (res,  macr),
     None()  =>  SignalExceptionTLB(
       if (accessType == StoreData) then XTLBRefillS else XTLBRefillL, vAddr)
   }
 }
 
 /*!
-THIS is the same as [TLBTranslate] except that it also returns a boolean indicating whether capability loads or stores are permitted for the given page.
+THIS is the same as [TLBTranslate] except that it also returns any
+constraints on tagged capability operations.
  */
-val TLBTranslateC : (bits(64), MemAccessType) -> (bits(64), bool) effect {escape, rreg, undef, wreg}
+val TLBTranslateC : (bits(64), MemAccessType) -> (bits(64), MemAccessCapRestriction) effect {escape, rreg, undef, wreg}
 function TLBTranslateC (vAddr, accessType) = 
   {
     let currentAccessLevel = getAccessLevel() in
     let compat32 = (vAddr[61..31] == 0b1111111111111111111111111111111) in
-    let (requiredLevel, addr) : (AccessLevel, option(bits(64))) = match (vAddr[63..62]) {
-      0b11  => match (compat32, vAddr[30..29]) { /* xkseg */
-	(true, 0b11)  => (Kernel, None() : option(bits(64))),               /* kseg3 mapped 32-bit compat */
-	(true, 0b10)  => (Supervisor, None() : option(bits(64))),           /* sseg  mapped 32-bit compat */
-	(true, 0b01)  => (Kernel, Some(0x00000000 @ 0b000 @ vAddr[28..0])), /* kseg1 unmapped uncached 32-bit compat */
-	(true, 0b00)  => (Kernel, Some(0x00000000 @ 0b000 @ vAddr[28..0])), /* kseg0 unmapped cached 32-bit compat */
-	(_, _)        => (Kernel, None() : option(bits(64))) /* xkseg mapped */
-      },
-      0b10  => (Kernel, Some(0b00000 @ vAddr[58..0])), /* xkphys bits 61-59 are cache mode (ignored) */
-      0b01  => (Supervisor, None() : option(bits(64))),  /* xsseg - supervisor mapped */
-      0b00  => (User, None() : option(bits(64)))         /* xuseg - user mapped */
-    } in
+    let (requiredLevel, addr) : (AccessLevel, option(bits(64))) = MIPSSegmentOf(vAddr)
+    in
     if not(grantsAccess(currentAccessLevel, requiredLevel)) then
       SignalExceptionBadAddr(if (accessType == StoreData) then AdES else AdEL, vAddr)
     else
-      let (pa, c) : (bits(64), bool) = match addr {
-        Some(a) => (a, false),
+      let (pa, c) : (bits(64), MemAccessCapRestriction) = match addr {
+        Some(a) => (a, Unrestricted),
         None()  => if ((~(compat32)) & (unsigned(vAddr[61..0]) > MAX_VA)) then
             SignalExceptionBadAddr(if (accessType == StoreData) then AdES else AdEL, vAddr)
           else
-            TLBTranslate2(vAddr, accessType)
+            TLBTranslate2(vAddr, accessType, requiredLevel)
       }
       in if (unsigned(pa) > MAX_PA) then
           SignalExceptionBadAddr(if (accessType == StoreData) then AdES else AdEL, vAddr)
