@@ -696,8 +696,7 @@ function isSentryCap (cap) = signed(cap.otype) == otype_sentry
 
 function ERETHook() : unit -> unit =
   {
-    if (CP0Status.ERL() == bitone) then
-      set_next_pcc(if isSentryCap(ErrorEPCC) then unsealCap(ErrorEPCC) else ErrorEPCC)
-    else
-      set_next_pcc(if isSentryCap(EPCC) then unsealCap(EPCC) else ErrorEPCC);
+    let epcc_val = if (CP0Status.ERL() == bitone) then ErrorEPCC else EPCC;
+    let new_pcc = if isSentryCap(epcc_val) then unsealCap(epcc_val) else epcc_val;
+    set_next_pcc(new_pcc)
   }
