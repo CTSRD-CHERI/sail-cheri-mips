@@ -40,7 +40,13 @@ function fetch_and_execute () = {
                      print("simulation stopped due to halt instruction.");
                      loop_again = false
                    },
-      Some(ast) => execute(ast),
+      Some(ast) => {
+                if trace then {
+                  prerr(assembly(ast));
+                  prerr("\n");
+                };
+                execute(ast)
+      },
       None()    => { print("Decode failed"); loop_again=false } /* Never expect this -- unknown instruction should actually result in reserved instruction ISA-level exception (see mips_ri.sail). */
     }
   } catch {

@@ -36,6 +36,7 @@
    exception (like real hardware) instead of die (convenient for ppcmem) */
 
 union clause ast = RI : unit
+function clause assembly (RI()) = "reserved instruction"
 function clause decode _ = Some(RI())
 function clause execute (RI()) =
 {

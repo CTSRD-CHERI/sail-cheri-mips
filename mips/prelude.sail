@@ -45,7 +45,7 @@ val xor_vec = {c: "xor_bits" , _: "xor_vec"} : forall 'n. (bits('n), bits('n)) -
 
 val int_power = {ocaml: "int_power", lem: "pow", coq: "Z.pow"} : (int, int) -> int
 
-overload operator ^ = {xor_vec, int_power}
+overload operator ^ = {xor_vec, int_power, concat_str}
 
 val add_range = {ocaml: "add_int", lem: "integerAdd", coq: "add_range", c: "add_int"} : forall 'n 'm 'o 'p.
   (range('n, 'm), range('o, 'p)) -> range('n + 'o, 'm + 'p)

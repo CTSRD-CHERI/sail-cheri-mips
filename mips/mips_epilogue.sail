@@ -34,6 +34,9 @@
 
 /* mips_epilogue.sail: end of decode, execute and AST definitions. */
 
+function clause assembly(_) = "assembly unimplemented"
+
+end assembly
 end decode
 end execute
 end ast

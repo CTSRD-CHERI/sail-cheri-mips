@@ -42,3 +42,6 @@ scattered function execute
 
 val decode : bits(32) -> option(ast) effect pure
 scattered function decode
+
+val assembly : ast -> string effect pure
+scattered function assembly

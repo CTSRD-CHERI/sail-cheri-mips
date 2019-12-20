@@ -592,11 +592,17 @@ function incrementCP0Count() = {
 type regno = bits(5)                      /* a register number */
 type IntRegEnc = bits(5)                  /* a register number */
 type imm16 = bits(16)                     /* 16-bit immediate */
-/* a commonly used instruction format with three register operands */
-type regregreg = (regno, regno, regno)
-/* a commonly used instruction format with two register operands and 16-bit immediate */
-type regregimm16 = (regno, regno, imm16)
 
+function strReg(r) : regno -> string = concat_str_dec("$", unsigned(r))
+function strRRRArgs(r2 : regno, r1 : regno, rd : regno) -> string = strReg(rd) ^ ", " ^ strReg(r1) ^ ", " ^ strReg(r2)
+val strRRIArgs : forall 'n, 'n > 0 . (regno, regno, bits('n)) -> string
+function strRRIArgs(rs, rd, imm) = strReg(rd) ^ ", " ^ strReg(rs) ^ ", " ^ dec_str(signed(imm))
+val strRRIUArgs : forall 'n, 'n > 0 . (regno, regno, bits('n)) -> string
+function strRRIUArgs(rs, rd, imm) = strReg(rd) ^ ", " ^ strReg(rs) ^ ", " ^ hex_str(unsigned(imm))
+val strRIArgs : forall 'n, 'n > 0 . (regno, bits('n)) -> string
+function strRIArgs(rd, imm) = strReg(rd) ^ ", " ^ hex_str(unsigned(imm))
+val strMemArgs : forall 'n, 'n > 0 . (regno, regno, bits('n)) -> string
+function strMemArgs(base, rt, offset) = strReg(rt) ^ ", " ^ dec_str(signed(offset)) ^ "(" ^ strReg(base) ^ ")"
 enum decode_failure = { 
   no_matching_pattern, 
   unsupported_instruction, 
@@ -616,6 +622,17 @@ enum Comparison = {
   LTU /* unsigned less than or qual */ 
 }
 
+function strCmp (cmp : Comparison) -> string = match cmp {
+  EQ  => "eq",
+  NE  => "ne",
+  GE  => "ge",
+  GEU => "geu",
+  GT  => "gt",
+  LE  => "le",
+  LT  => "lt",
+  LTU => "ltu"
+}
+
 val compare : (Comparison, bits(64), bits(64)) -> bool
 function compare (cmp, valA, valB) =
   match cmp {
@@ -630,6 +647,13 @@ function compare (cmp, valA, valB) =
   }
 enum WordType = { B, H, W, D}
 enum WordTypeUnaligned = { WL, WR, DL, DR }
+
+function strWordType(w : WordType) -> string = match w {
+  B => "b",
+  H => "h",
+  W => "w",
+  D => "d"
+}
 
 /* Compute the address and number of bytes touched by an unaligned memory operation.
    Assumes big-endian mode. */

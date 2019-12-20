@@ -48,6 +48,8 @@ union clause ast = DADDIU : (regno, regno, imm16)
 function clause decode (0b011001 @ rs : regno @ rt : regno @ imm : imm16) =
   Some(DADDIU(rs, rt, imm))
 
+function clause assembly (DADDIU(rs, rt, imm)) = "daddiu " ^ strRRIArgs(rs, rt, imm)
+
 function clause execute (DADDIU (rs, rt, imm)) =
   {
     wGPR(rt) = rGPR(rs) + sign_extend(imm)
@@ -61,6 +63,8 @@ union clause ast = DADDU : (regno, regno, regno)
 function clause decode (0b000000 @ rs : regno @ rt : regno @ rd : regno @ 0b00000 @ 0b101101) =
   Some(DADDU(rs, rt, rd))
 
+function clause assembly (DADDU(rs, rt, rd)) = "daddu " ^ strRRRArgs(rs, rt, rd)
+
 function clause execute (DADDU (rs, rt, rd)) =
   {
     wGPR(rd) = rGPR(rs) + rGPR(rt)
@@ -73,6 +77,8 @@ union clause ast = DADDI : (regno, regno, bits(16))
 
 function clause decode (0b011000 @ rs : regno @ rt : regno @ imm : imm16) =
   Some(DADDI(rs, rt, imm))
+
+function clause assembly (DADDI(rs, rt, imm)) = "daddi " ^ strRRIArgs(rs, rt, imm)
 
 function clause execute (DADDI (rs, rt, imm)) =
   {
@@ -93,6 +99,8 @@ union clause ast = DADD : (regno, regno, regno)
 function clause decode (0b000000 @ rs : regno @ rt : regno @ rd : regno @ 0b00000 @ 0b101100) =
   Some(DADD(rs, rt, rd))
 
+function clause assembly (DADD(rs, rt, rd)) = "dadd " ^ strRRRArgs(rs, rt, rd)
+
 function clause execute (DADD (rs, rt, rd)) =
   {
     let sum65 : bits(65) = sign_extend(rGPR(rs)) + sign_extend(rGPR(rt)) in
@@ -110,6 +118,8 @@ union clause ast = ADD : (regno, regno, regno)
 
 function clause decode (0b000000 @ rs : regno @ rt : regno @ rd : regno @ 0b00000 @ 0b100000) =
   Some(ADD(rs, rt, rd))
+
+function clause assembly (ADD(rs, rt, rd)) = "add " ^ strRRRArgs(rs, rt, rd)
 
 function clause execute (ADD(rs, rt, rd)) =
   {
@@ -132,6 +142,8 @@ union clause ast = ADDI : (regno, regno, bits(16))
 function clause decode (0b001000 @ rs : regno @ rt : regno @ imm : imm16) =
   Some(ADDI(rs, rt, imm))
 
+function clause assembly (ADDI(rs, rt, imm)) = "addi " ^ strRRIArgs(rs, rt, imm)
+
 function clause execute (ADDI(rs, rt, imm)) =
   {
     opA = rGPR(rs);
@@ -152,6 +164,8 @@ union clause ast = ADDU : (regno, regno, regno)
 function clause decode (0b000000 @ rs : regno @ rt : regno @ rd : regno @ 0b00000 @ 0b100001) =
   Some(ADDU(rs, rt, rd))
 
+function clause assembly (ADDU(rs, rt, rd)) = "addu " ^ strRRRArgs(rs, rt, rd)
+
 function clause execute (ADDU(rs, rt, rd)) =
   {
     opA = rGPR(rs);
@@ -169,6 +183,8 @@ union clause ast = ADDIU : (regno, regno, bits(16))
 
 function clause decode (0b001001 @ rs : regno @ rt : regno @ imm : imm16) =
   Some(ADDIU(rs, rt, imm))
+
+function clause assembly (ADDIU(rs, rt, imm)) = "addiu " ^ strRRIArgs(rs, rt, imm)
 
 function clause execute (ADDIU(rs, rt, imm)) =
   {
@@ -190,6 +206,8 @@ union clause ast = DSUBU : (regno, regno, regno)
 function clause decode (0b000000 @ rs : regno @ rt : regno @ rd : regno @ 0b00000 @ 0b101111) =
   Some(DSUBU(rs, rt, rd))
 
+function clause assembly (DSUBU(rs, rt, rd)) = "dsubu " ^ strRRRArgs(rs, rt, rd)
+
 function clause execute (DSUBU (rs, rt, rd)) =
   {
     wGPR(rd) = rGPR(rs) - rGPR(rt)
@@ -201,6 +219,8 @@ union clause ast = DSUB : (regno, regno, regno)
 
 function clause decode (0b000000 @ rs : regno @ rt : regno @ rd : regno @ 0b00000 @ 0b101110) =
   Some(DSUB(rs, rt, rd))
+
+function clause assembly (DSUB(rs, rt, rd)) = "dsub " ^ strRRRArgs(rs, rt, rd)
 
 function clause execute (DSUB (rs, rt, rd)) =
   {
@@ -219,6 +239,8 @@ union clause ast = SUB : (regno, regno, regno)
 
 function clause decode (0b000000 @ rs : regno @ rt : regno @ rd : regno @ 0b00000 @ 0b100010) =
   Some(SUB(rs, rt, rd))
+
+function clause assembly (SUB(rs, rt, rd)) = "sub " ^ strRRRArgs(rs, rt, rd)
 
 function clause execute (SUB(rs, rt, rd)) =
   {
@@ -240,6 +262,8 @@ union clause ast = SUBU : (regno, regno, regno)
 function clause decode (0b000000 @ rs : regno @ rt : regno @ rd : regno @ 0b00000 @ 0b100011) =
     Some(SUBU(rs, rt, rd))
 
+function clause assembly (SUBU(rs, rt, rd)) = "subu " ^ strRRRArgs(rs, rt, rd)
+
 function clause execute (SUBU(rs, rt, rd)) =
   {
     opA = rGPR(rs);
@@ -260,6 +284,8 @@ union clause ast = AND : (regno, regno, regno)
 function clause decode (0b000000 @ rs : regno @ rt : regno @ rd : regno @ 0b00000 @ 0b100100) =
     Some(AND(rs, rt, rd))
 
+function clause assembly (AND(rs, rt, rd)) = "and " ^ strRRRArgs(rs, rt, rd)
+
 function clause execute (AND (rs, rt, rd)) =
   {
     wGPR(rd) = (rGPR(rs) & rGPR(rt))
@@ -270,6 +296,7 @@ function clause execute (AND (rs, rt, rd)) =
 union clause ast = ANDI : (regno, regno, bits(16))
 function clause decode (0b001100 @ rs : regno @ rt : regno @ imm : imm16) =
   Some(ANDI(rs, rt, imm))
+function clause assembly (ANDI (rs, rt, imm)) = "andi " ^ strRRIUArgs(rs, rt, imm)
 function clause execute (ANDI (rs, rt, imm)) =
   {
     wGPR(rt) = (rGPR(rs) & zero_extend(imm))
@@ -280,6 +307,7 @@ function clause execute (ANDI (rs, rt, imm)) =
 union clause ast = OR : (regno, regno, regno)
 function clause decode (0b000000 @ rs : regno @ rt : regno @ rd : regno @ 0b00000 @ 0b100101) =
   Some(OR(rs, rt, rd))
+function clause assembly (OR (rs, rt, rd)) = "or " ^ strRRRArgs(rs, rt, rd)
 function clause execute (OR (rs, rt, rd)) =
   {
     wGPR(rd) = (rGPR(rs) | rGPR(rt))
@@ -290,6 +318,7 @@ function clause execute (OR (rs, rt, rd)) =
 union clause ast = ORI : (regno, regno, bits(16))
 function clause decode (0b001101 @ rs : regno @ rt : regno @ imm : imm16) =
   Some(ORI(rs, rt, imm))
+function clause assembly (ORI (rs, rt, imm)) = "ori " ^ strRRIUArgs(rs, rt, imm)
 function clause execute (ORI (rs, rt, imm)) =
   {
     wGPR(rt) = (rGPR(rs) | zero_extend(imm))
@@ -300,6 +329,7 @@ function clause execute (ORI (rs, rt, imm)) =
 union clause ast = NOR : (regno, regno, regno)
 function clause decode (0b000000 @ rs : regno @ rt : regno @ rd : regno @ 0b00000 @ 0b100111) =
   Some(NOR(rs, rt, rd))
+function clause assembly (NOR (rs, rt, rd)) = "nor " ^ strRRRArgs(rs, rt, rd)  
 function clause execute (NOR (rs, rt, rd)) =
   {
     wGPR(rd) = ~(rGPR(rs) | rGPR(rt))
@@ -310,6 +340,7 @@ function clause execute (NOR (rs, rt, rd)) =
 union clause ast = XOR : (regno, regno, regno)
 function clause decode (0b000000 @ rs : regno @ rt : regno @ rd : regno @ 0b00000 @ 0b100110) =
   Some(XOR(rs, rt, rd))
+function clause assembly (XOR (rs, rt, rd)) = "xor " ^ strRRRArgs(rs, rt, rd)  
 function clause execute (XOR (rs, rt, rd)) =
   {
     wGPR(rd) = (rGPR(rs) ^ rGPR(rt))
@@ -319,6 +350,7 @@ function clause execute (XOR (rs, rt, rd)) =
 union clause ast = XORI : (regno, regno, bits(16))
 function clause decode (0b001110 @ rs : regno @ rt : regno @ imm : imm16) =
   Some(XORI(rs, rt, imm))
+function clause assembly (XORI (rs, rt, imm)) = "xori " ^ strRRIUArgs(rs, rt, imm)
 function clause execute (XORI (rs, rt, imm)) =
   {
     wGPR(rt) = (rGPR(rs) ^ zero_extend(imm))
@@ -328,6 +360,7 @@ function clause execute (XORI (rs, rt, imm)) =
 union clause ast = LUI : (regno, imm16)
 function clause decode (0b001111 @ 0b00000 @ rt : regno @ imm : imm16) =
   Some(LUI(rt, imm))
+function clause assembly (LUI (rt, imm)) = "lui " ^ strRIArgs(rt, imm)
 function clause execute (LUI (rt, imm)) =
   {
     wGPR(rt) = sign_extend(imm @ 0x0000)
@@ -342,6 +375,7 @@ function clause execute (LUI (rt, imm)) =
 union clause ast = DSLL : (regno, regno, regno)
 function clause decode (0b000000 @ 0b00000 @ rt : regno @ rd : regno @ sa : bits(5) @ 0b111000) =
   Some(DSLL(rt, rd, sa))
+function clause assembly (DSLL (rs, rd, sa)) = "dsll " ^ strRRIUArgs(rs, rd, sa)
 function clause execute (DSLL (rt, rd, sa)) =
   {
 
@@ -353,6 +387,7 @@ function clause execute (DSLL (rt, rd, sa)) =
 union clause ast = DSLL32 : (regno, regno, regno)
 function clause decode (0b000000 @ 0b00000 @ rt : regno @ rd : regno @ sa : bits(5) @ 0b111100) =
   Some(DSLL32(rt, rd, sa))
+function clause assembly (DSLL32 (rs, rd, sa)) = "dsll32 " ^ strRRIUArgs(rs, rd, sa)
 function clause execute (DSLL32 (rt, rd, sa)) =
   {
     wGPR(rd) = (rGPR(rt) << (0b1 @ sa))
@@ -363,6 +398,7 @@ function clause execute (DSLL32 (rt, rd, sa)) =
 union clause ast = DSLLV : (regno, regno, regno)
 function clause decode (0b000000 @ rs : regno @ rt : regno @ rd : regno @ 0b00000 @ 0b010100) =
   Some(DSLLV(rs, rt, rd))
+function clause assembly (DSLLV (rs, rt, rd)) = "dsllv " ^ strRRRArgs(rs, rt, rd)
 function clause execute (DSLLV (rs, rt, rd)) =
   {
     wGPR(rd) = (rGPR(rt) << ((rGPR(rs))[5 .. 0]))
@@ -373,6 +409,7 @@ function clause execute (DSLLV (rs, rt, rd)) =
 union clause ast = DSRA : (regno, regno, regno)
 function clause decode (0b000000 @ 0b00000 @ rt : regno @ rd : regno @ sa : bits(5) @ 0b111011) =
   Some(DSRA(rt, rd, sa))
+function clause assembly (DSRA (rt, rd, sa)) = "dsra " ^ strRRIUArgs(rt, rd, sa)
 function clause execute (DSRA (rt, rd, sa)) =
   {
     temp     = rGPR(rt);
@@ -384,6 +421,7 @@ function clause execute (DSRA (rt, rd, sa)) =
 union clause ast = DSRA32 : (regno, regno, regno)
 function clause decode (0b000000 @ 0b00000 @ rt : regno @ rd : regno @ sa : bits(5) @ 0b111111) =
   Some(DSRA32(rt, rd, sa))
+function clause assembly (DSRA32 (rt, rd, sa)) = "dsra32 " ^ strRRIUArgs(rt, rd, sa)
 function clause execute (DSRA32 (rt, rd, sa)) =
   {
     temp     = rGPR(rt);
@@ -395,6 +433,7 @@ function clause execute (DSRA32 (rt, rd, sa)) =
 union clause ast = DSRAV : (regno, regno, regno)
 function clause decode (0b000000 @ rs : regno @ rt : regno @ rd : regno @ 0b00000 @ 0b010111) =
   Some(DSRAV(rs, rt, rd))
+function clause assembly (DSRAV (rs, rt, rd)) = "dsrav " ^ strRRRArgs(rs, rt, rd)
 function clause execute (DSRAV (rs, rt, rd)) =
   {
     temp     = rGPR(rt);
@@ -407,6 +446,7 @@ function clause execute (DSRAV (rs, rt, rd)) =
 union clause ast = DSRL : (regno, regno, regno)
 function clause decode (0b000000 @ 0b00000 @ rt : regno @ rd : regno @ sa : bits(5) @ 0b111010) =
   Some(DSRL(rt, rd, sa))
+function clause assembly (DSRL (rt, rd, sa)) = "dsrl " ^ strRRIUArgs(rt, rd, sa)
 function clause execute (DSRL (rt, rd, sa)) =
   {
     temp     = rGPR(rt);
@@ -418,6 +458,7 @@ function clause execute (DSRL (rt, rd, sa)) =
 union clause ast = DSRL32 : (regno, regno, regno)
 function clause decode (0b000000 @ 0b00000 @ rt : regno @ rd : regno @ sa : bits(5) @ 0b111110) =
   Some(DSRL32(rt, rd, sa))
+function clause assembly (DSRL32 (rt, rd, sa)) = "dsrl32 " ^ strRRIUArgs(rt, rd, sa)
 function clause execute (DSRL32 (rt, rd, sa)) =
   {
     temp     = rGPR(rt);
@@ -430,6 +471,7 @@ function clause execute (DSRL32 (rt, rd, sa)) =
 union clause ast = DSRLV : (regno, regno, regno)
 function clause decode (0b000000 @ rs : regno @ rt : regno @ rd : regno @ 0b00000 @ 0b010110) =
   Some(DSRLV(rs, rt, rd))
+function clause assembly (DSRLV (rs, rt, rd)) = "dsrlv " ^ strRRRArgs(rs, rt, rd)
 function clause execute (DSRLV (rs, rt, rd)) =
   {
     temp = rGPR(rt);
@@ -446,6 +488,7 @@ function clause execute (DSRLV (rs, rt, rd)) =
 union clause ast = SLL : (regno, regno, regno)
 function clause decode (0b000000 @ 0b00000 @ rt : regno @ rd : regno @ sa : regno @ 0b000000) =
   Some(SLL(rt, rd, sa))
+function clause assembly (SLL (rt, rd, sa)) = "sll " ^ strRRIUArgs(rt, rd, sa)
 function clause execute (SLL(rt, rd, sa)) =
   {
     rt32     = rGPR(rt)[31..0];
@@ -457,6 +500,7 @@ function clause execute (SLL(rt, rd, sa)) =
 union clause ast = SLLV : (regno, regno, regno)
 function clause decode (0b000000 @ rs : regno @ rt : regno @ rd : regno @ 0b00000 @ 0b000100) =
   Some(SLLV(rs, rt, rd))
+function clause assembly (SLLV (rs, rt, rd)) = "sllv " ^ strRRRArgs(rs, rt, rd)
 function clause execute (SLLV(rs, rt, rd)) =
   {
     sa       = rGPR(rs)[4..0];
@@ -469,6 +513,7 @@ function clause execute (SLLV(rs, rt, rd)) =
 union clause ast = SRA : (regno, regno, regno)
 function clause decode (0b000000 @ 0b00000 @ rt : regno @ rd : regno @ sa : regno @ 0b000011) =
   Some(SRA(rt, rd, sa))
+function clause assembly (SRA (rt, rd, sa)) = "sra " ^ strRRIUArgs(rt, rd, sa)
 function clause execute (SRA(rt, rd, sa)) =
   {
     temp = rGPR(rt);
@@ -485,6 +530,7 @@ function clause execute (SRA(rt, rd, sa)) =
 union clause ast = SRAV : (regno, regno, regno)
 function clause decode (0b000000 @ rs : regno @ rt : regno @ rd : regno @ 0b00000 @ 0b000111) =
   Some(SRAV(rs, rt, rd))
+function clause assembly (SRAV (rs, rt, rd)) = "srav " ^ strRRRArgs(rs, rt, rd)
 function clause execute (SRAV(rs, rt, rd)) =
   {
     temp = rGPR(rt);
@@ -502,6 +548,7 @@ function clause execute (SRAV(rs, rt, rd)) =
 union clause ast = SRL : (regno, regno, regno)
 function clause decode (0b000000 @ 0b00000 @ rt : regno @ rd : regno @ sa : regno @ 0b000010) =
   Some(SRL(rt, rd, sa))
+function clause assembly (SRL (rt, rd, sa)) = "srl " ^ strRRIUArgs(rt, rd, sa)
 function clause execute (SRL(rt, rd, sa)) =
   {
     temp = rGPR(rt);
@@ -518,6 +565,7 @@ function clause execute (SRL(rt, rd, sa)) =
 union clause ast = SRLV : (regno, regno, regno)
 function clause decode (0b000000 @ rs : regno @ rt : regno @ rd : regno @ 0b00000 @ 0b000110) =
   Some(SRLV(rs, rt, rd))
+function clause assembly (SRLV (rs, rt, rd)) = "srlv " ^ strRRRArgs(rs, rt, rd)
 function clause execute (SRLV(rs, rt, rd)) =
   {
     temp = rGPR(rt);
@@ -539,6 +587,7 @@ function clause execute (SRLV(rs, rt, rd)) =
 union clause ast = SLT : (regno, regno, regno)
 function clause decode (0b000000 @ rs : regno @ rt : regno @ rd : regno @ 0b00000 @ 0b101010) =
   Some(SLT(rs, rt, rd))
+function clause assembly (SLT (rs, rt, rd)) = "slt " ^ strRRRArgs(rs, rt, rd)
 function clause execute (SLT(rs, rt, rd)) =
   {
     wGPR(rd) = zero_extend(if (rGPR(rs) <_s rGPR(rt)) then 0b1 else 0b0)
@@ -549,6 +598,7 @@ function clause execute (SLT(rs, rt, rd)) =
 union clause ast = SLTI : (regno, regno, bits(16))
 function clause decode (0b001010 @ rs : regno @ rt : regno @ imm : imm16) =
   Some(SLTI(rs, rt, imm))
+function clause assembly (SLTI (rs, rd, imm)) = "slti " ^ strRRIArgs(rs, rd, imm)
 function clause execute (SLTI(rs, rt, imm)) =
   {
     let imm_val = signed(imm) in
@@ -561,6 +611,7 @@ function clause execute (SLTI(rs, rt, imm)) =
 union clause ast = SLTU : (regno, regno, regno)
 function clause decode (0b000000 @ rs : regno @ rt : regno @ rd : regno @ 0b00000 @ 0b101011) =
   Some(SLTU(rs, rt, rd))
+function clause assembly (SLTU (rs, rt, rd)) = "sltu " ^ strRRRArgs(rs, rt, rd)
 function clause execute (SLTU(rs, rt, rd)) =
   {
     let rs_val = rGPR(rs) in
@@ -573,6 +624,7 @@ function clause execute (SLTU(rs, rt, rd)) =
 union clause ast = SLTIU : (regno, regno, bits(16))
 function clause decode (0b001011 @ rs : regno @ rt : regno @ imm : imm16) =
   Some(SLTIU(rs, rt, imm))
+function clause assembly (SLTIU (rs, rd, imm)) = "sltiu " ^ strRRIUArgs(rs, rd, imm)  
 function clause execute (SLTIU(rs, rt, imm)) =
   {
     let rs_val = rGPR(rs) in
@@ -585,6 +637,7 @@ function clause execute (SLTIU(rs, rt, imm)) =
 union clause ast = MOVN : (regno, regno, regno)
 function clause decode (0b000000 @ rs : regno @ rt : regno @ rd : regno @ 0b00000 @ 0b001011) =
   Some(MOVN(rs, rt, rd))
+function clause assembly (MOVN (rs, rt, rd)) = "movn " ^ strRRRArgs(rs, rt, rd)
 function clause execute (MOVN(rs, rt, rd)) =
   {
     if (rGPR(rt) != 0x0000000000000000) then
@@ -596,6 +649,7 @@ function clause execute (MOVN(rs, rt, rd)) =
 union clause ast = MOVZ : (regno, regno, regno)
 function clause decode (0b000000 @ rs : regno @ rt : regno @ rd : regno @ 0b00000 @ 0b001010) =
   Some(MOVZ(rs, rt, rd))
+function clause assembly (MOVZ (rs, rt, rd)) = "movz " ^ strRRRArgs(rs, rt, rd)
 function clause execute (MOVZ(rs, rt, rd)) =
   {
     if (rGPR(rt) == 0x0000000000000000) then
@@ -610,6 +664,7 @@ function clause execute (MOVZ(rs, rt, rd)) =
 union clause ast = MFHI : regno
 function clause decode (0b000000 @ 0b0000000000 @ rd : regno @ 0b00000 @ 0b010000) =
   Some(MFHI(rd))
+function clause assembly (MFHI(rd)) = "mfhi " ^ strReg(rd)
 function clause execute (MFHI(rd)) =
   {
     wGPR(rd) = HI
@@ -619,6 +674,7 @@ function clause execute (MFHI(rd)) =
 union clause ast = MFLO : regno
 function clause decode (0b000000 @ 0b0000000000 @ rd : regno @ 0b00000 @ 0b010010) =
   Some(MFLO(rd))
+function clause assembly (MFLO(rd)) = "mflo " ^ strReg(rd)
 function clause execute (MFLO(rd)) =
   {
     wGPR(rd) = LO
@@ -628,6 +684,7 @@ function clause execute (MFLO(rd)) =
 union clause ast = MTHI : regno
 function clause decode (0b000000 @ rs : regno @ 0b000000000000000 @ 0b010001) =
   Some(MTHI(rs))
+function clause assembly (MTHI(rs)) = "mthi " ^ strReg(rs)  
 function clause execute (MTHI(rs)) =
   {
     HI = rGPR(rs)
@@ -637,6 +694,7 @@ function clause execute (MTHI(rs)) =
 union clause ast = MTLO : regno
 function clause decode (0b000000 @ rs : regno @ 0b000000000000000 @ 0b010011) =
   Some(MTLO(rs))
+function clause assembly (MTLO(rs)) = "mtlo " ^ strReg(rs)
 function clause execute (MTLO(rs)) =
   {
     LO = rGPR(rs)
@@ -646,6 +704,7 @@ function clause execute (MTLO(rs)) =
 union clause ast = MUL : (regno, regno, regno)
 function clause decode (0b011100 @ rs : regno @ rt : regno @ rd : regno @ 0b00000 @ 0b000010) =
   Some(MUL(rs, rt, rd))
+function clause assembly (MUL(rs, rt, rd)) = "mul " ^ strRRRArgs(rs, rt, rd)
 function clause execute (MUL(rs, rt, rd)) =
   {
     rsVal = rGPR(rs);
@@ -666,6 +725,7 @@ function clause execute (MUL(rs, rt, rd)) =
 union clause ast = MULT : (regno, regno)
 function clause decode (0b000000 @ rs : regno @ rt : regno @ 0b00000 @ 0b00000 @ 0b011000) =
   Some(MULT(rs, rt))
+function clause assembly (MULT(rs, rt)) = "mult " ^ strReg(rs) ^ ", " ^ strReg(rt)
 function clause execute (MULT(rs, rt)) =
   {
     rsVal = rGPR(rs);
@@ -682,6 +742,7 @@ function clause execute (MULT(rs, rt)) =
 union clause ast = MULTU : (regno, regno)
 function clause decode (0b000000 @ rs : regno @ rt : regno @ 0b00000 @ 0b00000 @ 0b011001) =
   Some(MULTU(rs, rt))
+function clause assembly (MULTU(rs, rt)) = "multu " ^ strReg(rs) ^ ", " ^ strReg(rt)
 function clause execute (MULTU(rs, rt)) =
   {
     rsVal = rGPR(rs);
@@ -698,6 +759,7 @@ function clause execute (MULTU(rs, rt)) =
 union clause ast = DMULT : (regno, regno)
 function clause decode (0b000000 @ rs : regno @ rt : regno @ 0b00000 @ 0b00000 @ 0b011100) =
   Some(DMULT(rs, rt))
+function clause assembly (DMULT(rs, rt)) = "dmult " ^ strReg(rs) ^ ", " ^ strReg(rt)
 function clause execute (DMULT(rs, rt)) =
   {
     result = rGPR(rs) *_s rGPR(rt);
@@ -709,6 +771,7 @@ function clause execute (DMULT(rs, rt)) =
 union clause ast = DMULTU : (regno, regno)
 function clause decode (0b000000 @ rs : regno @ rt : regno @ 0b00000 @ 0b00000 @ 0b011101) =
   Some(DMULTU(rs, rt))
+function clause assembly (DMULTU(rs, rt)) = "dmultu " ^ strReg(rs) ^ ", " ^ strReg(rt)
 function clause execute (DMULTU(rs, rt)) =
   {
     result = rGPR(rs) *_u rGPR(rt);
@@ -720,6 +783,7 @@ function clause execute (DMULTU(rs, rt)) =
 union clause ast = MADD : (regno, regno)
 function clause decode (0b011100 @ rs : regno @ rt : regno @ 0b00000 @ 0b00000 @ 0b000000) =
   Some(MADD(rs, rt))
+function clause assembly (MADD(rs, rt)) = "madd " ^ strReg(rs) ^ ", " ^ strReg(rt)
 function clause execute (MADD(rs, rt)) =
   {
     rsVal = rGPR(rs);
@@ -737,6 +801,7 @@ function clause execute (MADD(rs, rt)) =
 union clause ast = MADDU : (regno, regno)
 function clause decode (0b011100 @ rs : regno @ rt : regno @ 0b00000 @ 0b00000 @ 0b000001) =
   Some(MADDU(rs, rt))
+function clause assembly (MADDU(rs, rt)) = "maddu " ^ strReg(rs) ^ ", " ^ strReg(rt)
 function clause execute (MADDU(rs, rt)) =
   {
     rsVal = rGPR(rs);
@@ -754,6 +819,7 @@ function clause execute (MADDU(rs, rt)) =
 union clause ast = MSUB : (regno, regno)
 function clause decode (0b011100 @ rs : regno @ rt : regno @ 0b00000 @ 0b00000 @ 0b000100) =
   Some(MSUB(rs, rt))
+function clause assembly (MSUB(rs, rt)) = "msub " ^ strReg(rs) ^ ", " ^ strReg(rt)
 function clause execute (MSUB(rs, rt)) =
   {
     rsVal = rGPR(rs);
@@ -771,6 +837,7 @@ function clause execute (MSUB(rs, rt)) =
 union clause ast = MSUBU : (regno, regno)
 function clause decode (0b011100 @ rs : regno @ rt : regno @ 0b00000 @ 0b00000 @ 0b000101) =
   Some(MSUBU(rs, rt))
+function clause assembly (MSUBU(rs, rt)) = "msubu " ^ strReg(rs) ^ ", " ^ strReg(rt)
 function clause execute (MSUBU(rs, rt)) =
   {
     rsVal = rGPR(rs);
@@ -788,6 +855,7 @@ function clause execute (MSUBU(rs, rt)) =
 union clause ast = DIV : (regno, regno)
 function clause decode (0b000000 @ rs : regno @ rt : regno @ 0b00000 @ 0b00000 @ 0b011010) =
   Some(DIV(rs, rt))
+function clause assembly (DIV(rs, rt)) = "div " ^ strReg(rs) ^ ", " ^ strReg(rt)
 function clause execute (DIV(rs, rt)) =
   {
     rsVal = rGPR(rs);
@@ -812,6 +880,7 @@ function clause execute (DIV(rs, rt)) =
 union clause ast = DIVU : (regno, regno)
 function clause decode (0b000000 @ rs : regno @ rt : regno @ 0b00000 @ 0b00000 @ 0b011011) =
   Some(DIVU(rs, rt))
+function clause assembly (DIVU(rs, rt)) = "divu " ^ strReg(rs) ^ ", " ^ strReg(rt)
 function clause execute (DIVU(rs, rt)) =
   {
     rsVal = rGPR(rs);
@@ -836,6 +905,7 @@ function clause execute (DIVU(rs, rt)) =
 union clause ast = DDIV : (regno, regno)
 function clause decode (0b000000 @ rs : regno @ rt : regno @ 0b00000 @ 0b00000 @ 0b011110) =
   Some(DDIV(rs, rt))
+function clause assembly (DDIV(rs, rt)) = "ddiv " ^ strReg(rs) ^ ", " ^ strReg(rt)
 function clause execute (DDIV(rs, rt)) =
   {
     rsVal = signed(rGPR(rs));
@@ -857,6 +927,7 @@ function clause execute (DDIV(rs, rt)) =
 union clause ast = DDIVU : (regno, regno)
 function clause decode (0b000000 @ rs : regno @ rt : regno @ 0b00000 @ 0b00000 @ 0b011111) =
   Some(DDIVU(rs, rt))
+function clause assembly (DDIVU(rs, rt)) = "ddivu " ^ strReg(rs) ^ ", " ^ strReg(rt)
 function clause execute (DDIVU(rs, rt)) =
   {
     rsVal = unsigned(rGPR(rs));
@@ -882,6 +953,7 @@ function clause execute (DDIVU(rs, rt)) =
 union clause ast = J : bits(26)
 function clause decode (0b000010 @ offset : bits(26)) =
   Some(J(offset))
+function clause assembly (J(offset)) = "j " ^ hex_str(unsigned(offset))
 function clause execute (J(offset)) =
   {
     if (InBranchDelay) then
@@ -893,6 +965,7 @@ function clause execute (J(offset)) =
 union clause ast = JAL : bits(26)
 function clause decode (0b000011 @ offset : bits(26)) =
   Some(JAL(offset))
+function clause assembly (JAL(offset)) = "jal " ^ hex_str(unsigned(offset))
 function clause execute (JAL(offset)) =
   {
     if (InBranchDelay) then
@@ -905,6 +978,7 @@ function clause execute (JAL(offset)) =
 union clause ast = JR : regno
 function clause decode (0b000000 @ rs : regno @ 0b00000 @ 0b00000 @ hint : regno @ 0b001000) =
   Some(JR(rs)) /* hint is ignored */
+function clause assembly (JR(rs)) = "jr " ^ strReg(rs)
 function clause execute (JR(rs)) =
   {
     if (InBranchDelay) then
@@ -916,6 +990,7 @@ function clause execute (JR(rs)) =
 union clause ast = JALR : (regno, regno)
 function clause decode (0b000000 @ rs : regno @ 0b00000 @ rd : regno @ hint : regno @ 0b001001) =
   Some(JALR(rs, rd)) /* hint is ignored */
+function clause assembly (JALR(rs, rd)) = "jalr " ^ strReg(rd) ^ ", " ^ strReg(rs)
 function clause execute (JALR(rs, rd)) =
   {
     if (InBranchDelay) then
@@ -938,6 +1013,11 @@ function clause decode (0b000101 @ rs : regno @ rt : regno @ imm : imm16) =
   Some(BEQ(rs, rt, imm, true , false))  /* BNE  */
 function clause decode (0b010101 @ rs : regno @ rt : regno @ imm : imm16) =
   Some(BEQ(rs, rt, imm, true , true))   /* BNEL */
+function clause assembly (BEQ(rs, rt, imm, ne, likely)) = {
+  let op = if ne then "bne" else "beq";
+  let l = if likely then "l " else " ";
+  op ^ l ^ strReg(rs) ^ ", " ^ strReg(rt) ^ ", " ^ hex_str(signed(imm))
+}
 function clause execute (BEQ(rs, rd, imm, ne, likely)) =
   {
     if (InBranchDelay) then
@@ -994,7 +1074,12 @@ function clause decode (0b000110 @ rs : regno @ 0b00000 @ imm : imm16) =
   Some(BCMPZ(rs, imm, LE, false, false)) /* BLEZ */
 function clause decode (0b010110 @ rs : regno @ 0b00000 @ imm : imm16) =
   Some(BCMPZ(rs, imm, LE, false, true))  /* BLEZL */
-
+function clause assembly (BCMPZ(rs, imm, cmp, link, likely)) = {
+  let op = "b" ^ strCmp(cmp) ^ "z";
+  let al = if link then "al" else "";
+  let l = if likely then "l " else " ";
+  op ^ al ^ l ^ strReg(rs) ^ ", " ^ hex_str(signed(imm))
+}
 function clause execute (BCMPZ(rs, imm, cmp, link, likely)) =
   {
     if (InBranchDelay) then
@@ -1028,6 +1113,7 @@ function clause execute (BCMPZ(rs, imm, cmp, link, likely)) =
 union clause ast = SYSCALL : unit
 function clause decode (0b000000 @ code : bits(20) @ 0b001100) =
   Some(SYSCALL()) /* code is ignored */
+function clause assembly (SYSCALL()) = "syscall"
 function clause execute (SYSCALL()) =
   {
     (SignalException(Sys))
@@ -1037,6 +1123,7 @@ function clause execute (SYSCALL()) =
 union clause ast = BREAK : unit
 function clause decode (0b000000 @ code : bits(20) @ 0b001101) =
   Some(BREAK()) /* code is ignored */
+function clause assembly (BREAK()) = "break"
 function clause execute (BREAK()) =
   {
     (SignalException(Bp))
@@ -1046,6 +1133,7 @@ function clause execute (BREAK()) =
 union clause ast = WAIT : unit
 function clause decode (0b010000 @ 0x80000 @ 0b100000) =
   Some(WAIT()) /* we only accept code == 0 */
+function clause assembly (WAIT()) = "wait"
 function clause execute (WAIT()) = {
   if (InBranchDelay) then
     SignalException(ResI);
@@ -1066,6 +1154,10 @@ function clause decode (0b000000 @ rs : regno @ rt : regno @ code : bits(10) @ 0
   Some(TRAPREG(rs, rt, EQ)) /* TEQ */
 function clause decode (0b000000 @ rs : regno @ rt : regno @ code : bits(10) @ 0b110110) =
   Some(TRAPREG(rs, rt, NE)) /* TNE */
+function clause assembly (TRAPREG(rs, rt, cmp)) = {
+  let op = "t" ^ strCmp(cmp) ^ " ";
+  op ^ strReg(rs) ^ ", " ^ strReg(rt)
+}
 function clause execute (TRAPREG(rs, rt, cmp)) =
   {
     rs_val = rGPR(rs);
@@ -1090,6 +1182,10 @@ function clause decode (0b000001 @ rs : regno @ 0b01010 @ imm : imm16) =
   Some(TRAPIMM(rs, imm, LT))  /* TLTI */
 function clause decode (0b000001 @ rs : regno @ 0b01011 @ imm : imm16) =
   Some(TRAPIMM(rs, imm, LTU)) /* TLTIU */
+function clause assembly (TRAPIMM(rs, imm, cmp)) = {
+  let op = "t" ^ strCmp(cmp) ^ "i ";
+  op ^ strReg(rs) ^ ", " ^ hex_str(unsigned(imm))
+}  
 function clause execute (TRAPIMM(rs, imm, cmp)) =
   {
     rs_val = rGPR(rs);
@@ -1122,7 +1218,21 @@ function clause decode (0b110000 @ base : regno @ rt : regno @ offset : imm16) =
   Some(Load(W, true,  true, base, rt, offset))  /* LL */
 function clause decode (0b110100 @ base : regno @ rt : regno @ offset : imm16) =
   Some(Load(D, false, true, base, rt, offset))  /* LLD */
-
+function clause assembly (Load(width, sign, linked, base, rt, offset)) = {
+  let op : string = match(width, sign, linked) {
+    (B,  true, false) => "lb ",
+    (B, false, false) => "lbu ",
+    (H,  true, false) => "lh ",
+    (H, false, false) => "lhu ",
+    (W,  true, false) => "lw ",
+    (W, false, false) => "lwu ",
+    (D, false, false) => "ld ",
+    (W,  true, true)  => "ll ",
+    (D, false, true)  => "lld ",
+    _                 => "invalid load"
+  };
+  op ^ strMemArgs(base, rt, offset)
+}
 function clause execute (Load(width, sign, linked, base, rt, offset)) =
   {
     vAddr : bits(64) = addrWrapper(sign_extend(offset) + rGPR(base), LoadData, width);
@@ -1171,6 +1281,13 @@ function clause decode (0b111000 @ base : regno @ rt : regno @ offset : imm16) =
   Some(Store(W, true, base, rt, offset))  /* SC */
 function clause decode (0b111100 @ base : regno @ rt : regno @ offset : imm16) =
   Some(Store(D, true, base, rt, offset))  /* SCD */
+function clause assembly (Store(width, conditional, base, rt, offset)) = {
+  let op : string = if conditional then
+      match width { W => "sc", D => "scd", _ => "invalid sc"}
+    else
+      "s" ^ strWordType(width);
+  op ^ " " ^ strMemArgs(base, rt, offset)
+}
 function clause execute (Store(width, conditional, base, rt, offset)) =
       {
         vAddr : bits(64) = addrWrapper(sign_extend(offset) + rGPR(base), StoreData, width);
@@ -1206,6 +1323,7 @@ function clause execute (Store(width, conditional, base, rt, offset)) =
 union clause ast = LWL : (regno, regno, bits(16))
 function clause decode(0b100010 @ base : regno @ rt : regno @ offset : imm16) =
       Some(LWL(base, rt, offset))
+function clause assembly(LWL(base, rt, offset)) = "lwl " ^ strMemArgs(base, rt, offset)
 function clause execute(LWL(base, rt, offset)) =
       {
         let (vAddr, size) = addrWrapperUnaligned(sign_extend(offset) + rGPR(base), LoadData, WL);
@@ -1226,6 +1344,7 @@ function clause execute(LWL(base, rt, offset)) =
 union clause ast = LWR : (regno, regno, bits(16))
 function clause decode(0b100110 @ base : regno @ rt : regno @ offset : imm16) =
       Some(LWR(base, rt, offset))
+function clause assembly(LWR(base, rt, offset)) = "lwr " ^ strMemArgs(base, rt, offset)
 function clause execute(LWR(base, rt, offset)) =
       {
         let (vAddr, size) = addrWrapperUnaligned(sign_extend(offset) + rGPR(base), LoadData, WR);
@@ -1248,6 +1367,7 @@ function clause execute(LWR(base, rt, offset)) =
 union clause ast = SWL : (regno, regno, bits(16))
 function clause decode(0b101010 @ base : regno @ rt : regno @ offset : imm16) =
       Some(SWL(base, rt, offset))
+function clause assembly(SWL(base, rt, offset)) = "swl " ^ strMemArgs(base, rt, offset)
 function clause execute(SWL(base, rt, offset)) =
       {
         let (vAddr, size) = addrWrapperUnaligned(sign_extend(offset) + rGPR(base), StoreData, WL);
@@ -1268,6 +1388,7 @@ function clause execute(SWL(base, rt, offset)) =
 union clause ast = SWR : (regno, regno, bits(16))
 function clause decode(0b101110 @ base : regno @ rt : regno @ offset : imm16) =
       Some(SWR(base, rt, offset))
+function clause assembly(SWR(base, rt, offset)) = "swr " ^ strMemArgs(base, rt, offset)
 function clause execute(SWR(base, rt, offset)) =
       {
         let (vAddr, size) = addrWrapperUnaligned(sign_extend(offset) + rGPR(base), StoreData, WR);
@@ -1289,6 +1410,7 @@ function clause execute(SWR(base, rt, offset)) =
 union clause ast = LDL : (regno, regno, bits(16))
 function clause decode(0b011010 @ base : regno @ rt : regno @ offset : imm16) =
   Some(LDL(base, rt, offset))
+function clause assembly(LDL(base, rt, offset)) = "ldl " ^ strMemArgs(base, rt, offset)
 function clause execute(LDL(base, rt, offset)) =
   {
     let (vAddr, size) = addrWrapperUnaligned(sign_extend(offset) + rGPR(base), LoadData, DL);
@@ -1314,6 +1436,7 @@ function clause execute(LDL(base, rt, offset)) =
 union clause ast = LDR : (regno, regno, bits(16))
 function clause decode(0b011011 @ base : regno @ rt : regno @ offset : imm16) =
   Some(LDR(base, rt, offset))
+function clause assembly(LDR(base, rt, offset)) = "ldr " ^ strMemArgs(base, rt, offset)
 function clause execute(LDR(base, rt, offset)) =
   {
     let (vAddr, size) = addrWrapperUnaligned(sign_extend(offset) + rGPR(base), LoadData, DR);
@@ -1339,6 +1462,7 @@ function clause execute(LDR(base, rt, offset)) =
 union clause ast = SDL : (regno, regno, bits(16))
 function clause decode(0b101100 @ base : regno @ rt : regno @ offset : imm16) =
       Some(SDL(base, rt, offset))
+function clause assembly(SDL(base, rt, offset)) = "sdl " ^ strMemArgs(base, rt, offset)
 function clause execute(SDL(base, rt, offset)) =
       {
         let (vAddr, size) = addrWrapperUnaligned(sign_extend(offset) + rGPR(base), StoreData, DL);
@@ -1365,6 +1489,7 @@ function clause execute(SDL(base, rt, offset)) =
 union clause ast = SDR : (regno, regno, bits(16))
 function clause decode(0b101101 @ base : regno @ rt : regno @ offset : imm16) =
       Some(SDR(base, rt, offset))
+function clause assembly(SDR(base, rt, offset)) = "sdr " ^ strMemArgs(base, rt, offset)
 function clause execute(SDR(base, rt, offset)) =
   {
         let (vAddr, size) = addrWrapperUnaligned(sign_extend(offset) + rGPR(base), StoreData, DR);
@@ -1391,6 +1516,7 @@ function clause execute(SDR(base, rt, offset)) =
 union clause ast = CACHE : (regno, regno, bits(16))
 function clause decode (0b101111 @ base : regno @ op : regno @ imm : imm16) =
   Some(CACHE(base, op, imm))
+function clause assembly(CACHE(base, op, imm)) = "cache " ^ strMemArgs(base, op, imm)
 function clause execute (CACHE(base, op, imm)) =
   checkCP0Access () /* pretty much a NOP because no caches */
 
@@ -1408,6 +1534,7 @@ function clause execute (PREF(base, op, imm)) =
 union clause ast = SYNC : unit
 function clause decode (0b000000 @ 0b00000 @ 0b00000 @ 0b00000 @ stype : regno @ 0b001111) =
   Some(SYNC()) /* stype is currently ignored */
+function clause assembly(SYNC()) = "sync"
 function clause execute(SYNC()) =
   MEM_sync()
 
@@ -1416,6 +1543,10 @@ function clause decode (0b010000 @ 0b00000 @ rt : regno @ rd : regno @ 0b0000000
   Some(MFC0(rt, rd, sel, false)) /* MFC0 */
 function clause decode (0b010000 @ 0b00001 @ rt : regno @ rd : regno @ 0b00000000 @ sel : bits(3)) =
   Some(MFC0(rt, rd, sel, true))  /* DMFC0 */
+function clause assembly (MFC0(rt, rd, sel, double)) = {
+  let op = if double then "dmfc0 " else "mfc0 ";
+  op ^ strReg(rt) ^ ", " ^ strReg(rd) ^ ", $" ^ dec_str(unsigned(sel)) // XXX improve
+}
 function clause execute (MFC0(rt, rd, sel, double)) = {
   checkCP0Access();
   let result : bits(64) = match (rd, sel)
@@ -1505,6 +1636,10 @@ function clause decode (0b010000 @ 0b00100 @ rt : regno @ rd : regno @ 0b0000000
   Some(MTC0(rt, rd, sel, false)) /* MTC0 */
 function clause decode (0b010000 @ 0b00101 @ rt : regno @ rd : regno @ 0b00000000 @ sel : bits(3)) =
   Some(MTC0(rt, rd, sel, true))  /* DMTC0 */
+function clause assembly (MTC0(rt, rd, sel, double)) = {
+  let op = if double then "dmtc0 " else "mtc0 ";
+  op ^ strReg(rt) ^ ", " ^ strReg(rd) ^ ", $" ^ dec_str(unsigned(sel)) // XXX improve
+}
 function clause execute (MTC0(rt, rd, sel, double)) = {
   checkCP0Access();
   let reg_val = rGPR(rt) in
@@ -1604,6 +1739,7 @@ function TLBWriteEntry(idx) = {
 
 union clause ast = TLBWI : unit
 function clause decode (0b010000 @ 0b10000000000000000000 @ 0b000010) = Some(TLBWI() : ast)
+function clause assembly (TLBWI()) = "tlbwi"
 function clause execute (TLBWI()) = {
   checkCP0Access();
   TLBWriteEntry(TLBIndex);
@@ -1611,6 +1747,7 @@ function clause execute (TLBWI()) = {
 
 union clause ast = TLBWR : unit
 function clause decode (0b010000 @ 0b10000000000000000000 @ 0b000110) = Some(TLBWR() : ast)
+function clause assembly (TLBWR()) = "tlbwr"
 function clause execute (TLBWR()) = {
   checkCP0Access();
   TLBWriteEntry(TLBRandom);
@@ -1618,6 +1755,7 @@ function clause execute (TLBWR()) = {
 
 union clause ast = TLBR : unit
 function clause decode (0b010000 @ 0b10000000000000000000 @ 0b000001) = Some(TLBR() : ast)
+function clause assembly (TLBR()) = "tlbr"
 function clause execute (TLBR()) = {
   checkCP0Access();
   let i as atom(_) = unsigned(TLBIndex) in
@@ -1650,6 +1788,7 @@ function clause execute (TLBR()) = {
 
 union clause ast = TLBP : unit
 function clause decode (0b010000 @ 0b10000000000000000000 @ 0b001000) = Some(TLBP() : ast)
+function clause assembly (TLBP()) = "tlbp"
 function clause execute (TLBP()) = {
   checkCP0Access();
   let result = tlbSearch(TLBEntryHi.bits()) in
@@ -1668,6 +1807,7 @@ function clause execute (TLBP()) = {
 union clause ast = RDHWR : (regno, regno)
 function clause decode (0b011111 @ 0b00000 @ rt : regno @ rd : regno @ 0b00000 @ 0b111011) =
   Some(RDHWR(rt, rd))
+function clause assembly (RDHWR(rt, rd)) = "rdhwr" ^ strReg(rt) ^ ", " ^ strReg(rd)
 function clause execute (RDHWR(rt, rd)) = {
   let accessLevel = getAccessLevel() in
   let haveAccessLevel : bool = accessLevel == Kernel in
@@ -1691,6 +1831,7 @@ union clause ast = ERET : unit
 
 function clause decode (0b010000 @ 0b1 @ 0b0000000000000000000 @ 0b011000) =
       Some(ERET())
+function clause assembly (ERET()) = "eret"
 function clause execute (ERET()) =
       {
         checkCP0Access();
