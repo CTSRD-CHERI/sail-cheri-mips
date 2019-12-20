@@ -19,8 +19,8 @@ MIPS_TLB:=$(MIPS_SAIL_DIR)/mips_tlb.sail
 MIPS_TLB_STUB:=$(MIPS_SAIL_DIR)/mips_tlb_stub.sail
 MIPS_INSTS:=$(MIPS_SAIL_DIR)/mips_insts.sail
 MIPS_EPILOGUE:=$(MIPS_SAIL_DIR)/mips_ri.sail $(MIPS_SAIL_DIR)/mips_epilogue.sail
-CHERI_PRE:=$(CHERI_SAIL_DIR)/cheri_types.sail $(CHERI_SAIL_DIR)/cheri_prelude_256.sail $(CHERI_SAIL_DIR)/cheri_prelude_common.sail
-CHERI128_PRE:=$(CHERI_SAIL_DIR)/cheri_types.sail $(CHERI_SAIL_DIR)/cheri_prelude_128.sail $(CHERI_SAIL_DIR)/cheri_prelude_common.sail
+CHERI_PRE:=$(CHERI_SAIL_DIR)/cheri_types.sail $(CHERI_SAIL_DIR)/cheri_prelude_256.sail $(CHERI_SAIL_DIR)/cheri_prelude_common.sail  $(MIPS_SAIL_DIR)/mips_ast_decl.sail
+CHERI128_PRE:=$(CHERI_SAIL_DIR)/cheri_types.sail $(CHERI_SAIL_DIR)/cheri_prelude_128.sail $(CHERI_SAIL_DIR)/cheri_prelude_common.sail $(MIPS_SAIL_DIR)/mips_ast_decl.sail
 CHERI_INSTS:=$(CHERI_SAIL_DIR)/cheri_insts.sail
 
 CHERI_SAILS:=$(MIPS_PRE) $(MIPS_TLB) $(CHERI_PRE) $(MIPS_INSTS) $(CHERI_INSTS) $(MIPS_EPILOGUE)

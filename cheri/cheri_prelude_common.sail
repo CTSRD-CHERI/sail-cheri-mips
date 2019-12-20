@@ -32,15 +32,6 @@
 /*  SUCH DAMAGE.                                                          */
 /*========================================================================*/
 
-
-scattered union ast
-
-val execute : ast -> unit effect {barr, eamem, escape, rmem, rmemt, rreg, undef, wmv, wmvt, wreg}
-scattered function execute
-
-val decode : bits(32) -> option(ast) effect pure
-scattered function decode
-
 type CapRegEnc = bits(5)                    /* a register number */
 type CapRegOrDDCEnc = bits(5)               /* a register number */
 type CapHwrEnc = bits(5)                    /* a register number */
