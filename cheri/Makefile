@@ -93,6 +93,12 @@ cheri128.c: $(CHERI128_SAILS) $(CHERI_MAIN)
 cheri128_c: cheri128.c $(SAIL_LIB_DIR)/sail.h Makefile
 	gcc $(C_OPT) $(GCOV_FLAGS) $< $(SAIL_LIB_DIR)/*.c -lgmp -lz -I $(SAIL_LIB_DIR) -o $@
 
+
+# test Ott raw pp
+cheri128_ast: $(CHERI128_SAILS) $(CHERI_MAIN)
+	../../sail/sail -ddump_tc_ast_ott_raw ../generated_definitions/ast/cheri128-ast-raw.txt -ocaml -o $@ $^
+
+
 # Note that for coverage purposes O1 appears optimal. O0 means lots of obviously dead code but O2 risks reducing granularity too much.
 cheri128_c_gcov: C_OPT=-O1
 cheri128_c_gcov: GCOV_FLAGS=-fprofile-arcs -ftest-coverage
