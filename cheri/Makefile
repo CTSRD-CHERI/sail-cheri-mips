@@ -95,6 +95,7 @@ cheri128_c: cheri128.c $(SAIL_LIB_DIR)/sail.h Makefile
 
 
 # test Ott raw pp
+.PHONY: cheri128_ast
 cheri128_ast: $(CHERI128_SAILS) $(CHERI_MAIN)
 	../../sail/sail -ddump_tc_ast_ott_raw ../generated_definitions/ast/cheri128-ast-raw.txt -ocaml -o $@ $^
 
