@@ -145,7 +145,7 @@ function clause execute (CGetPCCIncOffset(cd, rs)) =
 {
   checkCP2usable();
   let rs_val = rGPR(rs);
-  let (success, newCap) = incCapOffset(PCC, PC + rs_val);
+  let (success, newCap) = setCapOffset(PCC, PC + rs_val);
   if success then
       writeCapReg(cd, newCap)
   else
