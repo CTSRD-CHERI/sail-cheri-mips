@@ -1143,8 +1143,8 @@ function clause execute (CLoadTags(rd, cb)) =
         let (pAddr, macr) = TLBTranslateC(vAddr64, LoadData);
 
         match macr {
-          Clear => raise_c2_exception(CapEx_TLBLoadCap, cb),
-          Trap => raise_c2_exception(CapEx_TLBLoadCap, cb),
+          Clear => raise_c2_exception_badaddr(CapEx_TLBLoadCap, cb, vAddr64),
+          Trap => raise_c2_exception_badaddr(CapEx_TLBLoadCap, cb, vAddr64),
 
           Unrestricted => {
             x : bits(64)  = zeros();
@@ -1271,7 +1271,7 @@ function clause execute (CSC(cs, cb, rt, offset)) =
       let mtag : bool = match (if cs_val.tag == false then Unrestricted else macr) {
         Unrestricted => cs_val.tag,
         Clear => false,
-        Trap  => raise_c2_exception(CapEx_TLBNoStoreCap, cs)
+        Trap  => raise_c2_exception_badaddr(CapEx_TLBNoStoreCap, cs, vAddr64)
       };
       MEMw_tagged(pAddr, cap_size, mtag, capToMemBits(cs_val))
     }
@@ -1308,7 +1308,7 @@ function clause execute (CSCC(cs, cb, rd)) =
     {
       let (pAddr, macr) = TLBTranslateC(vAddr64, StoreData);
       let mtag : bool = match (if cs_val.tag == false then Unrestricted else macr) {
-        Trap => raise_c2_exception(CapEx_TLBNoStoreCap, cs),
+        Trap => raise_c2_exception_badaddr(CapEx_TLBNoStoreCap, cs, vAddr64),
         Clear => false,
         Unrestricted => cs_val.tag
       };
@@ -1350,7 +1350,7 @@ function clause execute (CLC(cd, cb, rt, offset)) =
         MEMr_tagged(pAddr, cap_size, cb_val.permit_load_cap & not (macr == Clear))
       in
       if tag & macr == Trap then
-        raise_c2_exception(CapEx_TLBLoadCap, cb)
+        raise_c2_exception_badaddr(CapEx_TLBLoadCap, cb, vAddr64)
       else let cap = memBitsToCapability(tag, mem) in
            writeCapReg(cd, cap);
     }
@@ -1392,7 +1392,7 @@ function clause execute (CLCBI(cd, cb, offset)) =
         MEMr_tagged(pAddr, cap_size, cb_val.permit_load_cap & not (macr == Clear))
       in
       if tag & macr == Trap then
-        raise_c2_exception(CapEx_TLBLoadCap, cb)
+        raise_c2_exception_badaddr(CapEx_TLBLoadCap, cb, vAddr64)
       else let cap = memBitsToCapability(tag, mem) in
            writeCapReg(cd, cap);
     }
@@ -1427,7 +1427,7 @@ function clause execute (CLLC(cd, cb)) =
         MEMr_tagged_reserve(pAddr, cap_size, cb_val.permit_load_cap & not (macr == Clear))
       in
       if tag & macr == Trap then
-        raise_c2_exception(CapEx_TLBLoadCap, cb)
+        raise_c2_exception_badaddr(CapEx_TLBLoadCap, cb, vAddr64)
       else {
         let cap = memBitsToCapability(tag, mem) in
         writeCapReg(cd, cap);
