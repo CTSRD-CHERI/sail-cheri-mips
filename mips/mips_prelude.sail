@@ -55,8 +55,8 @@ bitfield CauseReg : bits(32) = {
 }
 
 bitfield TLBEntryLoReg : bits(64) = {
-  CapS : 63,
-  CapL : 62,
+  CapS : 63, /* CHERI: Capability Store Inhibit */
+  CapL : 62, /* CHERI: Capability Load Inhibit */
   CapLG : 61, /* CHERI: Capability Load Generation */
   PFN : 29.. 6,
   C : 5.. 3,

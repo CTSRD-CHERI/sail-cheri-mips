@@ -375,6 +375,12 @@ val raise_c2_exception_noreg : forall ('o : Type) . (CapEx) -> 'o effect {escape
 function raise_c2_exception_noreg(capEx) =
   raise_c2_exception8(capEx, 0xff)
 
+val raise_c2_exception_badaddr : forall ('o : Type) . (CapEx, regno, bits(64)) -> 'o effect { escape, rreg, wreg }
+function raise_c2_exception_badaddr(capEx, regnum, badAddr) = {
+    CP0BadVAddr = badAddr;
+    raise_c2_exception(capEx, regnum);
+}
+
 val pcc_access_system_regs : unit -> bool effect {rreg}
 function pcc_access_system_regs () = PCC.access_system_regs
 
