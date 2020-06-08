@@ -1471,6 +1471,21 @@ function clause execute (CClearTags(cb)) =
   }
 }
 
+function strCReg(r) : regno -> string = concat_str_dec("$c", unsigned(r))
+function strRRArgs(rd : IntRegEnc, r1 : IntRegEnc) -> string = strReg(rd) ^ ", " ^ strReg(r1)
+function strRCArgs(rd : IntRegEnc, c1 : CapRegEnc) -> string = strReg(rd) ^ ", " ^ strCReg(c1)
+function strCRArgs(cd : CapRegEnc, r1 : IntRegEnc) -> string = strCReg(cd) ^ ", " ^ strReg(r1)
+function strCCArgs(cd : CapRegEnc, c1 : CapRegEnc) -> string = strCReg(cd) ^ ", " ^ strCReg(c1)
+function strCCCArgs(cd : CapRegEnc, c1 : CapRegEnc, c2 : CapRegEnc) -> string = strCReg(cd) ^ ", " ^ strCReg(c1) ^ ", " ^ strCReg(c2)
+function strCCRArgs(cd : CapRegEnc, c1 : CapRegEnc, r2 : IntRegEnc) -> string = strCReg(cd) ^ ", " ^ strCReg(c1) ^ ", " ^ strReg(r2)
+function strRCCArgs(rd : IntRegEnc, c1 : CapRegEnc, c2 : CapRegEnc) -> string = strReg(rd) ^ ", " ^ strCReg(c1) ^ ", " ^ strCReg(c2)
+function strRCRArgs(rd : IntRegEnc, c1 : CapRegEnc, r2 : IntRegEnc) -> string = strReg(rd) ^ ", " ^ strCReg(c1) ^ ", " ^ strReg(r2)
+val strCCIArgs : forall 'n, 'n > 0 . (regno, regno, bits('n)) -> string
+function strCCIArgs(cd, cs, imm) = strCReg(cd) ^ ", " ^ strCReg(cs) ^ ", " ^ dec_str(signed(imm))
+val strCCIUArgs : forall 'n, 'n > 0 . (regno, regno, bits('n)) -> string
+function strCCIUArgs(cd, cs, imm) = strCReg(cd) ^ ", " ^ strCReg(cs) ^ ", " ^ hex_str(unsigned(imm))
+
+
 union clause ast = C2Dump : regno
 function clause execute (C2Dump (rt)) =
     () /* Currently a NOP */
@@ -1522,71 +1537,124 @@ fields are re-used as additional function codes.
 
 /* One arg */
 function clause decode (0b010010 @ 0b00000 @ rd : IntRegEnc @    0b00001 @    0b11111 @ 0b111111) = Some(CGetCause(rd))
+function clause assembly (CGetCause(rd)) = "cgetcause " ^ strReg(rd)
 function clause decode (0b010010 @ 0b00000 @ rs : IntRegEnc @    0b00010 @    0b11111 @ 0b111111) = Some(CSetCause(rs))
+function clause assembly (CSetCause(rs)) = "csetcause " ^ strReg(rs)
 function clause decode (0b010010 @ 0b00000 @ cd : CapRegEnc @    0b00000 @    0b11111 @ 0b111111) = Some(CGetPCC(cd))
+function clause assembly (CGetPCC(cd)) = "cgetpcc " ^ strCReg(cd)
 function clause decode (0b010010 @ 0b00000 @ cb : CapRegEnc @    0b00011 @    0b11111 @ 0b111111) = Some(CJALR(0b00000, cb, false)) /* CJR */
+function clause assembly (CJALR(0b00000, cb, false)) = "cjr " ^ strCReg(cb)
 function clause decode (0b010010 @ 0b00000 @ rd : IntRegEnc @    0b00100 @    0b11111 @ 0b111111) = Some(CGetCID(rd))
+function clause assembly (CGetCID(rd)) = "cgetcid " ^ strReg(rd)
 function clause decode (0b010010 @ 0b00000 @ cb : CapRegEnc @    0b00101 @    0b11111 @ 0b111111) = Some(CSetCID(cb))
+function clause assembly (CSetCID(cb)) = "csetcid " ^ strCReg(cb)
+
 
 function clause decode (0b010010 @ 0b00000 @ cb : CapRegOrDDCEnc @    0b11000 @    0b11111 @ 0b111111) = Some(CClearTags(cb))
+function clause assembly (CClearTags(cb)) = "ccleartags " ^ strCReg(cb)
 
 /* Two arg */
 function clause decode (0b010010 @ 0b00000 @ cs : CapRegEnc @ rt : IntRegEnc @    0b01000 @ 0b111111) = Some(CCheckPerm(cs, rt))
+function clause assembly (CCheckPerm(cs, rt)) = "ccheckperm " ^ strCRArgs(cs, rt)
 function clause decode (0b010010 @ 0b00000 @ cs : CapRegEnc @ cb : CapRegEnc @    0b01001 @ 0b111111) = Some(CCheckType(cs, cb))
+function clause assembly (CCheckType(cs, cb)) = "cchecktype " ^ strCCArgs(cs, cb)
 function clause decode (0b010010 @ 0b00000 @ cd : CapRegEnc @ cb : CapRegEnc @    0b01011 @ 0b111111) = Some(CClearTag(cd, cb))
+function clause assembly (CClearTag(cd, cb)) = "ccleartag " ^ strCCArgs(cd, cb)
 function clause decode (0b010010 @ 0b00000 @ cd : CapRegEnc @ cs : CapRegEnc @    0b01010 @ 0b111111) = Some(CMove(cd, cs)) /* CMOVE */
+function clause assembly (CMove(cd, cs)) = "cmove " ^ strCCArgs(cd, cs)
 function clause decode (0b010010 @ 0b00000 @ cd : CapRegEnc @ cb : CapRegEnc @    0b01100 @ 0b111111) = Some(CJALR(cd, cb, true)) /* CJALR */
+function clause assembly (CJALR(cd, cb, true)) = "cjalr " ^ strCCArgs(cd, cb)
 function clause decode (0b010010 @ 0b00000 @ cd : CapRegEnc @ cb : CapRegEnc @    0b11101 @ 0b111111) = Some(CSealEntry(cd, cb))
+function clause assembly (CSealEntry(cd, cb)) = "csealentry " ^ strCCArgs(cd, cb)
 
 function clause decode (0b010010 @ 0b00000 @ rd : IntRegEnc @ cb : CapRegOrDDCEnc @    0b11110 @ 0b111111) = Some(CLoadTags(rd, cb))
+function clause assembly (CLoadTags(rd, cb)) = "cloadtags " ^ strRCArgs(rd, cb)
 
 /* Capability Inspection */
 function clause decode (0b010010 @ 0b00000 @ rd : IntRegEnc @ cb : CapRegEnc @    0b00000 @ 0b111111) = Some(CGetPerm(rd, cb))
+function clause assembly (CGetPerm(rd, cb)) = "cgetperm " ^ strRCArgs(rd, cb)
 function clause decode (0b010010 @ 0b00000 @ rd : IntRegEnc @ cb : CapRegEnc @    0b00001 @ 0b111111) = Some(CGetType(rd, cb))
+function clause assembly (CGetType(rd, cb)) = "cgettype " ^ strRCArgs(rd, cb)
 function clause decode (0b010010 @ 0b00000 @ rd : IntRegEnc @ cb : CapRegEnc @    0b00010 @ 0b111111) = Some(CGetBase(rd, cb))
+function clause assembly (CGetBase(rd, cb)) = "cgetbase " ^ strRCArgs(rd, cb)
 function clause decode (0b010010 @ 0b00000 @ rd : IntRegEnc @ cb : CapRegEnc @    0b00011 @ 0b111111) = Some(CGetLen(rd, cb))
+function clause assembly (CGetLen(rd, cb)) = "cgetlen " ^ strRCArgs(rd, cb)
 function clause decode (0b010010 @ 0b00000 @ rd : IntRegEnc @ cb : CapRegEnc @    0b00100 @ 0b111111) = Some(CGetTag(rd, cb))
+function clause assembly (CGetTag(rd, cb)) = "cgettag " ^ strRCArgs(rd, cb)
 function clause decode (0b010010 @ 0b00000 @ rd : IntRegEnc @ cb : CapRegEnc @    0b00101 @ 0b111111) = Some(CGetSealed(rd, cb))
+function clause assembly (CGetSealed(rd, cb)) = "cgetsealed " ^ strRCArgs(rd, cb)
 function clause decode (0b010010 @ 0b00000 @ rd : IntRegEnc @ cb : CapRegEnc @    0b00110 @ 0b111111) = Some(CGetOffset(rd, cb))
-function clause decode (0b010010 @ 0b00000 @ cd : CapRegEnc @ rs : CapRegEnc @    0b00111 @ 0b111111) = Some(CGetPCCSetOffset(cd, rs))
+function clause assembly (CGetOffset(rd, cb)) = "cgetoffset " ^ strRCArgs(rd, cb)
+function clause decode (0b010010 @ 0b00000 @ cd : CapRegEnc @ rs : IntRegEnc @    0b00111 @ 0b111111) = Some(CGetPCCSetOffset(cd, rs))
+function clause assembly (CGetPCCSetOffset(cd, rs)) = "cgetpccsetoffset " ^ strCRArgs(cd, rs)
 
 function clause decode (0b010010 @ 0b00000 @ cd : CapRegEnc @ sel : CapHwrEnc @   0b01101 @ 0b111111) = Some(CReadHwr(cd, sel))
+function clause assembly (CReadHwr(cd, sel)) = "creadhwr " ^ strCRArgs(cd, sel)
 function clause decode (0b010010 @ 0b00000 @ cb : CapRegEnc @ sel : CapHwrEnc @   0b01110 @ 0b111111) = Some(CWriteHwr(cb, sel))
+function clause assembly (CWriteHwr(cb, sel)) = "cwritehwr " ^ strCRArgs(cb, sel)
+
 
 function clause decode (0b010010 @ 0b00000 @ rd : IntRegEnc @ cb : CapRegEnc @   0b01111 @ 0b111111) = Some(CGetAddr(rd, cb))
+function clause assembly (CGetAddr(rd, cb)) = "cgetaddr " ^ strRCArgs(rd, cb)
 function clause decode (0b010010 @ 0b00000 @ rd : IntRegEnc @ cb : CapRegEnc @   0b10010 @ 0b111111) = Some(CGetFlags(rd, cb))
+function clause assembly (CGetFlags(rd, cb)) = "cgetflags " ^ strRCArgs(rd, cb)
 
-function clause decode (0b010010 @ 0b00000 @ rd : IntRegEnc @ cb : CapRegEnc @   0b10011 @ 0b111111) = Some(CGetPCCIncOffset(rd, cb))
-function clause decode (0b010010 @ 0b00000 @ rd : IntRegEnc @ cb : CapRegEnc @   0b10100 @ 0b111111) = Some(CGetPCCSetAddr(rd, cb))
+function clause decode (0b010010 @ 0b00000 @ cd : CapRegEnc @ rs : IntRegEnc @   0b10011 @ 0b111111) = Some(CGetPCCIncOffset(cd, rs))
+function clause assembly (CGetPCCIncOffset(cd, rs)) = "cgetpccincoffset " ^ strCRArgs(cd, rs)
+function clause decode (0b010010 @ 0b00000 @ cd : CapRegEnc @ rs : IntRegEnc @   0b10100 @ 0b111111) = Some(CGetPCCSetAddr(cd, rs))
+function clause assembly (CGetPCCSetOffset(cd, rs)) = "cgetpccsetaddr " ^ strCRArgs(cd, rs)
 
 function clause decode (0b010010 @ 0b00000 @ rt : IntRegEnc @ rs : IntRegEnc @   0b10000 @ 0b111111) = Some(CRAP(rt, rs))
+function clause assembly (CRAP(rt, rs)) = "crrl " ^ strRRArgs(rt, rs)
 function clause decode (0b010010 @ 0b00000 @ rt : IntRegEnc @ rs : IntRegEnc @   0b10001 @ 0b111111) = Some(CRAM(rt, rs))
+function clause assembly (CRAM(rt, rs)) = "cram " ^ strRRArgs(rt, rs)
 
 /* Three operand */
 
 /* Capability Modification */
 function clause decode (0b010010 @ 0b00000 @ cd : CapRegEnc @ cs : CapRegEnc @ ct : CapRegEnc @ 0b001011) = Some(CSeal(cd, cs, ct))
+function clause assembly (CSeal(cd, cs, ct)) = "cseal " ^ strCCCArgs(cd, cs, ct)
 function clause decode (0b010010 @ 0b00000 @ cd : CapRegEnc @ cs : CapRegEnc @ ct : CapRegEnc @ 0b001100) = Some(CUnseal(cd, cs, ct))
+function clause assembly (CUnseal(cd, cs, ct)) = "cunseal " ^ strCCCArgs(cd, cs, ct)
 function clause decode (0b010010 @ 0b00000 @ cd : CapRegEnc @ cs : CapRegEnc @ rt : IntRegEnc @ 0b001101) = Some(CAndPerm(cd, cs, rt))
+function clause assembly (CAndPerm(cd, cs, rt)) = "candperm " ^ strCCRArgs(cd, cs, rt)
 function clause decode (0b010010 @ 0b00000 @ cd : CapRegEnc @ cs : CapRegEnc @ rt : IntRegEnc @ 0b001111) = Some(CSetOffset(cd, cs, rt))
+function clause assembly (CSetOffset(cd, cs, rt)) = "csetoffset " ^ strCCRArgs(cd, cs, rt)
 function clause decode (0b010010 @ 0b00000 @ cd : CapRegEnc @ cs : CapRegEnc @ rt : IntRegEnc @ 0b001000) = Some(CSetBounds(cd, cs, rt))
+function clause assembly (CSetBounds(cd, cs, rt)) = "csetbounds " ^ strCCRArgs(cd, cs, rt)
 function clause decode (0b010010 @ 0b00000 @ cd : CapRegEnc @ cs : CapRegEnc @ rt : IntRegEnc @ 0b001001) = Some(CSetBoundsExact(cd, cs, rt))
+function clause assembly (CSetBoundsExact(cd, cs, rt)) = "csetboundsexact " ^ strCCRArgs(cd, cs, rt)
 function clause decode (0b010010 @ 0b00000 @ cd : CapRegEnc @ cs : CapRegEnc @ rt : IntRegEnc @ 0b001110) = Some(CSetFlags(cd, cs, rt))
+function clause assembly (CSetFlags(cd, cs, rt)) = "csetflags " ^ strCCRArgs(cd, cs, rt)
+
 
 function clause decode (0b010010 @ 0b00000 @ cd : CapRegEnc @ cb : CapRegEnc @ rt : IntRegEnc @ 0b010001) = Some(CIncOffset(cd, cb, rt))
+function clause assembly (CIncOffset(cd, cs, rt)) = "cincoffset " ^ strCCRArgs(cd, cs, rt)
 function clause decode (0b010010 @ 0b00000 @ cd : CapRegEnc @ cb : CapRegOrDDCEnc @ ct : CapRegEnc @ 0b011101) = Some(CBuildCap(cd, cb, ct))
+function clause assembly (CBuildCap(cd, cs, ct)) = "cbuildcap " ^ strCCCArgs(cd, cs, ct)
 function clause decode (0b010010 @ 0b00000 @ cd : CapRegEnc @ cb : CapRegEnc @ ct : CapRegEnc @ 0b011110) = Some(CCopyType(cd, cb, ct))
+function clause assembly (CCopyType(cd, cs, ct)) = "ccopytype " ^ strCCCArgs(cd, cs, ct)
 function clause decode (0b010010 @ 0b00000 @ cd : CapRegEnc @ cs : CapRegEnc @ ct : CapRegEnc @ 0b011111) = Some(CCSeal(cd, cs, ct))
+function clause assembly (CCSeal(cd, cs, ct)) = "ccseal " ^ strCCCArgs(cd, cs, ct)
 
 /* Pointer Arithmetic */
 function clause decode (0b010010 @ 0b00000 @ rd : IntRegEnc @ cb : CapRegEnc @ ct : CapRegEnc @ 0b010010) = Some(CToPtr(rd, cb, ct))
+function clause assembly (CToPtr(rd, cb, ct)) = "ctoptr " ^ strRCRArgs(rd, cb, ct)
 function clause decode (0b010010 @ 0b00000 @ cd : CapRegEnc @ cb : CapRegOrDDCEnc @ rs : IntRegEnc @ 0b010011) = Some(CFromPtr(cd, cb, rs))
+function clause assembly (CFromPtr(cd, cb, rs)) = "cfromptr " ^ strCCRArgs(cd, cb, rs)
 function clause decode (0b010010 @ 0b00000 @ rt : IntRegEnc @ cb : CapRegEnc @ cs : CapRegEnc @ 0b001010) = Some(CSub(rt, cb, cs))
+function clause assembly (CSub(rt, cb, cs)) = "csub " ^ strRCCArgs(rt, cb, cs)
 function clause decode (0b010010 @ 0b00000 @ cd : CapRegEnc @ cs : CapRegEnc @ rs : IntRegEnc @ 0b011011) = Some(CMOVX(cd, cs, rs, false)) /* CMOVZ */
+function clause assembly (CMOVX(cd, cs, rs, false)) = "cmovz " ^ strCCRArgs(cd, cs, rs)
 function clause decode (0b010010 @ 0b00000 @ cd : CapRegEnc @ cs : CapRegEnc @ rs : IntRegEnc @ 0b011100) = Some(CMOVX(cd, cs, rs, true))  /* CMOVN */
+function clause assembly (CMOVX(cd, cs, rs, true)) = "cmovn " ^ strCCRArgs(cd, cs, rs)
 function clause decode (0b010010 @ 0b00000 @ cd : CapRegEnc @ cs : CapRegEnc @ rs : IntRegEnc @ 0b100010) = Some(CSetAddr(cd, cs, rs))
+function clause assembly (CSetAddr(cd, cs, rt)) = "csetaddr " ^ strCCRArgs(cd, cs, rt)
 function clause decode (0b010010 @ 0b00000 @ rd : IntRegEnc @ cs : CapRegEnc @ rs : IntRegEnc @ 0b100011) = Some(CGetAndAddr(rd, cs, rs))
-function clause decode (0b010010 @ 0b00000 @ cd : CapRegEnc @ cs : CapRegEnc @ rs : IntRegEnc @ 0b100100) = Some(CAndAddr(cd, cs, rs))
+function clause assembly (CGetAndAddr(rd, cs, rs)) = "cgetandaddr " ^ strRCRArgs(rd, cs, rs)
+function clause decode (0b010010 @ 0b00000 @ cd : CapRegEnc @ cs : CapRegEnc @ rt : IntRegEnc @ 0b100100) = Some(CAndAddr(cd, cs, rt))
+function clause assembly (CAndAddr(cd, cs, rt)) = "candaddr " ^ strCCRArgs(cd, cs, rt)
+
 
 
 /* Pointer Comparison */
@@ -1610,14 +1678,19 @@ function clause decode (0b010010 @ 0b10001 @ cd : CapRegEnc @ imm : bits(16)) = 
 function clause decode (0b010010 @ 0b10010 @ cd : CapRegEnc @ imm : bits(16)) = Some(CBZ(cd, imm, true))  /* CBNZ */
 
 function clause decode (0b010010 @ 0b00101 @    0b00000 @    0b00000 @ 0b11111111111) = Some(CReturn())
+function clause assembly (CReturn()) = "creturn"
 function clause decode (0b010010 @ 0b00101 @ cs : CapRegEnc @ cb : CapRegEnc @ selector : bits(11)) = Some(CCall(cs, cb, selector))
+function clause assembly (CCall(cs, cb, selector)) = "ccall " ^ strCCIUArgs(cs, cb, selector)
+
 
 function clause decode (0b010010 @ 0b01111 @ 0b00000 @ imm : bits(16)) = Some(ClearRegs(GPLo, imm))
 function clause decode (0b010010 @ 0b01111 @ 0b00001 @ imm : bits(16)) = Some(ClearRegs(GPHi, imm))
 function clause decode (0b010010 @ 0b01111 @ 0b00010 @ imm : bits(16)) = Some(ClearRegs(CLo,  imm))
 function clause decode (0b010010 @ 0b01111 @ 0b00011 @ imm : bits(16)) = Some(ClearRegs(CHi,  imm))
 function clause decode (0b010010 @ 0b10011 @ cd : CapRegEnc @ cb : CapRegEnc @ imm : bits(11)) = Some(CIncOffsetImmediate(cd, cb, imm))
+function clause assembly (CIncOffsetImmediate(cd, cb, imm)) = "cincoffsetimm " ^ strCCIArgs(cd, cb, imm)
 function clause decode (0b010010 @ 0b10100 @ cd : CapRegEnc @ cb : CapRegEnc @ imm : bits(11)) = Some(CSetBoundsImmediate(cd, cb, imm))
+function clause assembly (CSetBoundsImmediate(cd, cb, imm)) = "csetboundsimm " ^ strCCIUArgs(cd, cb, imm)
 
 function clause decode (0b110010 @ rd : IntRegEnc @ cb : CapRegOrDDCEnc @ rt : IntRegEnc @ offset : bits(8) @ 0b0 @ 0b00) = Some(CLoad(rd, cb, rt, offset, false, B)) /* CLBU */
 function clause decode (0b110010 @ rd : IntRegEnc @ cb : CapRegOrDDCEnc @ rt : IntRegEnc @ offset : bits(8) @ 0b1 @ 0b00) = Some(CLoad(rd, cb, rt, offset, true,  B)) /* CLB */
