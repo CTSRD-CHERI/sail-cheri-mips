@@ -1038,12 +1038,9 @@ function clause execute(CJALR(cd, cb, link)) =
     {
       let (success, linkCap) = setCapOffset(PCC, PC+8);
       assert(success, "Link cap should always be representable.");
-      if sentry then {
-        let (success2, sealedLink) = sealCap(linkCap, to_bits(24, otype_sentry));
-        assert(success2, "Sealing should always be possible with current format.");
-        writeCapReg(cd, sealedLink);
-      } else
-        writeCapReg(cd, linkCap);
+      let (success2, sealedLink) = sealCap(linkCap, to_bits(24, otype_sentry));
+      assert(success2, "Sealing should always be possible with current format.");
+      writeCapReg(cd, sealedLink);
     };
     execute_branch_pcc(cb_val);
   };
