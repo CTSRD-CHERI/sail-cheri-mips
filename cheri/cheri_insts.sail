@@ -1247,7 +1247,7 @@ function clause execute (CSC(cs, cb, rt, offset)) =
     raise_c2_exception(CapEx_SealViolation, cb)
   else if not (cb_val.permit_store) then
     raise_c2_exception(CapEx_PermitStoreViolation, cb)
-  else if not (cb_val.permit_store_cap) then
+  else if not (cb_val.permit_store_cap) & (cs_val.tag) then
     raise_c2_exception(CapEx_PermitStoreCapViolation, cb)
   else if not (cb_val.permit_store_local_cap) & (cs_val.tag) & not (cs_val.global) then
     raise_c2_exception(CapEx_PermitStoreLocalCapViolation, cb)
@@ -1287,7 +1287,7 @@ function clause execute (CSCC(cs, cb, rd)) =
     raise_c2_exception(CapEx_SealViolation, cb)
   else if not (cb_val.permit_store) then
     raise_c2_exception(CapEx_PermitStoreViolation, cb)
-  else if not (cb_val.permit_store_cap) then
+  else if not (cb_val.permit_store_cap) & (cs_val.tag) then
     raise_c2_exception(CapEx_PermitStoreCapViolation, cb)
   else if not (cb_val.permit_store_local_cap) & (cs_val.tag) & not (cs_val.global) then
     raise_c2_exception(CapEx_PermitStoreLocalCapViolation, cb)
