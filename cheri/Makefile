@@ -28,6 +28,7 @@ CHERI_SAILS_NOMIPS:=$(MIPS_PRE) $(MIPS_TLB) $(CHERI_PRE) $(CHERI_INSTS) $(MIPS_E
 CHERI_MONO_SAILS:=$(MIPS_PRE) $(SAIL_LIB_DIR)/mono_rewrites.sail $(MIPS_TLB) $(CHERI_PRE) $(MIPS_INSTS) $(CHERI_INSTS) $(MIPS_EPILOGUE)
 CHERI_NO_TLB_SAILS:=$(MIPS_PRE) $(MIPS_TLB_STUB) $(CHERI_PRE) $(MIPS_INSTS) $(CHERI_INSTS) $(MIPS_EPILOGUE)
 CHERI128_SAILS:=$(MIPS_PRE) $(MIPS_TLB) $(CHERI128_PRE) $(MIPS_INSTS) $(CHERI_INSTS) $(MIPS_EPILOGUE)
+CHERI128_SAILS_NOMIPS:=$(MIPS_PRE) $(MIPS_TLB) $(CHERI128_PRE) $(CHERI_INSTS) $(MIPS_EPILOGUE)
 CHERI128_NO_TLB_SAILS:=$(MIPS_PRE) $(MIPS_TLB_STUB) $(CHERI128_PRE) $(MIPS_INSTS) $(CHERI_INSTS) $(MIPS_EPILOGUE)
 CHERI_MAIN:=$(MIPS_SAIL_DIR)/main.sail
 
@@ -63,23 +64,15 @@ gcovr:
 cheri128_smt: $(CHERI128_NO_TLB_SAILS) properties_128.sail
 	$(SAIL) -smt -undefined_gen -memo_z3 $^
 
-latex_128: $(MIPS_SAIL_DIR)/prelude.sail $(CHERI_SAIL_DIR)/cheri_types.sail $(CHERI_SAIL_DIR)/cheri_prelude_128.sail
-	rm -rf sail_latexcc
-	$(SAIL) -latex -latex_prefix sailcc -o sail_latexcc $^
+latex_128: $(CHERI128_SAILS_NOMIPS)
+	rm -rf sail_latex_mips
+	$(SAIL) -latex -latex_prefix sailMIPS -o sail_latex_mips $^
 
 latex_256: $(CHERI_SAILS_NOMIPS)
-	rm -rf sail_latex
-	$(SAIL) -latex $^
+	rm -rf sail_latex_mips_256
+	$(SAIL) -latex -latex_prefix sailMIPS256 -o sail_latex_mips_256 $^
 
 latex: latex_128 latex_256
-
-# to install latex in the right place - specific to PS checkouts
-CHERI_ARCH_PATH=/home/pes20/repos/ctsrd/reports/cheri-architecture
-install_latex: 
-	rm -rf $(CHERI_ARCH_PATH)/sail_latex/*.tex
-	cp sail_latex/*.tex $(CHERI_ARCH_PATH)/sail_latex
-	rm -rf $(CHERI_ARCH_PATH)/sail_latexcc/*.tex
-	cp sail_latexcc/*.tex $(CHERI_ARCH_PATH)/sail_latexcc
 
 cheri128: $(CHERI128_SAILS) $(CHERI_MAIN)
 	$(SAIL) -ocaml_build_dir _sbuild_cheri128 -ocaml -o $@ $^
@@ -168,7 +161,7 @@ qtest: cheri_cc_qtest
 	./cheri_cc_qtest_build/main.native --verbose
 
 clean:
-	rm -rf cheri cheri_trace cheri_coverage cheri_c cheri128 cheri128_trace cheri128_c _sbuild _sbuild_cheri _sbuild_cheri128 inst_*.sail cheri.c cheri128.c sail_latex sail_latexcc coverage_report
+	rm -rf cheri cheri_trace cheri_coverage cheri_c cheri128 cheri128_trace cheri128_c _sbuild _sbuild_cheri _sbuild_cheri128 inst_*.sail cheri.c cheri128.c sail_latex sail_latexcc sail_latex_mips sail_latex_mips_256 coverage_report
 	rm -f cheriScript.sml cheri_typesScript.sml mips_extrasScript.sml
 	rm -f cheri.v cheri_types.v $(CHERI_COQ:%.v=%.vo) $(CHERI_COQ:%.v=%.glob) $(CHERI_COQ:%.v=.%.aux)
 	rm -f cheri128.v cheri128_types.v $(CHERI128_COQ:%.v=%.vo) $(CHERI128_COQ:%.v=%.glob) $(CHERI128_COQ:%.v=.%.aux)

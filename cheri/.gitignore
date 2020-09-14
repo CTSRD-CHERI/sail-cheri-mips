@@ -6,4 +6,6 @@ mips_extrasScript.sml
 
 /sail_latex
 /sail_latexcc
+/sail_latex_mips
+/sail_latex_mips_256
 /_sbuild
