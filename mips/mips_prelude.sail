@@ -32,7 +32,7 @@
 /*  SUCH DAMAGE.                                                          */
 /*========================================================================*/
 
-/* mips_prelude.sail: declarations of mips registers, and functions common 
+/* mips_prelude.sail: declarations of mips registers, and functions common
    to mips instructions (e.g. address translation) */
 
 register PC : bits(64)
@@ -427,7 +427,7 @@ function ExceptionCode (ex) : Exception -> bits(5)=
       MCheck       => 0x18
    } in x[4..0]
 
-function string_of_exception(ex) : Exception -> string = 
+function string_of_exception(ex) : Exception -> string =
    match ex {
       Interrupt    => "Interrupt",
       TLBMod       => "TLBMod",
@@ -457,15 +457,15 @@ function traceException (ex : Exception) = {
     prerr_endline(string_of_exception(ex));
   };
 }
-/*! 
+/*!
 Choose an exception vector offset based on current state of processor
-and exception type. Some are not supported e.g. Reset. 
+and exception type. Some are not supported e.g. Reset.
 */
 val exceptionVectorOffset : Exception -> bits(12) effect {rreg}
-function exceptionVectorOffset (ex) = 
+function exceptionVectorOffset (ex) =
   if (CP0Status.EXL()) then
     0x180 /* Always use common vector if in exception mode already */
-  else if ((ex == XTLBRefillL) | (ex == XTLBRefillS)) then 
+  else if ((ex == XTLBRefillL) | (ex == XTLBRefillS)) then
     0x080
   else if (ex == C2Trap) then
     0x280 /* Special vector for CHERI traps */
@@ -494,7 +494,7 @@ function updateBadInstr () = {
 }
 
 /*
- Defined either in mips_wrappers (directly calling SignalExceptionMIPS) or in cheri_prelude_common (cheri things plus above) 
+ Defined either in mips_wrappers (directly calling SignalExceptionMIPS) or in cheri_prelude_common (cheri things plus above)
 */
 /*!
 Causes the processor to raise the given exception in the usual manner defined by the processor architecture (as modified for CHERI).
@@ -525,7 +525,7 @@ enum MemAccessType = {Instruction, LoadData, StoreData}
 
 enum MemAccessCapRestriction = { Unrestricted, Trap, Clear }
 
-enum AccessLevel = {User, Supervisor, Kernel} 
+enum AccessLevel = {User, Supervisor, Kernel}
 
 val int_of_AccessLevel : AccessLevel -> {|0, 1, 2|} effect pure
 function int_of_AccessLevel level =
@@ -603,23 +603,23 @@ val strRIArgs : forall 'n, 'n > 0 . (regno, bits('n)) -> string
 function strRIArgs(rd, imm) = strReg(rd) ^ ", " ^ hex_str(unsigned(imm))
 val strMemArgs : forall 'n, 'n > 0 . (regno, regno, bits('n)) -> string
 function strMemArgs(base, rt, offset) = strReg(rt) ^ ", " ^ dec_str(signed(offset)) ^ "(" ^ strReg(base) ^ ")"
-enum decode_failure = { 
-  no_matching_pattern, 
-  unsupported_instruction, 
-  illegal_instruction, 
+enum decode_failure = {
+  no_matching_pattern,
+  unsupported_instruction,
+  illegal_instruction,
   internal_error
 }
 
 /* Used by branch and trap instructions */
-enum Comparison = { 
+enum Comparison = {
   EQ, /* equal */
   NE, /* not equal */
   GE, /* signed greater than or equal */
-  GEU,/* unsigned greater than or equal */ 
-  GT, /* signed strictly greater than */ 
-  LE, /* signed less than or equal */ 
-  LT, /* signed strictly less than */ 
-  LTU /* unsigned less than or qual */ 
+  GEU,/* unsigned greater than or equal */
+  GT, /* signed strictly greater than */
+  LE, /* signed less than or equal */
+  LT, /* signed strictly less than */
+  LTU /* unsigned less than or qual */
 }
 
 function strCmp (cmp : Comparison) -> string = match cmp {

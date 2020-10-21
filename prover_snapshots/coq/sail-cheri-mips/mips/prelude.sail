@@ -1,6 +1,6 @@
 default Order dec
 
-/* this is here because if we don't have it before including vector_dec 
+/* this is here because if we don't have it before including vector_dec
    we get infinite loops caused by interaction with bool/bit casts */
 val eq_bit2 = "eq_bit" : (bit, bit) -> bool
 overload operator == = {eq_bit2}
@@ -71,9 +71,9 @@ overload negate = {negate_range, negate_int}
 
 overload operator * = {mult_int}
 
-/* 
+/*
 Use Euclidean div and mod.
-Plain 'div' and 'mod' are are for compatibility with versions of sail prior to 0.9 
+Plain 'div' and 'mod' are are for compatibility with versions of sail prior to 0.9
 */
 overload operator / = {ediv_int, div}
 overload operator % = {emod_int, mod}

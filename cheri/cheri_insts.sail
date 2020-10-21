@@ -166,7 +166,7 @@ function clause execute (CGetPCCSetAddr(cd, rs)) =
 /* Get and Set CP2 cause register */
 
 union clause ast = CGetCause : regno
-function clause execute (CGetCause(rd)) = 
+function clause execute (CGetCause(rd)) =
 {
   checkCP2usable();
   if not (pcc_access_system_regs ()) then
@@ -176,7 +176,7 @@ function clause execute (CGetCause(rd)) =
 }
 
 union clause ast = CSetCause : regno
-function clause execute (CSetCause(rt)) = 
+function clause execute (CSetCause(rt)) =
 {
   checkCP2usable();
   if not (pcc_access_system_regs ()) then
@@ -190,14 +190,14 @@ function clause execute (CSetCause(rt)) =
 }
 
 union clause ast = CGetCID : regno
-function clause execute (CGetCID(rd)) = 
+function clause execute (CGetCID(rd)) =
 {
   checkCP2usable();
   wGPR(rd) = CID;
 }
 
 union clause ast = CSetCID : regno
-function clause execute (CSetCID(cb)) = 
+function clause execute (CSetCID(cb)) =
 {
   checkCP2usable();
   let cb_val = readCapReg(cb);
@@ -236,7 +236,7 @@ function clause execute(CRAM(rt, rs)) =
 }
 
 union clause ast = CReadHwr : (regno, regno)
-function clause execute (CReadHwr(cd, sel)) = 
+function clause execute (CReadHwr(cd, sel)) =
 {
   checkCP2usable();
   let (needSup, needAccessSys) : (bool, bool) = match unsigned(sel) {
@@ -273,7 +273,7 @@ function clause execute (CReadHwr(cd, sel)) =
 }
 
 union clause ast = CWriteHwr : (regno, regno)
-function clause execute (CWriteHwr(cb, sel)) = 
+function clause execute (CWriteHwr(cb, sel)) =
 {
   checkCP2usable();
   let (needSup, needAccessSys) : (bool, bool) = match unsigned(sel) {
@@ -310,7 +310,7 @@ function clause execute (CWriteHwr(cb, sel)) =
 }
 
 union clause ast = CAndPerm : (regno, regno, regno)
-function clause execute(CAndPerm(cd, cb, rt)) = 
+function clause execute(CAndPerm(cd, cb, rt)) =
 {
   checkCP2usable();
   let cb_val = readCapReg(cb);
@@ -328,7 +328,7 @@ function clause execute(CAndPerm(cd, cb, rt)) =
 }
 
 union clause ast = CSetFlags : (regno, regno, regno)
-function clause execute(CSetFlags(cd, cb, rt)) = 
+function clause execute(CSetFlags(cd, cb, rt)) =
 {
   checkCP2usable();
   let cb_val = readCapReg(cb);
@@ -343,7 +343,7 @@ function clause execute(CSetFlags(cd, cb, rt)) =
 }
 
 union clause ast = CToPtr : (regno, regno, regno)
-function clause execute(CToPtr(rd, cb, ct)) = 
+function clause execute(CToPtr(rd, cb, ct)) =
 {
   checkCP2usable();
   let ct_val = readCapRegDDC(ct);
@@ -352,7 +352,7 @@ function clause execute(CToPtr(rd, cb, ct)) =
     raise_c2_exception(CapEx_TagViolation, ct)
   else if cb_val.tag & cb_val.sealed then
     raise_c2_exception(CapEx_SealViolation, cb)
-  else 
+  else
   {
     let ctBase = getCapBase(ct_val);
     /* Note: returning zero for untagged values breaks magic constants such as SIG_IGN */
@@ -366,7 +366,7 @@ function clause execute(CToPtr(rd, cb, ct)) =
 
 
 union clause ast = CSub : (regno, regno, regno)
-function clause execute(CSub(rd, cb, ct)) = 
+function clause execute(CSub(rd, cb, ct)) =
 {
   checkCP2usable();
   let ct_val = readCapReg(ct);
@@ -375,7 +375,7 @@ function clause execute(CSub(rd, cb, ct)) =
 }
 
 union clause ast = CPtrCmp : (regno, regno, regno, CPtrCmpOp)
-function clause execute(CPtrCmp(rd, cb, ct, op)) = 
+function clause execute(CPtrCmp(rd, cb, ct, op)) =
 {
   checkCP2usable();
   let cb_val = readCapReg(cb);
@@ -894,7 +894,7 @@ function clause execute (CUnseal(cd, cs, ct)) =
   else if ct_cursor >= getCapTop(ct_val) then
     raise_c2_exception(CapEx_LengthViolation, ct)
   else
-    writeCapReg(cd, {unsealCap(cs_val) with 
+    writeCapReg(cd, {unsealCap(cs_val) with
       global=(cs_val.global & ct_val.global)
     })
 }
@@ -1008,7 +1008,7 @@ function clause execute (CBZ(cb, imm, notzero)) =
 }
 
 union clause ast = CJALR : (regno, regno, bool)
-function clause execute(CJALR(cd, cb, link)) = 
+function clause execute(CJALR(cd, cb, link)) =
 {
   checkCP2usable();
   if InBranchDelay then
@@ -1319,7 +1319,7 @@ function clause execute (CSCC(cs, cb, rd)) =
 }
 
 union clause ast = CLC : (regno, regno, regno, bits(11))
-function clause execute (CLC(cd, cb, rt, offset)) =  
+function clause execute (CLC(cd, cb, rt, offset)) =
 {
   checkCP2usable();
   let cb_val = readCapRegDDC(cb);
@@ -1361,7 +1361,7 @@ function clause execute (CLCNT(cd, cb, rt)) =
 }
 
 union clause ast = CLCBI : (regno, regno, bits(16))
-function clause execute (CLCBI(cd, cb, offset)) =  
+function clause execute (CLCBI(cd, cb, offset)) =
 {
   checkCP2usable();
   let cb_val = readCapRegDDC(cb);
@@ -1397,7 +1397,7 @@ function clause execute (CLCBI(cd, cb, offset)) =
 }
 
 union clause ast = CLLC : (regno, regno)
-function clause execute (CLLC(cd, cb)) =  
+function clause execute (CLLC(cd, cb)) =
 {
   checkCP2usable();
   let cb_val = readCapRegDDC(cb);
@@ -1462,7 +1462,7 @@ function clause execute (CClearTags(cb)) =
       foreach (i from 0 to (caps_per_cacheline - 1))
       {
         /* We could use write_tag_bool instead of reading data and writing it out again
-           but that would be incompatible with the way proofs are currently done. 
+           but that would be incompatible with the way proofs are currently done.
            There are concurrency implications to this method. */
         let (_, mem) = MEMr_tagged(pAddr + i*cap_size, cap_size, false);
         MEMw_tagged(pAddr + i*cap_size, cap_size, false, mem);
@@ -1528,8 +1528,8 @@ function clause decode (0b010010 @ 0b00111 @ cd : CapRegEnc @ cb : CapRegEnc @ 0
 function clause decode (0b010010 @ 0b01000 @ 0b00000    @ cb : CapRegEnc @ 0b00000 @ 0b000000) = Some(CJALR(0b00000, cb, false)) /* CJR */
 
 
-/* 
-New encodings as per CHERI ISA Appendix B.2.  
+/*
+New encodings as per CHERI ISA Appendix B.2.
 
 NB: Must be careful about order of matching because unused register
 fields are re-used as additional function codes.

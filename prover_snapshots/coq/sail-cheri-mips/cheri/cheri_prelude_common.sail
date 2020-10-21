@@ -139,7 +139,7 @@ function readCapReg(n) =
     *(CapRegs[i])
 
 /*!
-THIS is the same as [readCapReg] except that when the argument is zero the value of DDC is returned 
+THIS is the same as [readCapReg] except that when the argument is zero the value of DDC is returned
 instead of the null capability. This is used for instructions that expect an address, where using
 null would always generate an exception.
 */
@@ -185,9 +185,9 @@ function writeCapReg(n, cap) =
 /*!
 THIS`(cap)` returns `cap` with the tag unset. It is used when the
 result of a capability operation (e.g. setting the address) has
-caused it to become unrepresentable. The result of subsequent 
-operations such as [getCapBase] will depend on the exact capability 
-format in use but in general the address, length, object type and 
+caused it to become unrepresentable. The result of subsequent
+operations such as [getCapBase] will depend on the exact capability
+format in use but in general the address, length, object type and
 permissions will remain the same, with the expected operation having
 been applied to the address.
  */
@@ -195,7 +195,7 @@ val unrepCap : Capability -> Capability
 function unrepCap(cap) = {cap with tag = false}
 
 enum CapEx = {
-  CapEx_None, 
+  CapEx_None,
   CapEx_LengthViolation,
   CapEx_TagViolation,
   CapEx_SealViolation,
@@ -249,7 +249,7 @@ function CapExCode(ex) : CapEx -> bits(8)=
     CapEx_PermitSetCIDViolation         => 0x1c
   }
 
-function string_of_capex (ex) : CapEx -> string = 
+function string_of_capex (ex) : CapEx -> string =
   match ex {
     CapEx_None                          => "None"                        ,
     CapEx_LengthViolation               => "LengthViolation"             ,
@@ -299,19 +299,19 @@ function execute_branch_pcc(newPCC) = {
 /*!
 THIS sets PCC to the given capability before executing the next instruction. It is used for CCall, which has no branch delay.
  */
-val set_next_pcc : Capability -> unit effect {wreg} 
+val set_next_pcc : Capability -> unit effect {wreg}
 function set_next_pcc(newPCC) = {
   NextPCC    = newPCC;
-  DelayedPCC = newPCC; /* always write DelayedPCC together with NextPCC so 
+  DelayedPCC = newPCC; /* always write DelayedPCC together with NextPCC so
                           that non-capability branches don't override PCC */
 }
 
 function SignalException (ex) = {
   traceException(ex);
   /* Only update EPC and BD if not already in EXL mode */
-  if (~ (CP0Status.EXL())) then 
+  if (~ (CP0Status.EXL())) then
   {
-    let epc : bits(64) = if (InBranchDelay[0]) then 
+    let epc : bits(64) = if (InBranchDelay[0]) then
       {
         CP0Cause->BD() = 0b1;
         PC - 4
@@ -333,7 +333,7 @@ function SignalException (ex) = {
   updateBadInstr();
   let vectorOffset = exceptionVectorOffset(ex);
   let vectorBase = exceptionVectorBase();
-  /* On CHERI we have to subtract KCC.base so that we end up at the 
+  /* On CHERI we have to subtract KCC.base so that we end up at the
      right absolute vector address after indirecting via new PCC */
   let kccBase = getCapBase(KCC) in
   NextPC = vectorBase + zero_extend(vectorOffset) - to_bits(64, kccBase);
@@ -363,8 +363,8 @@ function raise_c2_exception8(capEx, regnum) =
     };
     CapCause->ExcCode() = CapExCode(capEx);
     CapCause->RegNum()  = regnum;
-    let mipsEx = 
-      if ((capEx == CapEx_CallTrap) | (capEx == CapEx_ReturnTrap)) 
+    let mipsEx =
+      if ((capEx == CapEx_CallTrap) | (capEx == CapEx_ReturnTrap))
       then C2Trap else C2E in
     SignalException(mipsEx);
   }
@@ -457,7 +457,7 @@ function MEMw_wrapper(addr, size, data) =
   }
   else
   {
-    /* require that writes don't cross capability boundaries (should be true due to mips alignment requirements) */  
+    /* require that writes don't cross capability boundaries (should be true due to mips alignment requirements) */
     assert((addr & cap_addr_mask) == ((addr + to_bits(64, size - 1)) & cap_addr_mask));
     /* On cheri non-capability writes must clear the corresponding tag */
     MEMw_tagged(addr, size, false, data);
@@ -476,7 +476,7 @@ function MEMw_conditional_wrapper(addr, size, data) =
   }
 
 val checkDDCPerms : (Capability, MemAccessType) -> unit effect {escape, rreg, wreg}
-function checkDDCPerms(ddc : Capability, accessType: MemAccessType) = 
+function checkDDCPerms(ddc : Capability, accessType: MemAccessType) =
   {
     if (not (ddc.tag)) then
       raise_c2_exception(CapEx_TagViolation, 0b00000)
@@ -565,7 +565,7 @@ function TranslatePC (vAddr) = {
     TLBTranslate(to_bits(64, absPC), Instruction) /* XXX assert absPC never gets truncated due to above check and top <= 2^64 for valid caps */
 }
 
-/*!  
+/*!
 THIS raises a co-processor unusable exception if `CP0Status.CU[2]`
 is not set. All capability instructions must first check that the
 capability co-processor is enabled. This allows the operating system
@@ -608,7 +608,7 @@ function cp2_next_pc () = {
 function get_CP0EPC () =
   to_bits(64, getCapOffset(EPCC))
 
-/* EPC is the offset of EPCC so treat as set offset. 
+/* EPC is the offset of EPCC so treat as set offset.
    Take care to clear tag if EPCC is sealed or result is not representable. */
 function set_CP0EPC (newEPC) = {
   let (representable, newEPCC) = setCapOffset(EPCC, newEPC);

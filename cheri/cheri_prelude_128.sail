@@ -146,9 +146,9 @@ function capBitsToCapability(t, c) : (bool, CapBits) -> Capability = {
     T = c[89..78];
     Bs = c[77..64];
   };
-  /* 
+  /*
   Reconstruct top two bits of T given T = B + len and:
-  1) the top two bits of B 
+  1) the top two bits of B
   2) most significant two bits of length derived from format above
   3) carry out of B[20..0] + len[20..0] that is implied if T[20..0] < B[20..0]
   */
@@ -195,7 +195,7 @@ function getCapHardPerms(cap) : Capability -> bits(12) =
   @ cap.global)
 
 /*
-Convert from capabilty struct to bits (128 -- no tag) 
+Convert from capabilty struct to bits (128 -- no tag)
  */
 function capToBits(cap) : Capability -> bits(128) = {
   t_hi : bits(9)  = cap.T[11..3];
@@ -218,7 +218,7 @@ function capToBits(cap) : Capability -> bits(128) = {
     @ cap.address
   );
 }
- 
+
 /* When saving/restoring capabilities xor them with bits of null_cap --
    this ensures that canonical null_cap is always all-zeros in memory
    even though it may have bits set logically (e.g. length or exponent */
@@ -231,7 +231,7 @@ function capToMemBits(cap) : Capability -> bits(128) =
 function memBitsToCapability(tag, b) : (bool, bits(128)) -> Capability =
   capBitsToCapability(tag, b ^ null_cap_bits)
 
-function getCapPerms(cap) : Capability -> bits(31) = 
+function getCapPerms(cap) : Capability -> bits(31) =
     let perms : bits(15) = zero_extend(getCapHardPerms(cap)) in
     (0x000 /* uperms 30-19 */
   @ cap.uperms
@@ -280,7 +280,7 @@ function getCapBounds(c) : Capability -> (uint64, CapLen) =
     base : bits(65) = truncate((a_top + correction_base) @ c.B @ zeros(E), 65);
     top  : bits(65) = truncate((a_top + correction_top)  @ c.T @ zeros(E), 65);
     if (base[64] == bitone) then {
-      /* If base[64] is set this indicates under or overflow i.e. a has 
+      /* If base[64] is set this indicates under or overflow i.e. a has
          wrapped around the address space and been corrected. In this case
          we need to correct top[64] because top is not quite modulo 2**64 due
          to having max top == 2**64 in one particular case: */
@@ -305,15 +305,15 @@ function getCapTop (c) : Capability -> CapLen =
     let (_, top) = getCapBounds(c) in
     top
 
-function getCapOffset(c) : Capability -> uint64 = 
+function getCapOffset(c) : Capability -> uint64 =
     let base = getCapBase(c) in
     (unsigned(c.address) - base) % pow2(64)
 
 function getCapLength(c) : Capability -> CapLen =
     let ('base, 'top) = getCapBounds(c) in {
         /* For valid capabilties we expect top >= base and hence
-           length >= 0 but representation does allow top < base in some 
-           cases so might encounter on untagged capabilities. Here we just 
+           length >= 0 but representation does allow top < base in some
+           cases so might encounter on untagged capabilities. Here we just
            pretend it is a 65-bit quantitiy and wrap. */
         assert (not(c.tag) | top >= base);
         (top - base) % pow2(65)
@@ -373,14 +373,14 @@ function incCapOffset(c, delta) : (Capability, bits(64)) -> (bool, Capability) =
 /*    let representable = fastRepCheck(c, delta) in*/
     (representable, newCap)
 
-/* 
+/*
 An 'ideal' version of setCapBounds as described in paper.
  */
 function setCapBounds(cap, base, top) : (Capability, bits(64), bits(65)) -> (bool, Capability) = {
   /* {cap with base=base; length=(bits(64)) length; offset=0} */
   let base65 = 0b0 @ base;
   let length = top - base65;
-  /* Find an exponent that will put the most significant bit of length 
+  /* Find an exponent that will put the most significant bit of length
      second from the top as assumed during decoding. We ignore the bottom
      MW - 1 bits because those are handled by the ie = 0 format. */
   let e = 52 - count_leading_zeros(length[64..13]);
@@ -394,14 +394,14 @@ function setCapBounds(cap, base, top) : (Capability, bits(64), bits(65)) -> (boo
   lostSignificantTop  : bool = false;
   lostSignificantBase : bool = false;
   incE : bool = false;
-  
+
   if ie then {
     /* the internal exponent case is trickier */
 
     /* Extract B and T bits (we lose 3 bits of each to store the exponent) */
     B_ie = truncate(base >> (e + 3), 11);
     T_ie = truncate(top >> (e + 3), 11);
-    
+
     /* Find out whether we have lost significant bits of base and top using a
        mask of bits that we will lose (including 3 extra for exp). */
     maskLo : bits(65) = zero_extend(ones(e + 3));
@@ -419,13 +419,13 @@ function setCapBounds(cap, base, top) : (Capability, bits(64), bits(65)) -> (boo
        but either because of incrementing T or losing bits of base it might have grown. */
     len_ie = T_ie - B_ie;
     if len_ie[10] then {
-      /* length overflow -- increment E by one and then recalculate 
+      /* length overflow -- increment E by one and then recalculate
          T, B etc accordingly */
       incE = true;
 
       lostSignificantBase = lostSignificantBase | B_ie[0];
       lostSignificantTop  = lostSignificantTop | T_ie[0];
-      
+
       B_ie = truncate(base >> (e + 4), 11);
       let incT : range(0,1) = if lostSignificantTop then 1 else 0;
       T_ie = truncate(top >> (e + 4), 11) + incT;
@@ -463,7 +463,7 @@ function setCapBounds_hw(cap, base, top) : (Capability, bits(64), bits(65)) -> (
   let length : bits(66) = top66 - base66; // why 66?
   /* roughly index of highest set bit excluding (MW-1) lower bits */
   let e = 43 - count_leading_zeros(length[64..22]);
-  let e0 = e == 0; // called maxZero in bsv  
+  let e0 = e == 0; // called maxZero in bsv
   let lenMSB = if e0 then length[21] else bitzero; // sample len MW-2
   // extract MW + 1 bits of top and base -- we might need extra one if we round up e
   Bs : bits(23) = zeros();

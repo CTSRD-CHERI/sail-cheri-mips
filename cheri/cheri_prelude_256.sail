@@ -152,8 +152,8 @@ function getCapHardPerms(cap) : Capability -> bits(12) =
 /*!
 gets the permissions of the capabilty as a 31-bit vector. The architecturally defined permissions are in the least significant bits and user defined permissions are in bits 15 and above. Reserved bits are zero.
  */
-val getCapPerms : Capability -> bits(31) 
-function getCapPerms(cap) = 
+val getCapPerms : Capability -> bits(31)
+function getCapPerms(cap) =
   (
     cap.uperms
       @ 0b000 /* reserved */
@@ -249,7 +249,7 @@ function getCapBounds(c) : Capability -> (uint64, CapLen) =
   (getCapBase(c), getCapTop(c))
 
 /*!
-returns the offset of the capability (i.e. address relative to base) as an integer in the range $0$ to $2^{64} - 1$ 
+returns the offset of the capability (i.e. address relative to base) as an integer in the range $0$ to $2^{64} - 1$
  */
 val getCapOffset : Capability -> uint64
 function getCapOffset(c) = (unsigned(c.address) - unsigned(c.base)) % (pow2(64))

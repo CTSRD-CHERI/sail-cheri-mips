@@ -329,7 +329,7 @@ function clause execute (ORI (rs, rt, imm)) =
 union clause ast = NOR : (regno, regno, regno)
 function clause decode (0b000000 @ rs : regno @ rt : regno @ rd : regno @ 0b00000 @ 0b100111) =
   Some(NOR(rs, rt, rd))
-function clause assembly (NOR (rs, rt, rd)) = "nor " ^ strRRRArgs(rs, rt, rd)  
+function clause assembly (NOR (rs, rt, rd)) = "nor " ^ strRRRArgs(rs, rt, rd)
 function clause execute (NOR (rs, rt, rd)) =
   {
     wGPR(rd) = ~(rGPR(rs) | rGPR(rt))
@@ -340,7 +340,7 @@ function clause execute (NOR (rs, rt, rd)) =
 union clause ast = XOR : (regno, regno, regno)
 function clause decode (0b000000 @ rs : regno @ rt : regno @ rd : regno @ 0b00000 @ 0b100110) =
   Some(XOR(rs, rt, rd))
-function clause assembly (XOR (rs, rt, rd)) = "xor " ^ strRRRArgs(rs, rt, rd)  
+function clause assembly (XOR (rs, rt, rd)) = "xor " ^ strRRRArgs(rs, rt, rd)
 function clause execute (XOR (rs, rt, rd)) =
   {
     wGPR(rd) = (rGPR(rs) ^ rGPR(rt))
@@ -624,7 +624,7 @@ function clause execute (SLTU(rs, rt, rd)) =
 union clause ast = SLTIU : (regno, regno, bits(16))
 function clause decode (0b001011 @ rs : regno @ rt : regno @ imm : imm16) =
   Some(SLTIU(rs, rt, imm))
-function clause assembly (SLTIU (rs, rd, imm)) = "sltiu " ^ strRRIUArgs(rs, rd, imm)  
+function clause assembly (SLTIU (rs, rd, imm)) = "sltiu " ^ strRRIUArgs(rs, rd, imm)
 function clause execute (SLTIU(rs, rt, imm)) =
   {
     let rs_val = rGPR(rs) in
@@ -684,7 +684,7 @@ function clause execute (MFLO(rd)) =
 union clause ast = MTHI : regno
 function clause decode (0b000000 @ rs : regno @ 0b000000000000000 @ 0b010001) =
   Some(MTHI(rs))
-function clause assembly (MTHI(rs)) = "mthi " ^ strReg(rs)  
+function clause assembly (MTHI(rs)) = "mthi " ^ strReg(rs)
 function clause execute (MTHI(rs)) =
   {
     HI = rGPR(rs)
@@ -885,7 +885,7 @@ function clause execute (DIVU(rs, rt)) =
   {
     rsVal = rGPR(rs);
     rtVal = rGPR(rt);
-    let (q, r) = 
+    let (q, r) =
       if (NotWordVal(rsVal) | NotWordVal(rtVal) | rtVal == 0x0000000000000000) then
 	(undefined : bits(32), undefined : bits(32))
       else
@@ -1185,7 +1185,7 @@ function clause decode (0b000001 @ rs : regno @ 0b01011 @ imm : imm16) =
 function clause assembly (TRAPIMM(rs, imm, cmp)) = {
   let op = "t" ^ strCmp(cmp) ^ "i ";
   op ^ strReg(rs) ^ ", " ^ hex_str(unsigned(imm))
-}  
+}
 function clause execute (TRAPIMM(rs, imm, cmp)) =
   {
     rs_val = rGPR(rs);
@@ -1520,7 +1520,7 @@ function clause assembly(CACHE(base, op, imm)) = "cache " ^ strMemArgs(base, op,
 function clause execute (CACHE(base, op, imm)) =
   checkCP0Access () /* pretty much a NOP because no caches */
 
-/* PREF - prefetching into (non-existent) caches 
+/* PREF - prefetching into (non-existent) caches
 
 union clause ast = PREF : (regno, regno, bits(16))
 function clause decode (0b110011 @ base : regno @ op : regno @ imm : imm16) =

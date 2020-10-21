@@ -32,7 +32,7 @@
 /*  SUCH DAMAGE.                                                          */
 /*========================================================================*/
 
-/* mips_wrappers.sail: wrappers functions and hooks for CHERI extensibility 
+/* mips_wrappers.sail: wrappers functions and hooks for CHERI extensibility
    (mostly identity functions here) */
 
 register CP0EPC : bits(64)
@@ -97,9 +97,9 @@ let have_cp2 = false
 function SignalException (ex) = {
   traceException(ex);
   /* Only update EPC and BD if not already in EXL mode */
-  if (~ (CP0Status.EXL())) then 
+  if (~ (CP0Status.EXL())) then
   {
-    if (InBranchDelay[0]) then 
+    if (InBranchDelay[0]) then
     {
       set_CP0EPC(PC - 4);
       CP0Cause->BD() = 0b1;

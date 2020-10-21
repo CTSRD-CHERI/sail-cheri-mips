@@ -443,12 +443,12 @@ function (regfps,regfps,regfps,niafps,diafp,instruction_kind) initial_analysis (
     case (MFC0(rt, rd, sel, double))
     case (HCF)
     case (MTC0(rt, rd, sel, double))
-    case (TLBWI) 
-    case (TLBWR) 
-    case (TLBR) 
-    case ((TLBP)) 
-    case (RDHWR(rt, rd)) 
-    case (ERET) 
+    case (TLBWI)
+    case (TLBWR)
+    case (TLBR)
+    case ((TLBP))
+    case (RDHWR(rt, rd))
+    case (ERET)
 */
   };
   (iR,oR,aR,Nias,Dia,ik)

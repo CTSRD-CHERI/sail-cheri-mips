@@ -79,7 +79,7 @@ function getRepresentableAlignmentMask2(len : bits(64)) -> bits(64) = {
         ~(m)
       }
     }
-  } else 
+  } else
     zeros() // all lengths exactly representable when ie=0
 
 }
@@ -105,7 +105,7 @@ function getRepresentableLength2(len) : bits(64) -> bits(64) = {
         roundedLen << maskLen
       }
     }
-  } else 
+  } else
     len // all lengths exactly representable when ie=0
 }
 

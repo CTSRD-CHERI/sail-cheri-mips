@@ -134,7 +134,7 @@ THIS is the same as [TLBTranslate] except that it also returns any
 constraints on tagged capability operations.
  */
 val TLBTranslateC : (bits(64), MemAccessType) -> (bits(64), MemAccessCapRestriction) effect {escape, rreg, undef, wreg}
-function TLBTranslateC (vAddr, accessType) = 
+function TLBTranslateC (vAddr, accessType) =
   {
     let currentAccessLevel = getAccessLevel() in
     let compat32 = (vAddr[61..31] == 0b1111111111111111111111111111111) in
@@ -160,5 +160,5 @@ function TLBTranslateC (vAddr, accessType) =
 THIS`(addr, acces_type)` translates the virtual address, `addr`, to a physical address assuming the given `access_type` (load or store). If the TLB lookup fails an ISA exception is raised.
 */
 val TLBTranslate : (bits(64), MemAccessType) -> bits(64) effect {rreg, wreg, escape, undef}
-function TLBTranslate (vAddr, accessType) = 
+function TLBTranslate (vAddr, accessType) =
       let (addr, c) = TLBTranslateC(vAddr, accessType) in addr

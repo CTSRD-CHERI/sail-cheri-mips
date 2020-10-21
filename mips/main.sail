@@ -87,7 +87,7 @@ function main () = {
   intervalStart = startTime;
   intervalCount : int = 0;
   while (fetch_and_execute()) do {
-    /* uncomment to print IPS every 10M instructions (~10s) 
+    /* uncomment to print IPS every 10M instructions (~10s)
     intervalCount = intervalCount + 1;
     if (intervalCount == 10000000) then {
       endTime = get_time_ns();

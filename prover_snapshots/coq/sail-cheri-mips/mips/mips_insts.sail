@@ -816,7 +816,7 @@ function clause execute (DIVU(rs, rt)) =
   {
     rsVal = rGPR(rs);
     rtVal = rGPR(rt);
-    let (q, r) = 
+    let (q, r) =
       if (NotWordVal(rsVal) | NotWordVal(rtVal) | rtVal == 0x0000000000000000) then
 	(undefined : bits(32), undefined : bits(32))
       else
@@ -1392,7 +1392,7 @@ function clause decode (0b101111 @ base : regno @ op : regno @ imm : imm16) =
 function clause execute (CACHE(base, op, imm)) =
   checkCP0Access () /* pretty much a NOP because no caches */
 
-/* PREF - prefetching into (non-existent) caches 
+/* PREF - prefetching into (non-existent) caches
 
 union clause ast = PREF : (regno, regno, bits(16))
 function clause decode (0b110011 @ base : regno @ op : regno @ imm : imm16) =
