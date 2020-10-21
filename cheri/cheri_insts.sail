@@ -1145,7 +1145,7 @@ function clause execute (CLoadTags(rd, cb)) =
 
           Unrestricted => {
             x : bits(64)  = zeros();
-            foreach(i from 0 to (caps_per_cacheline - 1)) {
+            foreach (i from 0 to (caps_per_cacheline - 1)) {
               let (tag, _) = MEMr_tagged(pAddr + i*cap_size, cap_size, true);
               x[i] = tag;
             };
@@ -1459,7 +1459,7 @@ function clause execute (CClearTags(cb)) =
     else
     {
       let pAddr  = TLBTranslate(vAddr64, StoreData);
-      foreach(i from 0 to (caps_per_cacheline - 1))
+      foreach (i from 0 to (caps_per_cacheline - 1))
       {
         /* We could use write_tag_bool instead of reading data and writing it out again
            but that would be incompatible with the way proofs are currently done. 

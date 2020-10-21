@@ -583,7 +583,7 @@ function init_cp2_state () = {
   KR2C = null_cap;
   CPLR = null_cap;
   CULR = null_cap;
-  foreach(i from 1 to 31) {
+  foreach (i from 1 to 31) {
     let idx = to_bits(5, i) in
     writeCapReg(idx, null_cap)
   }
@@ -657,7 +657,7 @@ function capToString (cap, fixlen) = {
 
 function dump_cp2_state () = {
   print(concat_str("DEBUG CAP PCC", capToString(PCC, true)));
-  foreach(i from 0 to 31) {
+  foreach (i from 0 to 31) {
     print(concat_str("DEBUG CAP REG ", concat_str(string_of_int(i), capToString(readCapReg(to_bits(5, i)), true))))
   };
   print(concat_str("DEBUG CAP HWREG 00", capToString(DDC, true)));
