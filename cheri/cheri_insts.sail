@@ -999,7 +999,7 @@ function clause execute (CBZ(cb, imm, notzero)) =
   if InBranchDelay then
      SignalException(ResI);
   let cb_val = readCapReg(cb);
-  if (cb_val == null_cap) ^ notzero then
+  if (cb_val.address == zeros()) ^ notzero then
   {
     let offset : bits(64) = sign_extend(imm @ 0b00) + 4;
     execute_branch(PC + offset);
