@@ -554,7 +554,12 @@ function TranslatePC (vAddr) = {
   else if ((absPC + 4) > top) then
     (raise_c2_exception_noreg(CapEx_LengthViolation))
   else
-    TLBTranslate(to_bits(64, absPC), Instruction) /* XXX assert absPC never gets truncated due to above check and top <= 2^64 for valid caps */
+    /* Assert capability invariant that the bounds are within the 64-bit
+     * address space.  Together with the above check this guarantees that absPC
+     * does not get truncated and a fetch from absPC does not wrap around the
+     * edge of the address space */
+    assert(top <= pow2(64));
+    TLBTranslate(to_bits(64, absPC), Instruction)
 }
 
 /*!  
