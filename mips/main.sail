@@ -5,8 +5,8 @@ function cycle_limit_reached() = false
 
 register InstCount : int
 
-val fetch_and_execute : unit -> bool effect {barr, eamem, escape, rmem, rreg, wmv, wreg, undef, wmvt, rmemt}
-function fetch_and_execute () = {
+val fetch : unit -> option(ast) effect {barr, eamem, escape, rmem, rreg, wmv, wreg, undef, wmvt, rmemt}
+function fetch() = {
   PC = NextPC;
   InBranchDelay = NextInBranchDelay;
   NextPC = if BranchPending then DelayedPC else PC + 4;
@@ -25,17 +25,22 @@ function fetch_and_execute () = {
     prerr("PC: ");
     prerr(BitStr(PC));
   };
+  let pc_pa = TranslatePC(PC);
+  /*print_bits("pa: ", pc_pa);*/
+  LastInstrBits = CurrentInstrBits;
+  let instr_next = MEMr_wrapper(pc_pa, 4);
+  if trace then
+      prerr_bits(" op:", instr_next);
+  let instr_ast = decode(instr_next);
+  CurrentInstrBits = instr_next;
+  instr_ast
+}
+
+val fetch_and_execute : unit -> bool effect {barr, eamem, escape, rmem, rreg, wmv, wreg, undef, wmvt, rmemt}
+function fetch_and_execute () = {
   loop_again : bool = true;
   try {
-    let pc_pa = TranslatePC(PC);
-    /*print_bits("pa: ", pc_pa);*/
-    LastInstrBits = CurrentInstrBits;
-    let instr_next = MEMr_wrapper(pc_pa, 4);
-    if trace then
-        prerr_bits(" op:", instr_next);
-    let instr_ast = decode(instr_next);
-    CurrentInstrBits = instr_next;
-    match instr_ast {
+    match fetch() {
       Some(HCF()) => {
                      print("simulation stopped due to halt instruction.");
                      loop_again = false
