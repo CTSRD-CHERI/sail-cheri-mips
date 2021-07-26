@@ -1602,7 +1602,7 @@ function clause assembly (CGetFlags(rd, cb)) = "cgetflags " ^ strRCArgs(rd, cb)
 function clause decode (0b010010 @ 0b00000 @ cd : CapRegEnc @ rs : IntRegEnc @   0b10011 @ 0b111111) = Some(CGetPCCIncOffset(cd, rs))
 function clause assembly (CGetPCCIncOffset(cd, rs)) = "cgetpccincoffset " ^ strCRArgs(cd, rs)
 function clause decode (0b010010 @ 0b00000 @ cd : CapRegEnc @ rs : IntRegEnc @   0b10100 @ 0b111111) = Some(CGetPCCSetAddr(cd, rs))
-function clause assembly (CGetPCCSetOffset(cd, rs)) = "cgetpccsetaddr " ^ strCRArgs(cd, rs)
+function clause assembly (CGetPCCSetAddr(cd, rs)) = "cgetpccsetaddr " ^ strCRArgs(cd, rs)
 
 function clause decode (0b010010 @ 0b00000 @ rt : IntRegEnc @ rs : IntRegEnc @   0b10000 @ 0b111111) = Some(CRAP(rt, rs))
 function clause assembly (CRAP(rt, rs)) = "crrl " ^ strRRArgs(rt, rs)
