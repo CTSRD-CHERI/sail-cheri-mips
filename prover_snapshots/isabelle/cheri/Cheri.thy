@@ -11161,6 +11161,9 @@ fun assembly  :: \<open> ast \<Rightarrow> string \<close>  where
 |\<open> assembly (CGetPCCIncOffset ((cd1, rs))) = ( (@) (''cgetpccincoffset '') ((strCRArgs cd1 rs)))\<close> 
   for  cd1  :: "(5)Word.word " 
   and  rs  :: "(5)Word.word "
+|\<open> assembly (CGetPCCSetAddr ((cd1, rs))) = ( (@) (''cgetpccsetaddr '') ((strCRArgs cd1 rs)))\<close> 
+  for  cd1  :: "(5)Word.word " 
+  and  rs  :: "(5)Word.word "
 |\<open> assembly (CRAP ((rt, rs))) = ( (@) (''crrl '') ((strRRArgs rt rs)))\<close> 
   for  rt  :: "(5)Word.word " 
   and  rs  :: "(5)Word.word "
