@@ -1,0 +1,4 @@
+session "Sail-CHERI-MIPS-128" = "Sail" +
+  options [document = false]
+  theories
+    Cheri128_lemmas
