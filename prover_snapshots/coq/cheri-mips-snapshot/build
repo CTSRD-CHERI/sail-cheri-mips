@@ -7,11 +7,11 @@ fi
 
 set -ex
 make -C bbv
-make -C lib/sail
-coqc -R bbv/theories bbv -R lib/sail Sail mips_extras.v
-coqc -R bbv/theories bbv -R lib/sail Sail mips_types.v
-coqc -R bbv/theories bbv -R lib/sail Sail mips.v
-coqc -R bbv/theories bbv -R lib/sail Sail cheri_types.v
-coqc -R bbv/theories bbv -R lib/sail Sail cheri.v
-coqc -R bbv/theories bbv -R lib/sail Sail cheri128_types.v
-coqc -R bbv/theories bbv -R lib/sail Sail cheri128.v
+make BBV_DIR=`pwd`/bbv/src/bbv -C lib/sail
+coqc -Q bbv/src/bbv bbv -Q lib/sail Sail mips_extras.v
+coqc -Q bbv/src/bbv bbv -Q lib/sail Sail mips_types.v
+coqc -Q bbv/src/bbv bbv -Q lib/sail Sail mips.v
+coqc -Q bbv/src/bbv bbv -Q lib/sail Sail cheri_types.v
+coqc -Q bbv/src/bbv bbv -Q lib/sail Sail cheri.v
+coqc -Q bbv/src/bbv bbv -Q lib/sail Sail cheri128_types.v
+coqc -Q bbv/src/bbv bbv -Q lib/sail Sail cheri128.v
