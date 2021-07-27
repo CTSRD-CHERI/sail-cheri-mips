@@ -1,22 +1,21 @@
-   Sail CHERI-MIPS
-
-The Sail architecture models here are subject to the BSD two-clause
-licence below.  The snapshots of the Lem and Sail libraries in the
-prover_snapshots directory contain copies of their licences.
+   Sail
 
 Copyright (c) 2013-2021
-  Alasdair Armstrong
-  Thomas Bauereiss
-  Brian Campbell
-  Nathaniel Filardo
-  Shaked Flur
-  Jon French
   Kathryn Gray
-  Alexandre Joannou
+  Shaked Flur
+  Stephen Kell
+  Gabriel Kerneis
   Robert Norton-Wright
   Christopher Pulte
-  Alexander Richardson
   Peter Sewell
+  Alasdair Armstrong
+  Brian Campbell
+  Thomas Bauereiss
+  Anthony Fox
+  Jon French
+  Dominic Mulligan
+  Stephen Kell
+  Mark Wassell
 
 All rights reserved.
 
@@ -27,7 +26,6 @@ EP/K008528/1, at the Universities of Cambridge and Edinburgh.
 This software was developed by SRI International and the University of
 Cambridge Computer Laboratory (Department of Computer Science and
 Technology) under DARPA/AFRL contract FA8650-18-C-7809 ("CIFV").
-
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions

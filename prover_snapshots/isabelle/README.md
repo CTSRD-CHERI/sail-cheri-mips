@@ -26,6 +26,9 @@ following command (replacing `$DIR` with the path of this directory):
 isabelle jedit -d $DIR -l Sail-CHERI-MIPS
 ```
 
+The snapshots of the Lem and Sail libraries in the [lib](lib/) directory
+include copies of the licenses under which these libraries are distributed.
+
 See the [Sail](https://github.com/rems-project/sail),
 [Lem](https://github.com/rems-project/lem), and
 [Isabelle](https://isabelle.in.tum.de/) websites for more information on those
