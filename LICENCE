@@ -1,8 +1,8 @@
    Sail CHERI-MIPS
 
 The Sail architecture models here are subject to the BSD two-clause
-licence below.  The snapshots of the Lem and Sail libraries in the
-prover_snapshots directory contain copies of their licences.
+licence below.  The snapshots of the Lem, Sail, and bbv libraries in
+the prover_snapshots directory contain copies of their licences.
 
 Copyright (c) 2013-2021
   Alasdair Armstrong
