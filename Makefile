@@ -31,8 +31,8 @@ uninstall:
 
 apply_header:
 	$(MAKE) clean
-	headache -c etc/headache_config -h etc/mips_header `ls mips/*.sail`
-	headache -c etc/headache_config -h etc/mips_header `ls cheri/*.sail`
+	headache -c etc/headache_config -h LICENCE `ls mips/*.sail`
+	headache -c etc/headache_config -h LICENCE `ls cheri/*.sail`
 
 anon_dist:
 	headache -c etc/headache_config -h etc/anon_header `ls mips/*.sail`
