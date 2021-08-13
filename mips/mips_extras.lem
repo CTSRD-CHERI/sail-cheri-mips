@@ -82,22 +82,6 @@ let shift_bits_right_arith v n =
   let r = Maybe.bind (unsigned n) (fun n -> of_bits (arith_shiftr_bv v n)) in
   maybe_fail "shift_bits_right_arith" r
 
-(* Use constants for undefined values for now *)
-let undefined_string () = return ""
-let undefined_unit () = return ()
-let undefined_int () = return (0:ii)
-val undefined_vector : forall 'rv 'a 'e. integer -> 'a -> monad 'rv (list 'a) 'e
-let undefined_vector len u = return (repeat [u] len)
-val undefined_bitvector : forall 'rv 'a 'e. Size 'a => integer -> monad 'rv (mword 'a) 'e
-let undefined_bitvector len = return (of_bools (repeat [false] len))
-val undefined_bits : forall 'rv 'a 'e. Size 'a => integer -> monad 'rv (mword 'a) 'e
-let undefined_bits = undefined_bitvector
-let undefined_bit () = return B0
-let undefined_real () = return (realFromFrac 0 1)
-let undefined_range i j = return i
-let undefined_atom i = return i
-let undefined_nat () = return (0:ii)
-
 let skip () = return ()
 
 val elf_entry : unit -> integer
